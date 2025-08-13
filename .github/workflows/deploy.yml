@@ -93,6 +93,12 @@ jobs:
 
             # Jalankan migrasi database
             php artisan migrate --force
+
+               # --- TAMBAHKAN BARIS INI UNTUK MENJALANKAN SEEDER ---
+            php artisan db:seed # Ini akan menjalankan DatabaseSeeder Anda
+            # Jika Anda memiliki seeder spesifik yang ingin dijalankan, contoh:
+            # php artisan db:seed --class=AdminUserSeeder
+            # php artisan db:seed --class=MenuSeeder
             
             # Bersihkan cache Laravel
             php artisan config:clear
