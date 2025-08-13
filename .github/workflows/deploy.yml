@@ -59,18 +59,27 @@ jobs:
         env:
           DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }} # Mengambil nilai dari GitHub Secret
 
-      # Langkah 8: Deployment: Menyalin File Aplikasi (termasuk Vendor & public/build) ke VPS
-      # Menggunakan SCP (Secure Copy Protocol) untuk menyalin file melalui SSH
-      - name: Copy Files to VPS
-        uses: appleboy/scp-action@master # Menggunakan action GitHub untuk SCP
+      # Langkah 8: Deployment: Menyalin File Aplikasi (termasuk Vendor & public/build) ke VPS menggunakan rsync
+      # rsync jauh lebih baik untuk sinkronisasi file dan mendukung exclude dengan sempurna.
+      - name: Copy Files to VPS using rsync
+        uses: appleboy/rsync-action@master # <--- UBAH DARI scp-action MENJADI rsync-action
         with:
-          host: ${{ secrets.VPS_HOST }}       # IP Address VPS dari GitHub Secrets
-          username: ${{ secrets.VPS_USERNAME }} # User SSH (Anda sudah konfirmasi: telpkudev)
-          key: ${{ secrets.SSH_PRIVATE_KEY }}   # Private key dari GitHub Secrets
-          source: "./*" # Menyalin semua file dan folder dari root proyek di runner
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "./" # Sumber adalah seluruh direktori saat ini di runner
           target: "/var/www/app.cloudtelpku" # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS ANDA
-          strip_components: 0 # Jangan menghapus komponen path dari sumber
-          exclude: ".git" # <--- TAMBAHKAN BARIS INI UNTUK MENGECUALIKAN FOLDER .git
+          # Exclude folder .git dan node_modules (jika Anda tidak ingin node_modules disalin)
+          # Node_modules sudah diabaikan Composer dan npm, tapi ini memastikan
+          exclude: ".git" # <--- Parameter exclude sekarang akan berfungsi!
+          # opsi rsync tambahan, pastikan tidak ada slash di akhir target jika Anda ingin menyalin isi folder.
+          # Jika target memiliki trailing slash (/), rsync akan menyalin konten sumber ke dalam target.
+          # Jika tidak ada trailing slash, rsync akan menyalin folder sumber ke dalam target.
+          # Untuk root proyek, target tanpa trailing slash lebih aman: /var/www/app.cloudtelpku
+          rsync_options: "--archive --chown=${{ secrets.VPS_USERNAME }}:www-data --delete" # <--- PENTING: Perbaiki kepemilikan
+          # --archive: Mode arsip (rekursif, preserve permissions, ownership, etc.)
+          # --chown: Mengatur kepemilikan file/folder ke telpkudev:www-data. Ganti www-data jika grup web server Anda berbeda.
+          # --delete: Menghapus file di target yang tidak ada di sumber (hati-hati jika ada file non-git di VPS)
 
       # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
       # Ini akan menjalankan perintah Laravel Artisan dan lainnya langsung di VPS
