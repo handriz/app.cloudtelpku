@@ -59,23 +59,16 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             # Pastikan rsync terinstal di VPS Anda. Jika belum: sudo apt install rsync -y
-            # Jika folder tujuan belum ada, buat.
+            # Buat folder tujuan jika belum ada.
             mkdir -p /var/www/app.cloudtelpku
             
-            # Jalankan rsync dari runner ke VPS
+            # Jalankan rsync dari runner ke VPS. TIDAK ADA chown/chmod DI SINI.
             rsync -avz --delete --exclude='.git' \
                   ${{ github.workspace }}/ \
                   ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
-            
-            # --- Perintah chown/chmod setelah rsync ---
-            # rsync tidak otomatis mengubah ownership di server tujuan jika user ssh bukan root.
-            # Jadi, kita lakukan chown/chmod secara terpisah setelah rsync selesai.
-            sudo chown -R telpkudev:www-data /var/www/app.cloudtelpku # <--- SESUAIKAN NAMA USER DAN GROUP WEB SERVER
-            sudo chmod -R 775 /var/www/app.cloudtelpku/storage
-            sudo chmod -R 775 /var/www/app.cloudtelpku/bootstrap/cache
-            sudo chmod -R 755 /var/www/app.cloudtelpku/public # Pastikan public bisa dibaca oleh web server
+            # Perintah chown/chmod akan dijalankan di langkah berikutnya setelah rsync selesai.
 
-      # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH (seperti sebelumnya)
+      # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
       - name: Run Post-Deployment Commands on VPS
         uses: appleboy/ssh-action@master
         with:
@@ -85,31 +78,41 @@ jobs:
           script: |
             cd /var/www/app.cloudtelpku # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
             
-            # Pastikan izin file dan folder benar setelah penyalinan (jika belum dilakukan di langkah rsync)
-            # Karena sudah ada di langkah rsync, ini opsional atau bisa lebih spesifik jika ada kebutuhan.
-            # sudo chown -R telpkudev:www-data .
-            # sudo chmod -R 775 storage bootstrap/cache
-            # sudo chmod -R 755 public
+            # --- PENTING: Lakukan CHOWN/CHMOD di sini, setelah file disalin ---
+            # Pastikan user telpkudev memiliki kepemilikan penuh dan grup www-data dapat menulis.
+            echo "Setting file permissions..."
+            sudo chown -R telpkudev:www-data . # <--- SESUAIKAN NAMA USER DAN GROUP WEB SERVER
+            sudo chmod -R 775 storage bootstrap/cache
+            sudo chmod -R 755 public # Pastikan public bisa dibaca oleh web server
+            echo "File permissions set."
 
             # Jalankan migrasi database
+            echo "Running database migrations..."
             php artisan migrate --force
-
-               # --- TAMBAHKAN BARIS INI UNTUK MENJALANKAN SEEDER ---
-            php artisan db:seed --force # Ini akan menjalankan DatabaseSeeder Anda
-            # Jika Anda memiliki seeder spesifik yang ingin dijalankan, contoh:
-            # php artisan db:seed --class=AdminUserSeeder
-            # php artisan db:seed --class=MenuSeeder
+            echo "Database migrations complete."
+            
+            # --- JALANKAN SEEDER ---
+            # Ini akan menjalankan DatabaseSeeder Anda. Tambahkan --force untuk produksi.
+            echo "Running database seeder..."
+            php artisan db:seed --force
+            echo "Database seeding complete."
             
             # Bersihkan cache Laravel
+            echo "Clearing Laravel cache..."
             php artisan config:clear
             php artisan cache:clear
             php artisan view:clear
             php artisan route:clear
             php artisan optimize:clear
+            echo "Laravel cache cleared."
             
             # Buat atau perbarui storage link (jika menggunakan)
+            echo "Linking storage..."
             php artisan storage:link
+            echo "Storage linked."
             
             # Opsional: Restart layanan web server/php-fpm jika diperlukan
+            # echo "Restarting web server and PHP-FPM..."
             # sudo systemctl restart nginx
             # sudo systemctl restart php8.1-fpm # Sesuaikan versi PHP
+            # echo "Web server and PHP-FPM restarted."
