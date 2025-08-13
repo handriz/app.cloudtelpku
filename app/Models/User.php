@@ -21,6 +21,9 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role', 
+        'hierarchy_level_code', 
+        'dashboard_route_name',
     ];
 
     /**
