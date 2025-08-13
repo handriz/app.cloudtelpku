@@ -1,0 +1,106 @@
+# .github/workflows/deploy.yml
+# Workflow ini akan mengotomatisasi proses deployment aplikasi Laravel ke VPS.
+
+name: Deploy Laravel to VPS
+
+on:
+  push:
+    branches:
+      - main # Workflow akan berjalan setiap kali ada push ke branch 'main'
+    # Jika Anda ingin deploy dari branch lain (misal: 'develop'), ubah di sini.
+
+# Menentukan pekerjaan (jobs) yang akan dijalankan
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest # Menggunakan runner Ubuntu terbaru yang disediakan GitHub
+
+    steps:
+      # Langkah 1: Checkout kode dari repositori GitHub
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Langkah 2: Menyiapkan PHP Environment di runner GitHub Actions
+      # Sesuaikan 'php-version' dengan versi PHP yang Anda gunakan di VPS.
+      # 'extensions' dan 'tools' adalah standar untuk proyek Laravel.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1' # <--- SESUAIKAN DENGAN VERSI PHP DI VPS ANDA (Anda sudah cek: 8.1.2)
+          extensions: dom, curl, libxml, mbstring, zip, pdo_mysql, bcmath, fileinfo, gd, imagick
+          tools: composer:v2
+
+      # Langkah 3: Menginstal Dependensi PHP (Composer) di runner
+      # --no-dev: Tidak menginstal dev dependencies (untuk produksi)
+      # --optimize-autoloader: Mengoptimalkan autoloader Composer
+      - name: Install Composer Dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      # Langkah 4: Menyiapkan Node.js Environment di runner
+      # Sesuaikan 'node-version' jika Anda memerlukan versi tertentu.
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # <--- SESUAIKAN DENGAN VERSI Node.js YANG ANDA INGINKAN UNTUK BUILD
+
+      # Langkah 5: Menginstal Dependensi Node.js (npm) di runner
+      # Ini akan membuat folder 'node_modules' di runner
+      - name: Install Node.js Dependencies
+        run: npm install
+
+      # Langkah 6: Mengkompilasi Aset Frontend (CSS/JS) di runner
+      # Ini akan membuat folder 'public/build' dengan aset yang sudah dikompilasi di runner
+      - name: Build Frontend Assets
+        run: npm run build
+
+      # Langkah 7: Membuat file .env di runner
+      # Ini penting agar file .env produksi disalin ke VPS Anda
+      - name: Create .env file
+        run: echo "${{ secrets.DOT_ENV_CONTENT }}" > .env
+        env:
+          DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }} # Mengambil nilai dari GitHub Secret
+
+      # Langkah 8: Deployment: Menyalin File Aplikasi (termasuk Vendor & public/build) ke VPS
+      # Menggunakan SCP (Secure Copy Protocol) untuk menyalin file melalui SSH
+      - name: Copy Files to VPS
+        uses: appleboy/scp-action@master # Menggunakan action GitHub untuk SCP
+        with:
+          host: ${{ secrets.VPS_HOST }}       # IP Address VPS dari GitHub Secrets
+          username: ${{ secrets.VPS_USERNAME }} # User SSH (Anda sudah konfirmasi: telpkudev)
+          key: ${{ secrets.SSH_PRIVATE_KEY }}   # Private key dari GitHub Secrets
+          source: "./*" # Menyalin semua file dan folder dari root proyek di runner
+          target: "/var/www/app.cloudtelpku" # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS ANDA
+          strip_components: 0 # Jangan menghapus komponen path dari sumber
+
+      # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
+      # Ini akan menjalankan perintah Laravel Artisan dan lainnya langsung di VPS
+      - name: Run Post-Deployment Commands on VPS
+        uses: appleboy/ssh-action@master # Menggunakan action GitHub untuk SSH
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /var/www/app.cloudtelpku # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
+            
+            # Pastikan izin file dan folder benar setelah penyalinan
+            # Ganti 'telpkudev' dan 'www-data' sesuai konfigurasi VPS Anda
+            sudo chown -R telpkudev:www-data . # Kepemilikan untuk telpkudev dan grup web server
+            sudo chmod -R 775 storage bootstrap/cache
+            sudo chmod -R 755 public # Pastikan public bisa dibaca oleh web server
+
+            # Jalankan migrasi database
+            php artisan migrate --force # --force diperlukan di produksi
+            
+            # Bersihkan cache Laravel
+            php artisan config:clear
+            php artisan cache:clear
+            php artisan view:clear
+            php artisan route:clear
+            php artisan optimize:clear
+            
+            # Buat atau perbarui storage link (jika menggunakan)
+            php artisan storage:link
+            
+            # Opsional: Restart layanan web server/php-fpm jika diperlukan
+            # sudo systemctl restart nginx # Contoh untuk Nginx
+            # sudo systemctl restart php8.1-fpm # Contoh untuk PHP-FPM (sesuaikan versi PHP Anda)
