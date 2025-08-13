@@ -7,9 +7,7 @@ on:
   push:
     branches:
       - main # Workflow akan berjalan setiap kali ada push ke branch 'main'
-    # Jika Anda ingin deploy dari branch lain (misal: 'develop'), ubah di sini.
 
-# Menentukan pekerjaan (jobs) yang akan dijalankan
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest # Menggunakan runner Ubuntu terbaru yang disediakan GitHub
@@ -20,71 +18,66 @@ jobs:
         uses: actions/checkout@v3
 
       # Langkah 2: Menyiapkan PHP Environment di runner GitHub Actions
-      # Sesuaikan 'php-version' dengan versi PHP yang Anda gunakan di VPS.
-      # 'extensions' dan 'tools' adalah standar untuk proyek Laravel.
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1' # <--- SESUAIKAN DENGAN VERSI PHP DI VPS ANDA (Anda sudah cek: 8.1.2)
+          php-version: '8.1' # <--- PASTIKAN INI SESUAI DENGAN VERSI PHP DI VPS ANDA (Anda sudah cek: 8.1.2)
           extensions: dom, curl, libxml, mbstring, zip, pdo_mysql, bcmath, fileinfo, gd, imagick
           tools: composer:v2
 
       # Langkah 3: Menginstal Dependensi PHP (Composer) di runner
-      # --no-dev: Tidak menginstal dev dependencies (untuk produksi)
-      # --optimize-autoloader: Mengoptimalkan autoloader Composer
       - name: Install Composer Dependencies
         run: composer install --no-dev --optimize-autoloader
 
       # Langkah 4: Menyiapkan Node.js Environment di runner
-      # Sesuaikan 'node-version' jika Anda memerlukan versi tertentu.
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18' # <--- SESUAIKAN DENGAN VERSI Node.js YANG ANDA INGINKAN UNTUK BUILD
 
       # Langkah 5: Menginstal Dependensi Node.js (npm) di runner
-      # Ini akan membuat folder 'node_modules' di runner
       - name: Install Node.js Dependencies
         run: npm install
 
       # Langkah 6: Mengkompilasi Aset Frontend (CSS/JS) di runner
-      # Ini akan membuat folder 'public/build' dengan aset yang sudah dikompilasi di runner
       - name: Build Frontend Assets
         run: npm run build
 
-      # Langkah 7: Membuat file .env di runner
-      # Ini penting agar file .env produksi disalin ke VPS Anda
+      # Langkah 7: Membuat file .env di runner (penting untuk migrasi & konfigurasi)
       - name: Create .env file
         run: echo "${{ secrets.DOT_ENV_CONTENT }}" > .env
         env:
-          DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }} # Mengambil nilai dari GitHub Secret
+          DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
 
-      # Langkah 8: Deployment: Menyalin File Aplikasi (termasuk Vendor & public/build) ke VPS menggunakan rsync
-      # rsync jauh lebih baik untuk sinkronisasi file dan mendukung exclude dengan sempurna.
-      - name: Copy Files to VPS using rsync
-        uses: appleboy/rsync-action@master # <--- UBAH DARI scp-action MENJADI rsync-action
+      # Langkah 8: Deployment: Sinkronisasi File ke VPS menggunakan rsync via SSH
+      # Ini akan menyalin file dari runner ke VPS, mengecualikan .git
+      - name: Sync Files to VPS using rsync
+        uses: appleboy/ssh-action@master # <--- Menggunakan ssh-action untuk menjalankan rsync
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "./" # Sumber adalah seluruh direktori saat ini di runner
-          target: "/var/www/app.cloudtelpku" # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS ANDA
-          # Exclude folder .git dan node_modules (jika Anda tidak ingin node_modules disalin)
-          # Node_modules sudah diabaikan Composer dan npm, tapi ini memastikan
-          exclude: ".git" # <--- Parameter exclude sekarang akan berfungsi!
-          # opsi rsync tambahan, pastikan tidak ada slash di akhir target jika Anda ingin menyalin isi folder.
-          # Jika target memiliki trailing slash (/), rsync akan menyalin konten sumber ke dalam target.
-          # Jika tidak ada trailing slash, rsync akan menyalin folder sumber ke dalam target.
-          # Untuk root proyek, target tanpa trailing slash lebih aman: /var/www/app.cloudtelpku
-          rsync_options: "--archive --chown=${{ secrets.VPS_USERNAME }}:www-data --delete" # <--- PENTING: Perbaiki kepemilikan
-          # --archive: Mode arsip (rekursif, preserve permissions, ownership, etc.)
-          # --chown: Mengatur kepemilikan file/folder ke telpkudev:www-data. Ganti www-data jika grup web server Anda berbeda.
-          # --delete: Menghapus file di target yang tidak ada di sumber (hati-hati jika ada file non-git di VPS)
+          script: |
+            # Pastikan rsync terinstal di VPS Anda. Jika belum: sudo apt install rsync -y
+            # Jika folder tujuan belum ada, buat.
+            mkdir -p /var/www/app.cloudtelpku
+            
+            # Jalankan rsync dari runner ke VPS
+            rsync -avz --delete --exclude='.git' \
+                  ${{ github.workspace }}/ \
+                  ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
+            
+            # --- Perintah chown/chmod setelah rsync ---
+            # rsync tidak otomatis mengubah ownership di server tujuan jika user ssh bukan root.
+            # Jadi, kita lakukan chown/chmod secara terpisah setelah rsync selesai.
+            sudo chown -R telpkudev:www-data /var/www/app.cloudtelpku # <--- SESUAIKAN NAMA USER DAN GROUP WEB SERVER
+            sudo chmod -R 775 /var/www/app.cloudtelpku/storage
+            sudo chmod -R 775 /var/www/app.cloudtelpku/bootstrap/cache
+            sudo chmod -R 755 /var/www/app.cloudtelpku/public # Pastikan public bisa dibaca oleh web server
 
-      # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
-      # Ini akan menjalankan perintah Laravel Artisan dan lainnya langsung di VPS
+      # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH (seperti sebelumnya)
       - name: Run Post-Deployment Commands on VPS
-        uses: appleboy/ssh-action@master # Menggunakan action GitHub untuk SSH
+        uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
@@ -92,14 +85,14 @@ jobs:
           script: |
             cd /var/www/app.cloudtelpku # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
             
-            # Pastikan izin file dan folder benar setelah penyalinan
-            # Ganti 'telpkudev' dan 'www-data' sesuai konfigurasi VPS Anda
-            sudo chown -R telpkudev:www-data . # Kepemilikan untuk telpkudev dan grup web server
-            sudo chmod -R 775 storage bootstrap/cache
-            sudo chmod -R 755 public # Pastikan public bisa dibaca oleh web server
+            # Pastikan izin file dan folder benar setelah penyalinan (jika belum dilakukan di langkah rsync)
+            # Karena sudah ada di langkah rsync, ini opsional atau bisa lebih spesifik jika ada kebutuhan.
+            # sudo chown -R telpkudev:www-data .
+            # sudo chmod -R 775 storage bootstrap/cache
+            # sudo chmod -R 755 public
 
             # Jalankan migrasi database
-            php artisan migrate --force # --force diperlukan di produksi
+            php artisan migrate --force
             
             # Bersihkan cache Laravel
             php artisan config:clear
@@ -112,5 +105,5 @@ jobs:
             php artisan storage:link
             
             # Opsional: Restart layanan web server/php-fpm jika diperlukan
-            # sudo systemctl restart nginx # Contoh untuk Nginx
-            # sudo systemctl restart php8.1-fpm # Contoh untuk PHP-FPM (sesuaikan versi PHP Anda)
+            # sudo systemctl restart nginx
+            # sudo systemctl restart php8.1-fpm # Sesuaikan versi PHP
