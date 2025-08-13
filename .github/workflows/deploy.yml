@@ -70,6 +70,7 @@ jobs:
           source: "./*" # Menyalin semua file dan folder dari root proyek di runner
           target: "/var/www/app.cloudtelpku" # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS ANDA
           strip_components: 0 # Jangan menghapus komponen path dari sumber
+          exclude: ".git" # <--- TAMBAHKAN BARIS INI UNTUK MENGECUALIKAN FOLDER .git
 
       # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
       # Ini akan menjalankan perintah Laravel Artisan dan lainnya langsung di VPS
