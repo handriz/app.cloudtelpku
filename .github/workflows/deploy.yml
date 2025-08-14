@@ -17,6 +17,18 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      # --- BARU: Tambahkan Host Key VPS ke known_hosts di runner ---
+      # Ini akan mengatasi masalah 'Host key verification failed' dengan secara eksplisit
+      # menambahkan kunci host server Anda ke daftar yang dipercaya oleh runner GitHub Actions.
+      - name: Add SSH Host Key to Known Hosts
+        run: |
+          mkdir -p ~/.ssh # Pastikan direktori .ssh ada
+          # Menambahkan kunci host publik VPS ke known_hosts
+          echo "${{ secrets.VPS_PUBLIC_HOST_KEY }}" >> ~/.ssh/known_hosts
+          # Mengatur izin yang ketat untuk file known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      # --- Akhir langkah penambahan host key ---
+
       # Langkah 2: Menyiapkan PHP Environment di runner GitHub Actions
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -52,21 +64,24 @@ jobs:
       # Langkah 8: Deployment: Sinkronisasi File ke VPS menggunakan rsync via SSH
       # Ini akan menyalin file dari runner ke VPS, mengecualikan .git
       - name: Sync Files to VPS using rsync
-        uses: appleboy/ssh-action@master # <--- Menggunakan ssh-action untuk menjalankan rsync
+        uses: appleboy/ssh-action@master # Menggunakan ssh-action untuk menjalankan rsync
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Opsi ssh_options StrictHostKeyChecking=no TIDAK LAGI DIBUTUHKAN di sini
+          # karena kita sudah secara eksplisit menambahkan host key di langkah sebelumnya.
           script: |
             # Pastikan rsync terinstal di VPS Anda. Jika belum: sudo apt install rsync -y
             # Buat folder tujuan jika belum ada.
             mkdir -p /var/www/app.cloudtelpku
             
-            # Jalankan rsync dari runner ke VPS. TIDAK ADA chown/chmod DI SINI.
+            # Jalankan rsync dari runner ke VPS.
+            # Kepemilikan dan izin akan diatur di langkah berikutnya.
             rsync -avz --delete --exclude='.git' \
                   ${{ github.workspace }}/ \
                   ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
-            # Perintah chown/chmod akan dijalankan di langkah berikutnya setelah rsync selesai.
+            
 
       # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
       - name: Run Post-Deployment Commands on VPS
@@ -75,29 +90,24 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Opsi ssh_options StrictHostKeyChecking=no TIDAK LAGI DIBUTUHKAN di sini.
           script: |
             cd /var/www/app.cloudtelpku # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
             
-            # --- PENTING: Lakukan CHOWN/CHMOD di sini, setelah file disalin ---
-            # Pastikan user telpkudev memiliki kepemilikan penuh dan grup www-data dapat menulis.
             echo "Setting file permissions..."
             sudo chown -R telpkudev:www-data . # <--- SESUAIKAN NAMA USER DAN GROUP WEB SERVER
             sudo chmod -R 775 storage bootstrap/cache
             sudo chmod -R 755 public # Pastikan public bisa dibaca oleh web server
             echo "File permissions set."
 
-            # Jalankan migrasi database
             echo "Running database migrations..."
             php artisan migrate --force
             echo "Database migrations complete."
             
-            # --- JALANKAN SEEDER ---
-            # Ini akan menjalankan DatabaseSeeder Anda. Tambahkan --force untuk produksi.
             echo "Running database seeder..."
-            php artisan db:seed --force
+            php artisan db:seed --force # Menjalankan semua seeder
             echo "Database seeding complete."
             
-            # Bersihkan cache Laravel
             echo "Clearing Laravel cache..."
             php artisan config:clear
             php artisan cache:clear
@@ -106,7 +116,6 @@ jobs:
             php artisan optimize:clear
             echo "Laravel cache cleared."
             
-            # Buat atau perbarui storage link (jika menggunakan)
             echo "Linking storage..."
             php artisan storage:link
             echo "Storage linked."
