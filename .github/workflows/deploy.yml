@@ -75,12 +75,25 @@ jobs:
           DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
 
       # Langkah 8: Deployment: Sinkronisasi File ke VPS menggunakan rsync langsung
+      # Ini sepenuhnya bergantung pada ssh-agent untuk autentikasi.
+      # Tambahan: Perintah `sudo chown` awal untuk memastikan izin direktori target.
       - name: Sync Files to VPS using rsync directly
         run: |
-          ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/app.cloudtelpku"
+          # Pastikan rsync terinstal di VPS Anda. Jika belum:
+          ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "sudo apt-get update && sudo apt-get install -y rsync"
 
+          # Pastikan direktori target ada dan dimiliki oleh user yang benar sebelum rsync
+          # Ini mengatasi `rsync error: code 23` yang terkait dengan izin.
+          ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "\
+            sudo mkdir -p /var/www/app.cloudtelpku && \
+            sudo chown -R ${{ secrets.VPS_USERNAME }}:www-data /var/www/app.cloudtelpku \
+          "
+
+          # Jalankan rsync dari runner ke VPS.
+          # -e ssh: memberitahu rsync untuk menggunakan SSH sebagai transport.
+          # SSH_AUTH_SOCK akan otomatis digunakan oleh SSH karena sudah disiapkan oleh webfactory/ssh-agent.
           rsync -avz --delete --exclude='.git' \
-                -e "ssh -o StrictHostKeyChecking=yes" \
+                -e "ssh" \ # Simplified SSH command, relying on ssh-agent and known_hosts
                 ${{ github.workspace }}/ \
                 ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
             
