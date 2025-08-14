@@ -92,10 +92,7 @@ jobs:
           # Jalankan rsync dari runner ke VPS.
           # -e ssh: memberitahu rsync untuk menggunakan SSH sebagai transport.
           # SSH_AUTH_SOCK akan otomatis digunakan oleh SSH karena sudah disiapkan oleh webfactory/ssh-agent.
-          rsync -avz --delete --exclude='.git' \
-                -e "ssh" \ # Simplified SSH command, relying on ssh-agent and known_hosts
-                ${{ github.workspace }}/ \
-                ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
+           rsync -avz --delete --exclude='.git' -e "ssh -o StrictHostKeyChecking=yes" ${{ github.workspace }}/ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
             
 
       # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
