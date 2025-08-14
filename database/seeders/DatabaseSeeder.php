@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             AdminUserSeeder::class,
             MenuSeeder::class,
+            RoleMenuSeeder::class,
             // Jika Anda punya seeder lain (misal MenuSeeder), panggil juga di sini:
             // MenuSeeder::class,
         ]);

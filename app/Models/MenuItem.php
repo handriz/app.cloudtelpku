@@ -9,12 +9,13 @@ class MenuItem extends Model
 {
     use HasFactory;
     protected $fillable = [
+        'parent_id',
         'name',
+        'icon',
         'route_name',
         'url',
-        'icon',
-        'parent_id',
-        'order'
+        'permission_name',
+        'order',
     ];
 
     /**
