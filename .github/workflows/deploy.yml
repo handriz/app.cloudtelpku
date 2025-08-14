@@ -31,6 +31,28 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+      # --- START: Caching Dependensi untuk Mempercepat Build ---
+
+      # Cache Composer dependencies (vendor folder)
+      - name: Cache Composer dependencies
+        uses: actions/cache@v3
+        with:
+          path: vendor # Direktori yang akan di-cache
+          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }} # Kunci cache berdasarkan OS dan hash composer.lock
+          restore-keys: |
+            ${{ runner.os }}-php- # Fallback key
+
+      # Cache Node.js modules (node_modules folder)
+      - name: Cache Node.js modules
+        uses: actions/cache@v3
+        with:
+          path: node_modules # Direktori yang akan di-cache
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }} # Kunci cache berdasarkan OS dan hash package-lock.json
+          restore-keys: |
+            ${{ runner.os }}-node- # Fallback key
+
+      # --- END: Caching Dependensi ---
+
       # --- BARU: Instalasi PHP Manual di runner GitHub Actions ---
       # Mengganti `shivamathur/setup-php` yang bermasalah
       - name: Manual Setup PHP
