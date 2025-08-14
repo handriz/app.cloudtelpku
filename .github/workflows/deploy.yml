@@ -74,24 +74,16 @@ jobs:
         env:
           DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
 
-      # Langkah 8: Deployment: Sinkronisasi File ke VPS menggunakan rsync via SSH
-      # Ini akan menyalin file dari runner ke VPS, mengecualikan .git
-      - name: Sync Files to VPS using rsync
-        uses: appleboy/ssh-action@master # <--- Menggunakan ssh-action untuk menjalankan rsync
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            # Pastikan rsync terinstal di VPS Anda. Jika belum: sudo apt install rsync -y
-            # Buat folder tujuan jika belum ada.
-            mkdir -p /var/www/app.cloudtelpku
+      # Langkah 8: Deployment: Sinkronisasi File ke VPS menggunakan rsync langsung
+      - name: Sync Files to VPS using rsync directly
+        run: |
+          ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/app.cloudtelpku"
+
+          rsync -avz --delete --exclude='.git' \
+                -e "ssh -o StrictHostKeyChecking=yes" \
+                ${{ github.workspace }}/ \
+                ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
             
-            # Jalankan rsync dari runner ke VPS. TIDAK ADA chown/chmod DI SINI.
-            rsync -avz --delete --exclude='.git' \
-                  ${{ github.workspace }}/ \
-                  ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
-            # Perintah chown/chmod akan dijalankan di langkah berikutnya setelah rsync selesai.
 
       # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
       - name: Run Post-Deployment Commands on VPS
@@ -141,3 +133,4 @@ jobs:
             # sudo systemctl restart nginx
             # sudo systemctl restart php8.1-fpm # Sesuaikan versi PHP
             # echo "Web server and PHP-FPM restarted."
+
