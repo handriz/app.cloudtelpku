@@ -24,14 +24,23 @@ jobs:
         run: |
           mkdir -p ~/.ssh # Pastikan direktori .ssh ada
           # Menambahkan kunci host publik VPS ke known_hosts
-          echo "${{ secrets.VPS_PUBLIC_HOST_KEY }}" >> ~/.ssh/known_hosts
+          # `sed 's/\r$//'` untuk menghilangkan karakter carriage return yang mungkin dari Windows copy-paste
+          echo "${{ secrets.VPS_PUBLIC_HOST_KEY }}" | sed 's/\r$//' >> ~/.ssh/known_hosts
           # Mengatur izin yang ketat untuk file known_hosts
           chmod 600 ~/.ssh/known_hosts
       # --- Akhir langkah penambahan host key ---
 
+      # --- BARU: Menyiapkan SSH Agent ---
+      # Ini akan membuat lingkungan SSH yang lebih stabil untuk autentikasi kunci pribadi.
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.7.0 # Menggunakan action untuk mengelola ssh-agent
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # webfactory/ssh-agent akan membuat SSH_AUTH_SOCK dan menambahkan kunci ke agent.
+
       # Langkah 2: Menyiapkan PHP Environment di runner GitHub Actions
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivamathur/setup-php@v2
         with:
           php-version: '8.1' # <--- PASTIKAN INI SESUAI DENGAN VERSI PHP DI VPS ANDA (Anda sudah cek: 8.1.2)
           extensions: dom, curl, libxml, mbstring, zip, pdo_mysql, bcmath, fileinfo, gd, imagick
@@ -61,36 +70,37 @@ jobs:
         env:
           DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
 
-      # Langkah 8: Deployment: Sinkronisasi File ke VPS menggunakan rsync via SSH
-      # Ini akan menyalin file dari runner ke VPS, mengecualikan .git
-      - name: Sync Files to VPS using rsync
-        uses: appleboy/ssh-action@master # Menggunakan ssh-action untuk menjalankan rsync
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # Opsi ssh_options StrictHostKeyChecking=no TIDAK LAGI DIBUTUHKAN di sini
-          # karena kita sudah secara eksplisit menambahkan host key di langkah sebelumnya.
-          script: |
-            # Pastikan rsync terinstal di VPS Anda. Jika belum: sudo apt install rsync -y
-            # Buat folder tujuan jika belum ada.
-            mkdir -p /var/www/app.cloudtelpku
-            
-            # Jalankan rsync dari runner ke VPS.
-            # Kepemilikan dan izin akan diatur di langkah berikutnya.
-            rsync -avz --delete --exclude='.git' \
-                  ${{ github.workspace }}/ \
-                  ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
+      # Langkah 8: Deployment: Sinkronisasi File ke VPS menggunakan rsync langsung
+      # Sekarang sepenuhnya bergantung pada ssh-agent untuk autentikasi.
+      # rsync akan menggunakan SSH_AUTH_SOCK yang diatur oleh webfactory/ssh-agent.
+      - name: Sync Files to VPS using rsync directly
+        run: |
+          # Perintah SSH langsung untuk membuat direktori jika belum ada
+          ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/app.cloudtelpku"
+
+          # Jalankan rsync dari runner ke VPS.
+          # -e ssh: memberitahu rsync untuk menggunakan SSH sebagai transport
+          # SSH_AUTH_SOCK akan otomatis digunakan oleh SSH karena sudah disiapkan oleh webfactory/ssh-agent
+          rsync -avz --delete --exclude='.git' \
+                -e "ssh -o StrictHostKeyChecking=yes" \ # Pastikan ini tetap 'yes' karena kita sudah menambahkan host key
+                ${{ github.workspace }}/ \
+                ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
             
 
       # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
+      # Tetap menggunakan appleboy/ssh-action untuk menjalankan script remote yang kompleks.
       - name: Run Post-Deployment Commands on VPS
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # Opsi ssh_options StrictHostKeyChecking=no TIDAK LAGI DIBUTUHKAN di sini.
+          # Kita tidak perlu lagi parameter 'key' di sini karena ssh-agent sudah dikonfigurasi
+          # dan appleboy/ssh-action akan otomatis menggunakannya.
+          # Menghapus 'key' bisa mencegah konflik penanganan kunci.
+          # key: ${{ secrets.SSH_PRIVATE_KEY }} # Baris ini dihapus/dikomentari
+          
+          # Gunakan ssh_options yang lebih ketat karena host key sudah ditambahkan
+          ssh_options: "-o StrictHostKeyChecking=yes"
           script: |
             cd /var/www/app.cloudtelpku # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
             
@@ -123,5 +133,5 @@ jobs:
             # Opsional: Restart layanan web server/php-fpm jika diperlukan
             # echo "Restarting web server and PHP-FPM..."
             # sudo systemctl restart nginx
-            # sudo systemctl restart php8.1-fpm # Sesuaikan versi PHP
+            # sudo sudo systemctl restart php8.1-fpm # Sesuaikan versi PHP
             # echo "Web server and PHP-FPM restarted."
