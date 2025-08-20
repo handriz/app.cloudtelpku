@@ -27,8 +27,26 @@ class AuthenticatedSessionController extends Controller
     {
         $request->authenticate();
 
+        $user = Auth::user();
+        if (!$user->is_approved) {
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
         $request->session()->regenerate();
 
+            return redirect()->route('login')->withErrors([
+                'email' => 'Akun Anda belum disetujui oleh admin. Mohon tunggu persetujuan.'
+            ]);
+        }
+        $request->session()->regenerate();
+        // Redirect ke dashboard yang sesuai berdasarkan peran
+        if ($user->role === 'admin') {
+            return redirect()->intended(route('admin.dashboard', absolute: false));
+        } elseif ($user->role === 'app_user') {
+            return redirect()->intended(route('app_user.dashboard', absolute: false));
+        } elseif ($user->role === 'executive_user') {
+            return redirect()->intended(route('executive.dashboard', absolute: false));
+        }
+        
         return redirect()->intended(RouteServiceProvider::HOME);
     }
 

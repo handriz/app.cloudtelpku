@@ -6,6 +6,7 @@ namespace App\Providers;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 use App\Models\User;
+use App\Models\Permission;
 
 class AuthServiceProvider extends ServiceProvider
 {
@@ -23,19 +24,29 @@ class AuthServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Gates untuk fitur spesifik
-        Gate::define('manage-users', function (User $user) {
-            return $user->role === 'admin'; // Hanya admin yang bisa mengelola pengguna
-        });
+        // Daftarkan Gate secara dinamis dari database
+        try {
+            // Ambil semua izin dari tabel 'permissions'
+            // Pastikan tabel 'permissions' sudah ada saat ini dijalankan (melalui migrasi & seeder)
+            foreach (Permission::all() as $permission) {
+                Gate::define($permission->name, function (User $user) use ($permission) {
+                    // Cek apakah peran user yang login memiliki izin ini
+                    // Asumsi: User memiliki relasi belongsTo ke Role, dan Role memiliki relasi many-to-many ke Permission
+                    return $user->role && $user->role->hasPermissionTo($permission->name);
+                });
+            }
+        } catch (\Exception $e) {
+            // Tangani kasus di mana tabel 'permissions' mungkin belum ada saat boot
+            // Ini umum terjadi saat menjalankan 'php artisan migrate:fresh' pertama kali
+            \Log::warning('Could not register dynamic gates: ' . $e->getMessage());
+        }
 
-        Gate::define('view-all-reports', function (User $user) {
-            return in_array($user->role, ['admin', 'executive_user']); // Admin dan Executive bisa melihat semua laporan
-        });
 
-        // Tambahkan gates lainnya sesuai kebutuhan fitur aplikasi Anda
-        // Contoh:
-        // Gate::define('access-ulp-data', function (User $user) {
-        //     return $user->role === 'app_user' && !empty($user->hierarchy_level_code);
-        // });
+        // Opsional: Super admin bypass. Jika peran 'admin' memiliki semua izin.
+        Gate::before(function (User $user, string $ability) {
+            if ($user->hasRole('admin')) {
+                return true;
+            }
+        });
     }
 }

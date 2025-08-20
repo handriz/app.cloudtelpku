@@ -19,11 +19,10 @@ class DatabaseSeeder extends Seeder
         //     'email' => 'test@example.com',
         // ]);
         $this->call([
-            AdminUserSeeder::class,
-            MenuSeeder::class,
-            RoleMenuSeeder::class,
-            // Jika Anda punya seeder lain (misal MenuSeeder), panggil juga di sini:
-            // MenuSeeder::class,
+            RoleSeeder::class,  
+            PermissionSeeder::class, 
+            UserSeeder::class,      
+            MenuItemSeeder::class,                 
         ]);
     }
 }

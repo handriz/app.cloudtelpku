@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->string('role')->default('app_user')->after('email');
-            $table->string('hierarchy_level_code')->nullable()->after('role');
+        Schema::create('permissions', function (Blueprint $table) {
+            $table->bigIncrements('id');
+            $table->string('name')->unique();
+            $table->string('description')->nullable();
+            $table->timestamps();
         });
     }
 
@@ -22,8 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['role', 'hierarchy_level_code']);
-        });
+        Schema::dropIfExists('permissions');
     }
 };

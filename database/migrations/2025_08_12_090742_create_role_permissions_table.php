@@ -11,11 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('role_menu', function (Blueprint $table) {
+        Schema::create('role_permissions', function (Blueprint $table) {
             $table->foreignId('role_id')->constrained('roles')->onDelete('cascade');
-            $table->foreignId('menu_item_id')->constrained('menu_items')->onDelete('cascade');
-            // Primary key gabungan untuk mencegah duplikasi entri
-            $table->primary(['role_id', 'menu_item_id']);
+            $table->foreignId('permission_id')->constrained('permissions')->onDelete('cascade');
+
+            $table->primary(['role_id', 'permission_id']); // Composite primary key
+            $table->timestamps();
         });
     }
 
@@ -24,6 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('role_menu');
+        Schema::dropIfExists('role_has_permissions');
     }
 };

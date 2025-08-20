@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\AppUser;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
-class MenuItemController extends Controller
+class DashboardController extends Controller
 {
     //
 }

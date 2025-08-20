@@ -1,9 +1,14 @@
 <?php
 
-use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\DashboardController;
+use Illuminate\Support\Facades\Auth; // Pastikan ini diimpor untuk Auth::user()
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\AppUser\DashboardController as AppUserDashboardController; // Contoh jika Anda punya
+use App\Http\Controllers\Executive\DashboardController as ExecutiveDashboardController; // Contoh jika Anda punya
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\MenuController;
+use App\Http\Controllers\Admin\PermissionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,92 +21,80 @@ use App\Http\Controllers\Admin\UserController;
 |
 */
 
+// Rute halaman depan
 Route::get('/', function () {
     // return view('welcome');
     return redirect()->route('login');
 });
 
-// Baris ini mengimpor semua rute terkait autentikasi (login, register, logout, verifikasi email, dll.)
-require __DIR__.'/auth.php';
+// Middleware grup untuk pengguna yang sudah terautentikasi dan terverifikasi email
+// CATATAN: Verifikasi email (middleware('verified')) akan diperiksa SETELAH
+// pengguna berhasil login DAN is_approved mereka TRUE.
+// Jika email belum diverifikasi, mereka akan dialihkan ke /email/verify.
+Route::middleware(['auth', 'verified'])->group(function () {
 
-/*
-|--------------------------------------------------------------------------
-| Grup Rute yang Dilindungi & Berbasis Peran
-|--------------------------------------------------------------------------
-|
-| Semua rute di dalam grup ini akan memerlukan pengguna untuk:
-| 1. Sudah terautentikasi (middleware 'auth').
-| 2. Diarahkan ke dashboard yang sesuai berdasarkan peran mereka
-|    (middleware 'role_redirect' kustom kita).
-|
-*/
-Route::middleware(['auth', 'role_redirect'])->group(function () {
-    // Rute Dashboard Default / Fallback
-    // Ini adalah rute umum yang akan diakses pertama kali setelah login
-    // dan akan ditangani oleh middleware 'role_redirect' untuk mengarahkan lebih lanjut.
-    // Ini juga berfungsi sebagai dashboard jika peran pengguna tidak memiliki rute spesifik.
+    // Rute /dashboard umum yang akan mengarahkan pengguna ke dashboard sesuai perannya
+    Route::get('/dashboard', function () {
+        $user = Auth::user();
 
-    Route::get('/dashboard', [DashboardController::class, 'defaultDashboard'])->name('dashboard');
+        // Arahkan ke dashboard spesifik berdasarkan peran pengguna
+        if ($user->role === 'admin') {
+            return redirect()->route('admin.dashboard');
+        } elseif ($user->role === 'app_user') {
+            return redirect()->route('app_user.dashboard');
+        } elseif ($user->role === 'executive_user') {
+            return redirect()->route('executive.dashboard');
+        }
 
-    // Rute-rute Dashboard Spesifik Berdasarkan Peran
-    // Meskipun middleware 'role_redirect' akan mengarahkan pengguna ke rute ini,
-    // penting untuk mendefinisikan rute-rute ini secara eksplisit.
-    Route::get('/admin/dashboard', [DashboardController::class, 'adminDashboard'])->name('admin.dashboard');
-    Route::get('/executive/dashboard', [DashboardController::class, 'executiveDashboard'])->name('executive.dashboard');
-    Route::get('/app_user/dashboard', [DashboardController::class, 'appUserDashboard'])->name('app_user.dashboard');
+        // Jika peran tidak cocok dengan yang didefinisikan, arahkan ke dashboard default atau error
+        // Pastikan Anda memiliki view 'dashboard' ini atau ganti dengan rute yang aman
+        return view('dashboard');
+    })->name('dashboard');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Grup Rute Khusus Admin
-    |--------------------------------------------------------------------------
-    |
-    | Rute di dalam grup ini hanya dapat diakses oleh pengguna dengan peran 'admin'.
-    | - `prefix('admin')`: Menambahkan '/admin' di awal URL semua rute di grup ini.
-    | - `name('admin.')`: Menambahkan awalan 'admin.' untuk nama rute di grup ini.
-    | - `can('manage-users')`: Memastikan hanya pengguna yang memiliki izin 'manage-users'
-    |   (yaitu, admin, seperti yang didefinisikan di `AuthServiceProvider`) yang dapat mengaksesnya.
-    |
-    */
-    Route::middleware('can:manage-users')->prefix('admin')->name('admin.')->group(function () {
+
+    // ======================================================================
+    // RUTE UNTUK PANEL ADMIN
+    // Dilindungi oleh middleware 'can:access-admin-dashboard' (diperiksa oleh Gate dinamis)
+    // ======================================================================
+    Route::prefix('admin')->name('admin.')->group(function () {
+        // Dashboard Admin
+        Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
 
         // Manajemen Pengguna (CRUD)
-        // Ini adalah rute resource untuk mengelola pengguna (index, create, store, show, edit, update, destroy).
+        // Rute ini mencakup: index, create, store, show, edit, update, destroy
         Route::resource('users', UserController::class);
 
-        // Tambahkan rute khusus admin lainnya di sini jika ada.
-        // Contoh: Route::get('/settings', [AdminController::class, 'settings'])->name('settings');
+        // Manajemen Item Menu (CRUD)
+        // Rute ini mencakup: index, create, store, show, edit, update, destroy
+        Route::resource('menu', MenuController::class);
+
+        // Manajemen Izin Dinamis
+        Route::resource('permissions', PermissionController::class)->except(['show']); // Contoh jika ingin CRUD Permission model
+        // Rute untuk menampilkan matriks izin dan memproses pembaruannya
+        Route::post('/permissions/update-role-permissions', [PermissionController::class, 'updateRolePermissions'])->name('permissions.updateRolePermissions');
     });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Grup Rute Khusus Executive User
-    |--------------------------------------------------------------------------
-    |
-    | Anda bisa menambahkan rute khusus untuk peran 'executive_user' di sini.
-    | Contoh:
-    */
-    // Route::middleware('can:access-executive-features')->prefix('executive')->name('executive.')->group(function () {
-    //     Route::get('/reports', [ReportController::class, 'executiveReports'])->name('reports');
-    //     // Tambahkan rute executive lainnya di sini
-    // });
+    // ======================================================================
+    // RUTE UNTUK PANEL PENGGUNA APLIKASI (App User)
+    // ======================================================================
+    Route::prefix('app-user')->name('app_user.')->middleware('can:access-app_user-dashboard')->group(function () {
+        Route::get('/dashboard', [AppUserDashboardController::class, 'index'])->name('dashboard');
+        // Tambahkan rute khusus untuk pengguna aplikasi di sini
+        // Contoh: Route::get('/reports', [AppUserReportController::class, 'index'])->name('reports');
+    });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Grup Rute Khusus App User
-    |--------------------------------------------------------------------------
-    |
-    | Anda bisa menambahkan rute khusus untuk peran 'app_user' di sini.
-    | Contoh:
-    */
-    // Route::middleware('can:access-app-features')->prefix('app_user')->name('app_user.')->group(function () {
-    //     Route::get('/my-profile', [UserProfileController::class, 'show'])->name('profile');
-    //     // Tambahkan rute app user lainnya di sini
-    // });
+    // ======================================================================
+    // RUTE UNTUK PANEL EKSEKUTIF (Executive User)
+    // ======================================================================
+    Route::prefix('executive')->name('executive.')->middleware('can:access-executive-dashboard')->group(function () {
+        Route::get('/dashboard', [ExecutiveDashboardController::class, 'index'])->name('dashboard');
+        // Tambahkan rute khusus untuk pengguna eksekutif di sini
+        // Contoh: Route::get('/analytics', [ExecutiveAnalyticsController::class, 'index'])->name('analytics');
+    });
 
-// Route::get('/dashboard', function () {
-//     return view('dashboard');
-// })->middleware(['auth', 'verified'])->name('dashboard');
+
 });
+
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
@@ -109,5 +102,7 @@ Route::middleware('auth')->group(function () {
 
 
 });
-
-
+// Otentikasi Laravel Breeze/Jetstream routes
+// Pastikan ini berada di luar grup middleware 'auth' utama jika Anda ingin
+// halaman login/register dapat diakses oleh non-authenticated users.
+require __DIR__.'/auth.php'; // Atau file auth bawaan Laravel lainnya

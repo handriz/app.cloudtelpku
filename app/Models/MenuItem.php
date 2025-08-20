@@ -8,14 +8,16 @@ use Illuminate\Database\Eloquent\Model;
 class MenuItem extends Model
 {
     use HasFactory;
+    protected $table = 'menu_items';
     protected $fillable = [
-        'parent_id',
         'name',
-        'icon',
         'route_name',
-        'url',
+        'icon',
         'permission_name',
+        'parent_id',
+        'url',
         'order',
+        'is_active',
     ];
 
     /**
@@ -41,14 +43,6 @@ class MenuItem extends Model
      */
     public function roles()
     {
-        // Relasi ini sedikit tidak konvensional karena kolom 'role' di tabel pivot
-        // adalah string, bukan foreign key ke model Role.
-        // Anda dapat menggunakannya untuk mendapatkan entri dari tabel pivot.
-        // Jika Anda membuat model Role di masa mendatang, relasi ini akan lebih rapi.
-        // Untuk saat ini, kita akan mengkueri tabel pivot secara langsung di View Composer.
-        // Metode ini ada sebagai placeholder jika Anda ingin memperluasnya.
-        return $this->belongsToMany(User::class, 'role_menu', 'menu_item_id', 'role', 'id', 'role');
-        // Catatan: Relasi ini perlu disesuaikan jika 'role' di tabel pivot tidak merujuk ke User::role
-        // Lebih baik: Kueri tabel pivot langsung di View Composer.
+        return $this->belongsToMany(Role::class, 'role_menu', 'menu_item_id', 'role_id');
     }
 }

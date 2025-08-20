@@ -40,12 +40,15 @@ class RegisteredUserController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'is_approved' => false,
+            'role' => 'app_user',
         ]);
 
         event(new Registered($user));
 
-        Auth::login($user);
-
-        return redirect(RouteServiceProvider::HOME);
+        //Auth::login($user);
+        return redirect()->route('login')->with('status', 'Pendaftaran berhasil! Akun Anda sedang menunggu persetujuan admin.');
+        // return redirect(RouteServiceProvider::HOME);
+        // Atau ke halaman khusus: return redirect()->route('registration.pending');
     }
 }

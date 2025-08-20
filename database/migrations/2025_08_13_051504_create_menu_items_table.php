@@ -13,13 +13,14 @@ return new class extends Migration
     {
         Schema::create('menu_items', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('parent_id')->nullable(); // Untuk sub-menu
             $table->string('name');
-            $table->string('icon')->nullable(); // Contoh: 'fas fa-tachometer-alt'
             $table->string('route_name')->nullable(); // Nama rute Laravel
+            $table->string('icon')->nullable(); // Contoh: 'fas fa-tachometer-alt'
             $table->string('url')->nullable(); // URL langsung jika tidak ada route_name
             $table->string('permission_name')->nullable(); // Nama permission yang dibutuhkan untuk melihat menu
+            $table->unsignedBigInteger('parent_id')->nullable(); // Untuk sub-menu
             $table->integer('order')->default(0); // Urutan tampilan menu
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
 
             // Foreign key constraint untuk parent_id
