@@ -138,7 +138,7 @@ jobs:
             # Jalankan migrasi database
             echo "Running database migrations..."
             # php artisan migrate --force
-            php artisan migrate fresh
+            php artisan migrate:fresh
             echo "Database migrations complete."
             
             # --- JALANKAN SEEDER ---
