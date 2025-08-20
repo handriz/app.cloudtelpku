@@ -137,13 +137,15 @@ jobs:
 
             # Jalankan migrasi database
             echo "Running database migrations..."
-            php artisan migrate --force
+            # php artisan migrate --force
+            php artisan migrate fresh
             echo "Database migrations complete."
             
             # --- JALANKAN SEEDER ---
             # Ini akan menjalankan DatabaseSeeder Anda. Tambahkan --force untuk produksi.
             echo "Running database seeder..."
-            php artisan db:seed --force
+            # php artisan db:seed --force
+            php artisan db:seed
             echo "Database seeding complete."
             
             # Bersihkan cache Laravel
