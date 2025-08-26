@@ -30,107 +30,172 @@ class MenuItemSeeder extends Seeder
         $appUserRole = Role::where('name', 'app_user')->first();
         $executiveUserRole = Role::where('name', 'executive_user')->first();
 
-        // --- Menu Utama Admin ---
+        // --- Definisi Item Menu ---
         $dashboard = MenuItem::create([
             'name' => 'Dashboard',
+            'route_name' => 'dashboard', 
             'icon' => 'fas fa-tachometer-alt',
-            'route_name' => 'admin.dashboard',
             'permission_name' => 'view-dashboard',
+            'parent_id' => null,
             'order' => 10,
             'is_active' => true,
-            
         ]);
 
-        // PERUBAHAN DI SINI: route_name SET KE NULL UNTUK MENU INDUK
         $manajemenPengguna = MenuItem::create([
             'name' => 'Manajemen Pengguna',
+            'route_name' => null, 
             'icon' => 'fas fa-users',
-            'route_name' => null, // <-- INI HARUS NULL JIKA HANYA SEBAGAI INDUK/HEADER MENU
-            'permission_name' => 'manage-users',
+            'permission_name' => 'manage-users', 
+            'parent_id' => null,
             'order' => 20,
             'is_active' => true,
         ]);
 
-        // Sub-menu untuk Manajemen Pengguna
-        // Ini adalah link sebenarnya ke admin.users.index
         $usersIndex = MenuItem::create([
-            'parent_id' => $manajemenPengguna->id,
             'name' => 'Daftar Pengguna',
+            'route_name' => 'admin.users.index', 
             'icon' => 'fas fa-user-friends',
-            'route_name' => 'admin.users.index', // Ini yang seharusnya punya rute
-            'permission_name' => 'view-user-list',
-            'order' => 10,
+            'permission_name' => 'view-user-list', 
+            'parent_id' => $manajemenPengguna->id,
+            'order' => 21,
             'is_active' => true,
         ]);
         $usersCreate = MenuItem::create([
             'name' => 'Tambah Pengguna',
-            'route_name' => 'admin.users.create', // Pastikan rute ini ada
+            'route_name' => 'admin.users.create', 
             'icon' => 'fas fa-user-plus',
-            'permission_name' => 'create-user', // Gate yang diperlukan
+            'permission_name' => 'create-user', 
             'parent_id' => $manajemenPengguna->id,
-            'order' => 20,
+            'order' => 22,
             'is_active' => true,
         ]);
 
-        $pengaturan  = MenuItem::create([
+        $manajemenData = MenuItem::create([
+            'name' => 'Manajemen Data',
+            'route_name' => null, // Ini adalah menu induk, tidak punya rute langsung
+            'icon' => 'fas fa-database', // Icon untuk manajemen data
+            'permission_name' => 'manage-master-data', // Izin induk
+            'parent_id' => null,
+            'order' => 25, // Urutan setelah Manajemen Pengguna
+            'is_active' => true,
+        ]);
+
+        $dataDashboard = MenuItem::create([
+            'name' => 'Dashboard Rekap Data',
+            'route_name' => 'admin.manajemen_data.dashboard',
+            'icon' => 'fas fa-chart-bar', // Icon untuk dashboard rekapan
+            'permission_name' => 'view-master-data-dashboard',
+            'parent_id' => $manajemenData->id,
+            'order' => 251,
+            'is_active' => true,
+        ]);
+
+        $masterDataPelanggan = MenuItem::create([
+            'name' => 'Master Data Pelanggan',
+            'route_name' => 'admin.manajemen_data.index',
+            'icon' => 'fas fa-users-cog', // Icon untuk master data pelanggan
+            'permission_name' => 'view-master-data-pelanggan',
+            'parent_id' => $manajemenData->id,
+            'order' => 252,
+            'is_active' => true,
+        ]);
+
+        $uploadDataPelanggan = MenuItem::create([
+            'name' => 'Upload Data Pelanggan',
+            'route_name' => 'admin.manajemen_data.upload.form',
+            'icon' => 'fas fa-upload', // Icon untuk upload data
+            'permission_name' => 'upload-master-data-pelanggan',
+            'parent_id' => $manajemenData->id,
+            'order' => 253,
+            'is_active' => true,
+        ]);
+
+        $pengaturan = MenuItem::create([
             'name' => 'Pengaturan',
+            'route_name' => null, 
             'icon' => 'fas fa-cogs',
-            'route_name' => null, // Ini juga induk
-            'permission_name' => 'manage-settings',
+            'permission_name' => 'manage-settings', 
+            'parent_id' => null,
             'order' => 30,
             'is_active' => true,
         ]);
-
-        // Sub-menu untuk Pengaturan
-       $menuIndex = MenuItem::create([
-            'parent_id' => $pengaturan->id,
-            'name' => 'Manajemen Menu',
-            'icon' => 'fas fa-list',
-            'route_name' => 'admin.menu.index',
-            'permission_name' => 'manage-menus  ',
-            'order' => 10,
-            'is_active' => true,
-        ]);
-       $permissionsIndex = MenuItem::create([
-            'parent_id' => $pengaturan->id,
-            'name' => 'Manajemen Izin',
-            'icon' => 'fas fa-key',
-            'route_name' => 'admin.permissions.index',
-            'permission_name' => 'manage-permissions',
-            'order' => 20,
-            'is_active' => true,
-        ]);
         
-        // --- Asosiasi Menu dengan Peran (Melalui Tabel Pivot role_menu) ---
-        // Ini menghubungkan ID Role dengan ID MenuItem
+        $permissionsIndex = MenuItem::create([
+            'name' => 'Manajemen Izin',
+            'route_name' => 'admin.permissions.index', 
+            'icon' => 'fas fa-user-lock',
+            'permission_name' => 'manage-permissions', 
+            'parent_id' => $pengaturan->id,
+            'order' => 31,
+            'is_active' => true,
+        ]);
+        $menuIndex = MenuItem::create([
+            'name' => 'Manajemen Menu',
+            'route_name' => 'admin.menu.index', 
+            'icon' => 'fas fa-bars',
+            'permission_name' => 'manage-menus', 
+            'parent_id' => $pengaturan->id,
+            'order' => 32,
+            'is_active' => true,
+        ]);
 
+        // --- Item Menu BARU untuk Hirarki ---
+        $hierarchyIndex = MenuItem::create([
+            'name' => 'Manajemen Hirarki',
+            'route_name' => 'admin.hierarchies.index', 
+            'icon' => 'fas fa-project-diagram', 
+            'permission_name' => 'manage-hierarchy-levels', // Izin untuk menu ini
+            'parent_id' => $pengaturan->id, // Letakkan di bawah menu "Pengaturan"
+            'order' => 33, 
+            'is_active' => true,
+        ]);
+
+        $supervisorWorkers = MenuItem::create([
+            'name' => 'Manajemen Queue Workers',
+            'route_name' => 'admin.supervisor.index',
+            'icon' => 'fas fa-cogs', // Atau ikon lain yang sesuai
+            'permission_name' => 'manage-workers',
+            'parent_id' => $pengaturan->id, // Ditempatkan di bawah Pengaturan
+            'order' => 34, 
+            'is_active' => true,
+        ]);
+        // --- Akhir Item Menu BARU ---
+
+
+        // --- Asosiasi Menu dengan Peran (Melalui Tabel Pivot role_menu) ---
         if ($adminRole) {
             $adminRole->menuItems()->attach([
                 $dashboard->id,
-                $manajemenPengguna->id, // Akses ke menu induk agar sub-menu terlihat
-                $usersIndex->id,
-                $usersCreate->id,
-                $pengaturan->id, // Akses ke menu induk agar sub-menu terlihat
-                $permissionsIndex->id,
-                $menuIndex->id,
+                $manajemenPengguna->id, 
+                $usersIndex->id, $usersCreate->id,
+                $manajemenData->id, 
+                $dataDashboard->id,
+                $pengaturan->id, 
+                $permissionsIndex->id, $menuIndex->id,
+                $hierarchyIndex->id,
+                $supervisorWorkers->id,
             ]);
         }
 
         if ($appUserRole) {
             $appUserRole->menuItems()->attach([
                 $dashboard->id,
-                $manajemenPengguna->id, // Akses ke menu induk
-                $usersIndex->id, // Hanya izinkan view-user-list
+                $manajemenData->id, 
+                $manajemenPengguna->id,
+                $dataDashboard->id,
+                $usersIndex->id,
+                $masterDataPelanggan->id,
             ]);
         }
 
         if ($executiveUserRole) {
             $executiveUserRole->menuItems()->attach([
                 $dashboard->id,
-                $manajemenPengguna->id, // Akses ke menu induk
+                $manajemenPengguna->id,
                 $usersIndex->id,
-                $pengaturan->id, // Akses ke menu induk
-                $permissionsIndex->id,
+                $pengaturan->id,
+                $permissionsIndex->id, 
+                $hierarchyIndex->id, // Kaitkan menu baru dengan peran executive
             ]);
         }
     }

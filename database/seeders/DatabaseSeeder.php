@@ -22,7 +22,8 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,  
             PermissionSeeder::class, 
             UserSeeder::class,      
-            MenuItemSeeder::class,                 
+            MenuItemSeeder::class,        
+            HierarchyLevelSeeder::class,      
         ]);
     }
 }

@@ -4,68 +4,94 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Role;
+use App\Models\HierarchyLevel;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
    public function index()
     {
-        // Pastikan pengguna memiliki izin untuk mengelola pengguna
-        Gate::authorize('manage-users'); // Asumsi izin 'manage-users' telah dibuat
+        // Mengambil semua pengguna dengan eager loading relasi 'role'
+        $users = User::with(['role', 'hierarchyLevel'])->orderBy('name')->paginate(10);
+        // $users = User::with('role')->orderBy('name')->simplePaginate(10);
 
-        // Ambil semua pengguna, bisa juga ditambahkan paginasi
-        $users = User::orderBy('created_at', 'desc')->paginate(10); // Contoh paginasi
+        // Mengambil semua peran untuk dropdown filter atau input form (jika diperlukan)
+        $roles = Role::all();
+        $hierarchyLevels = HierarchyLevel::all();
 
-        return view('admin.users.index', compact('users'));
+        return view('admin.users.index', compact('users', 'roles',));
     }
 
-        public function edit(User $user)
+    public function create()
     {
-        Gate::authorize('manage-users');
+        $roles = Role::all(); // Untuk dropdown pilihan peran
+        $hierarchyLevels = HierarchyLevel::orderBy('parent_code')->orderBy('order')->get(); 
+        return view('admin.users.create', compact('roles','hierarchyLevels'));
+    }
 
-        // Ambil semua peran yang tersedia jika menggunakan Spatie
-        $roles = ['admin', 'app_user', 'executive_user'];
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:8|confirmed',
+            'hierarchy_level_code' => 'nullable|string|max:255|exists:hierarchy_levels,code',
+            'dashboard_route_name' => 'nullable|string|max:255',
+            'role_id' => 'required|exists:roles,id',
+            'is_approved' => 'boolean',
+        ]);
 
-        return view('admin.users.edit', compact('user', 'roles'));
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'hierarchy_level_code' => $request->hierarchy_level_code,
+            'dashboard_route_name' => $request->dashboard_route_name, 
+            'role_id' => $request->role_id,
+            'is_approved' => $request->boolean('is_approved'),
+        ]);
+
+        return redirect()->route('admin.users.index')->with('success', 'Pengguna berhasil ditambahkan!');
+    }
+
+    public function edit(User $user)
+    {
+        $roles = Role::all();
+         $hierarchyLevels = HierarchyLevel::orderBy('parent_code')->orderBy('order')->get(); 
+        return view('admin.users.edit', compact('user', 'roles','hierarchyLevels'));
     }
 
     public function update(Request $request, User $user)
     {
-        Gate::authorize('manage-users');
-
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
-            'role' => 'required|string|in:admin,app_user,executive_user', // Validasi peran dari daftar yang diperbolehkan
-            'hierarchy_level_code' => 'nullable|string|max:255',
+            'role_id' => 'required|exists:roles,id', // Validasi peran dari daftar yang diperbolehkan
+            'hierarchy_level_code' => 'nullable|string|max:255|exists:hierarchy_levels,code', 
             'dashboard_route_name' => 'nullable|string|max:255',
             'is_approved' => 'boolean', // Validasi boolean untuk checkbox
             'password' => 'nullable|string|min:8|confirmed', // Untuk reset password
         ]);
 
-        $userData = $request->only([
-            'name', 'email', 'hierarchy_level_code', 'dashboard_route_name', 'is_approved', 'role' // Tambahkan 'role' di sini
-        ]);
-
-        // Tangani pembaruan password jika ada
-        if ($request->filled('password')) {
-            $userData['password'] = Hash::make($request->password);
+        $user->name = $request->name;
+        $user->email = $request->email;
+        if ($request->filled('password')) { // Hanya update password jika diisi
+            $user->password = Hash::make($request->password);
         }
-
-        // Perbarui data pengguna
-        $user->update($userData);
+        $user->role_id = $request->role_id;
+        $user->hierarchy_level_code = $request->hierarchy_level_code;
+        $user->dashboard_route_name = $request->dashboard_route_name;
+        $user->is_approved = $request->boolean('is_approved');
+        $user->save();
         
         return redirect()->route('admin.users.index')->with('success', 'Pengguna berhasil diperbarui!');
     }
 
     public function destroy(User $user)
     {
-        Gate::authorize('manage-users'); // Pengguna harus punya izin untuk menghapus
-
         $user->delete();
-
         return redirect()->route('admin.users.index')->with('success', 'Pengguna berhasil dihapus!');
     }
 }

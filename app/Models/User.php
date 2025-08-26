@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use App\Models\Role;
+use App\Models\HierarchyLevel;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB; 
 
@@ -60,6 +62,11 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class);
     }
 
+    public function hasRole(string $roleName): bool
+    {
+        return $this->role && $this->role->name === $roleName;
+    }
+
     public function assignRole(string $roleName): void
     {
         $role = Role::where('name', $roleName)->first();
@@ -68,10 +75,12 @@ class User extends Authenticatable
             $this->save();
         }
     }
-
-        public function hasRole(string $roleName): bool
+    
+    public function hierarchyLevel()
     {
-        return $this->role && $this->role->name === $roleName;
+        // Menghubungkan kolom 'hierarchy_level_code' di tabel users
+        // dengan kolom 'code' di tabel hierarchy_levels
+        return $this->belongsTo(HierarchyLevel::class, 'hierarchy_level_code', 'code');
     }
 
     public function getAllPermissions(): \Illuminate\Support\Collection

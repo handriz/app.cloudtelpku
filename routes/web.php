@@ -9,6 +9,7 @@ use App\Http\Controllers\Executive\DashboardController as ExecutiveDashboardCont
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\MenuController;
 use App\Http\Controllers\Admin\PermissionController;
+use App\Http\Controllers\Admin\HierarchyController; 
 
 /*
 |--------------------------------------------------------------------------
@@ -68,10 +69,42 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Rute ini mencakup: index, create, store, show, edit, update, destroy
         Route::resource('menu', MenuController::class);
 
+        // Manajemen Level  Hirarki (CRUD)
+        // Rute ini mencakup: index, create, store, show, edit, update, destroy
+        Route::resource('hierarchies', HierarchyController::class)->except(['show']);
+
         // Manajemen Izin Dinamis
         Route::resource('permissions', PermissionController::class)->except(['show']); // Contoh jika ingin CRUD Permission model
         // Rute untuk menampilkan matriks izin dan memproses pembaruannya
         Route::post('/permissions/update-role-permissions', [PermissionController::class, 'updateRolePermissions'])->name('permissions.updateRolePermissions');
+    
+        Route::prefix('manajemen-data')->name('manajemen_data.')->group(function () {
+            // Dashboard Rekapan Data
+            Route::get('dashboard', [MasterDataController::class, 'dashboard'])->name('dashboard')->middleware('can:view-master-data-dashboard');
+            // Daftar Master Data Pelanggan
+            Route::get('pelanggan', [MasterDataController::class, 'index'])->name('index')->middleware('can:view-master-data-pelanggan');
+            // Formulir Upload Data
+            Route::get('pelanggan/upload', [MasterDataController::class, 'uploadForm'])->name('upload.form')->middleware('can:upload-master-data-pelanggan');
+            
+            // --- Rute Khusus untuk Chunking Upload ---
+            Route::post('pelanggan/upload-chunk', [MasterDataController::class, 'uploadChunk'])->name('upload.chunk')->middleware('can:upload-master-data-pelanggan');
+            Route::post('pelanggan/merge-chunks', [MasterDataController::class, 'mergeChunks'])->name('merge.chunks')->middleware('can:upload-master-data-pelanggan');
+            // --- Akhir Rute Khusus Chunking ---
+            
+            // Edit dan Update Data Pelanggan Individual
+            Route::get('pelanggan/{pelanggan}/edit', [MasterDataController::class, 'edit'])->name('edit')->middleware('can:edit-master-data-pelanggan');
+            Route::put('pelanggan/{pelanggan}', [MasterDataController::class, 'update'])->name('update')->middleware('can:edit-master-data-pelanggan');
+            // Hapus Data Pelanggan Individual
+            Route::delete('pelanggan/{pelanggan}', [MasterDataController::class, 'destroy'])->name('destroy')->middleware('can:delete-master-data-pelanggan');
+        });
+
+        // --- Rute untuk Manajemen Supervisor (Queue Workers) ---
+        Route::prefix('supervisor')->name('supervisor.')->group(function () {
+            Route::get('workers', [SupervisorController::class, 'index'])->name('index')->middleware('can:manage-workers');
+            // Rute ini akan mengirimkan Artisan Command ke queue
+            Route::post('update-process', [SupervisorController::class, 'updateProcess'])->name('updateProcess')->middleware('can:manage-workers');
+        });
+    
     });
 
     // ======================================================================

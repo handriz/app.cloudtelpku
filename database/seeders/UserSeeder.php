@@ -49,7 +49,7 @@ class UserSeeder extends Seeder
 
         // Buat contoh user Executive
         User::firstOrCreate(
-            ['email' => 'executive@example.com'],
+            ['email' => 'executive'],
             [
                 'name' => 'executive@appcloudtelpku.com',
                 'password' => Hash::make('password'),

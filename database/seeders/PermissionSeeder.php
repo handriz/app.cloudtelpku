@@ -30,63 +30,92 @@ class PermissionSeeder extends Seeder
         // --- PENTING: Aktifkan Kembali Foreign Key Checks ---
         Schema::enableForeignKeyConstraints();
 
-        // --- 1. Buat Izin (Permissions) ---
-        // $permissionsData = [
-        //     ['name' => 'access-admin-dashboard', 'description' => 'Akses ke dashboard admin.'],
-        //     ['name' => 'manage-users', 'description' => 'Melihat, membuat, mengedit, dan menghapus pengguna.'],
-        //     ['name' => 'approve-users', 'description' => 'Menyetujui pendaftaran pengguna baru.'],
-        //     ['name' => 'view-users', 'description' => 'Melihat daftar pengguna.'],
-        //     ['name' => 'create-users', 'description' => 'Membuat pengguna baru.'],
-        //     ['name' => 'edit-users', 'description' => 'Mengedit data pengguna.'],
-        //     ['name' => 'delete-users', 'description' => 'Menghapus pengguna.'],
+            $permissions = [
+            // Dashboard
+            ['name' => 'view-dashboard', 'description' => 'Melihat dashboard utama'],
 
-        //     ['name' => 'manage-settings', 'description' => 'Mengelola pengaturan umum aplikasi.'],
-        //     ['name' => 'manage-menu', 'description' => 'Mengelola item menu navigasi.'],
-        //     ['name' => 'manage-permissions', 'description' => 'Mengelola izin dan penugasan peran.'], // Izin baru untuk manajemen izin
+            // Manajemen Pengguna
+            ['name' => 'manage-users', 'description' => 'Mengelola modul pengguna (induk)'],
+            ['name' => 'view-user-list', 'description' => 'Melihat daftar pengguna'],
+            ['name' => 'create-user', 'description' => 'Membuat pengguna baru'],
+            ['name' => 'edit-user', 'description' => 'Mengedit pengguna'],
+            ['name' => 'delete-user', 'description' => 'Menghapus pengguna'],
 
-        //     ['name' => 'access-app_user-dashboard', 'description' => 'Akses ke dashboard pengguna aplikasi.'],
-        //     ['name' => 'view-my-reports', 'description' => 'Melihat laporan pribadi.'],
-        //     ['name' => 'access-executive-dashboard', 'description' => 'Akses ke dashboard eksekutif.'],
-        // ];
+            // Manajemen Menu
+            ['name' => 'manage-menus', 'description' => 'Mengelola modul menu'],
+            ['name' => 'create-menu-item', 'description' => 'Membuat item menu baru'],
+            ['name' => 'edit-menu-item', 'description' => 'Mengedit item menu'],
+            ['name' => 'delete-menu-item', 'description' => 'Menghapus item menu'],
 
-        // Buat izin
-        $viewDashboard = Permission::firstOrCreate(['name' => 'view-dashboard']);
-        $manageUsers = Permission::firstOrCreate(['name' => 'manage-users']);
-        $viewUserList = Permission::firstOrCreate(['name' => 'view-user-list']);
-        $createUser = Permission::firstOrCreate(['name' => 'create-user']);
-        $editUser = Permission::firstOrCreate(['name' => 'edit-user']); // Contoh izin tambahan
-        $deleteUser = Permission::firstOrCreate(['name' => 'delete-user']); // Contoh izin tambahan
-        $manageSettings = Permission::firstOrCreate(['name' => 'manage-settings']);
-        $managePermissions = Permission::firstOrCreate(['name' => 'manage-permissions']);
-        $manageMenus = Permission::firstOrCreate(['name' => 'manage-menus']);
+            // Manajemen Izin
+            ['name' => 'manage-permissions', 'description' => 'Mengelola modul izin'],
+            ['name' => 'create-permission', 'description' => 'Membuat izin baru'],
+            ['name' => 'edit-permission', 'description' => 'Mengedit izin'],
+            ['name' => 'delete-permission', 'description' => 'Menghapus izin'],
 
-        // Dapatkan peran
+            // Manajemen Izin
+            ['name' => 'manage-hierarchy-levels', 'description' => 'Mengelola modul level hirarki (induk)'],
+            ['name' => 'view-hierarchy-level-list', 'description' => 'Melihat daftar level hirarki'],
+            ['name' => 'create-hierarchy-level', 'description' => 'Membuat level hirarki baru'],
+            ['name' => 'edit-hierarchy-level', 'description' => 'Mengedit level hirarki'],
+            ['name' => 'delete-hierarchy-level', 'description' => 'Menghapus level hirarki'],
+
+            // Manajemen Data
+            ['name' => 'manage-master-data', 'description' => 'Mengelola modul Master Data (induk)'],
+            ['name' => 'view-master-data-dashboard', 'description' => 'Melihat dashboard rekapan Master Data'],
+            ['name' => 'view-master-data-pelanggan', 'description' => 'Melihat daftar Master Data Pelanggan'],
+            ['name' => 'upload-master-data-pelanggan', 'description' => 'Mengupload Master Data Pelanggan (Excel)'],
+            ['name' => 'edit-master-data-pelanggan', 'description' => 'Mengedit satu data Master Data Pelanggan'],
+            ['name' => 'delete-master-data-pelanggan', 'description' => 'Menghapus data Master Data Pelanggan'],
+                
+            // Manajemen Worker
+            ['name' => 'manage-workers', 'description' => 'Mengelola dan memantau queue workers (Supervisor)'],
+        ];
+
+        // Update atau buat izin, dan hapus izin yang tidak lagi didefinisikan di sini
+        $currentPermissionNames = collect($permissions)->pluck('name')->toArray();
+        foreach ($permissions as $permissionData) {
+            Permission::updateOrCreate(
+                ['name' => $permissionData['name']],
+                $permissionData
+            );
+        }
+        Permission::whereNotIn('name', $currentPermissionNames)->delete();
+
+
+        // --- Kaitkan Izin dengan Peran ---
         $adminRole = Role::where('name', 'admin')->first();
         $appUserRole = Role::where('name', 'app_user')->first();
         $executiveUserRole = Role::where('name', 'executive_user')->first();
 
-        // Kaitkan izin ke peran
-        if ($adminRole) {
-            $adminRole->permissions()->syncWithoutDetaching([
-                $viewDashboard->id,
-                $manageUsers->id, $viewUserList->id, $createUser->id, $editUser->id, $deleteUser->id,
-                $manageSettings->id, $managePermissions->id, $manageMenus->id,
-            ]);
-        }
+        // Pastikan peran ditemukan
+        if (!$adminRole) { throw new \Exception('Admin Role not found! Run RoleSeeder first.'); }
+        if (!$appUserRole) { throw new \Exception('App User Role not found! Run RoleSeeder first.'); }
+        if (!$executiveUserRole) { throw new \Exception('Executive User Role not found!'); }
 
-        if ($appUserRole) {
-            $appUserRole->permissions()->syncWithoutDetaching([
-                $viewDashboard->id,
-                $viewUserList->id,
-            ]);
-        }
 
-        if ($executiveUserRole) {
-            $executiveUserRole->permissions()->syncWithoutDetaching([
-                $viewDashboard->id,
-                $viewUserList->id, $editUser->id,
-                $manageSettings->id, $managePermissions->id,
-            ]);
-        }
+        // --- Izin untuk Admin (akses semua) ---
+        // Admin akan memiliki semua izin yang ada
+        $adminPermissions = Permission::pluck('id')->toArray();
+        $adminRole->permissions()->sync($adminPermissions);
+
+        // --- Izin untuk App User ---
+        $appUserRole->permissions()->sync([
+            Permission::where('name', 'view-dashboard')->first()->id,
+            Permission::where('name', 'view-user-list')->first()->id,
+            Permission::where('name', 'view-master-data-dashboard')->first()->id,
+            Permission::where('name', 'view-master-data-pelanggan')->first()->id,
+            // Tambahkan izin lain yang relevan untuk app_user
+        ]);
+
+        // --- Izin untuk Executive User ---
+        $executiveUserRole->permissions()->sync([
+            Permission::where('name', 'view-dashboard')->first()->id,
+            Permission::where('name', 'view-user-list')->first()->id,
+            Permission::where('name', 'view-master-data-dashboard')->first()->id,
+            Permission::where('name', 'view-master-data-pelanggan')->first()->id,
+            // Executive tidak bisa menghapus hirarki secara default (delete-hierarchy-level tidak disertakan)
+        ]);
+    
     }
 }

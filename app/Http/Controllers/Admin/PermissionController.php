@@ -12,19 +12,49 @@ use Illuminate\Support\Facades\Cache;
 
 class PermissionController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $roles = Role::all();
 
-        $permissions = Permission::all();
+        $permissions = Permission::orderBy('name')->simplePaginate(20);
 
-        // Dapatkan izin yang terkait dengan setiap peran
-        $rolePermissions = [];
-        foreach ($roles as $role) {
-            $rolePermissions[$role->name] = $role->permissions->pluck('id')->toArray();
+        $selectedRole = null;
+        if ($request->has('role_id')) {
+            $selectedRoleId = $request->input('role_id');
+            // Eager load permissions untuk peran yang dipilih agar dapat diperiksa di view
+            $selectedRole = Role::with('permissions')->find($selectedRoleId);
         }
 
-        return view('admin.permissions.index', compact('permissions', 'roles', 'rolePermissions'));
+         // --- Logika Pengelompokan Izin BARU ---
+        $groupedPermissions = $permissions->groupBy(function ($permission) {
+            // Contoh pengelompokan berdasarkan awalan nama izin
+            if (str_starts_with($permission->name, 'manage-users') || str_starts_with($permission->name, 'view-user-list') || str_starts_with($permission->name, 'create-user') || str_starts_with($permission->name, 'edit-user') || str_starts_with($permission->name, 'delete-user')) {
+                return 'Manajemen Pengguna';
+            }
+
+            if (str_starts_with($permission->name, 'manage-menus') || str_starts_with($permission->name, 'create-menu-item') || str_starts_with($permission->name, 'edit-menu-item') || str_starts_with($permission->name, 'delete-menu-item')) {
+                return 'Manajemen Menu';
+            }
+
+            if (str_starts_with($permission->name, 'manage-permissions') || str_starts_with($permission->name, 'create-permission') || str_starts_with($permission->name, 'edit-permission') || str_starts_with($permission->name, 'delete-permission')) {
+                return 'Manajemen Izin';
+            }
+
+            if (str_starts_with($permission->name, 'manage-hierarchy-levels') || str_starts_with($permission->name, 'view-hierarchy-level-list') || str_starts_with($permission->name, 'create-hierarchy-level') || str_starts_with($permission->name, 'edit-hierarchy-level') || str_starts_with($permission->name, 'delete-hierarchy-level')) {
+                return 'Manajemen Hirarki';
+            }
+
+            if (str_starts_with($permission->name, 'view-dashboard')) {
+                return 'Dashboard';
+            }
+
+            // Kelompok default jika tidak cocok dengan kriteria di atas
+            return 'Lain-lain';
+
+        })->sortKeys(); // Urutkan kelompok berdasarkan nama
+        
+
+        return view('admin.permissions.index', compact('permissions', 'roles', 'selectedRole','groupedPermissions'));
     }
 
     public function create()
@@ -84,7 +114,7 @@ class PermissionController extends Controller
 
       $inputPermissions = $request->input('permissions', []);
 
-// Iterasi melalui daftar SEMUA PERAN yang kita ketahui,
+        // Iterasi melalui daftar SEMUA PERAN yang kita ketahui,
         // BUKAN hanya peran yang datanya dikirim oleh form.
         $allRoles = Role::all();
         foreach ($allRoles as $role) {

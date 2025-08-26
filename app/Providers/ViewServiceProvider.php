@@ -37,22 +37,24 @@ class ViewServiceProvider extends ServiceProvider
                                                    ->where('is_active', true)
                                                    ->orderBy('order')
                                                    ->get();
+
                     $gatePermittedMenus = $allowedByRoleMenus->filter(function ($menuItem) use ($user) {
                          $canAccess = true;
                           if (!empty($menuItem->permission_name)) {
                             // Jika ada permission_name, cek Gate
                             $canAccess = Gate::forUser($user)->allows($menuItem->permission_name);
                             // Opsional: dump hasil setiap pengecekan Gate
-                            // dump("Menu: " . $menuItem->name . ", Permission: " . $menuItem->permission_name . ", Allowed: " . ($canAccess ? 'TRUE' : 'FALSE'));
+                              // dump("Gate Check - Menu: {$menuItem->name}, Permission: {$menuItem->permission_name}, Result: " . ($canAccess ? 'TRUE' : 'FALSE') . " for User ID: {$user->id}");
                         }
                         return $canAccess;
                     });
+
                     $nestedMenus = $gatePermittedMenus->whereNull('parent_id')->map(function ($menu) use ($gatePermittedMenus) {
                         $menu->setRelation('children', $gatePermittedMenus->where('parent_id', $menu->id)->sortBy('order'));
                         return $menu;
                     });
                      $menuItems = $nestedMenus->filter(function ($menu) {
-                        return ($menu->route && !empty($menu->permission_name)) || $menu->children->isNotEmpty();
+                        return ($menu->route_name && !empty($menu->permission_name)) || $menu->children->isNotEmpty();
                     });
                     // dd($menuItems); // Ini adalah hasil akhir, harusnya tidak kosong jika menu ingin tampil
                 }
