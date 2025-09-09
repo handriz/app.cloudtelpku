@@ -4,101 +4,87 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Permission;
-use App\Models\Role; 
+use App\Models\Role;
+use App\Models\MenuItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class PermissionController extends Controller
 {
     public function index(Request $request)
     {
         $roles = Role::all();
-
-        $permissions = Permission::orderBy('name')->simplePaginate(20);
+        $allPermissions = Permission::orderBy('name')->get();
 
         $selectedRole = null;
+        $currentRolePermissionsIds = [];
+        $persistedCheckedPermissions = [];
+
         if ($request->has('role_id')) {
             $selectedRoleId = $request->input('role_id');
-            // Eager load permissions untuk peran yang dipilih agar dapat diperiksa di view
-            $selectedRole = Role::with('permissions')->find($selectedRoleId);
+            $selectedRole = Role::find($selectedRoleId);
+            if ($selectedRole) {
+                $currentRolePermissionsIds = $selectedRole->permissions->pluck('id')->map(fn($id) => (string)$id)->toArray();
+            }
         }
 
-         // --- Logika Pengelompokan Izin BARU ---
-        $groupedPermissions = $permissions->groupBy(function ($permission) {
-            // Contoh pengelompokan berdasarkan awalan nama izin
-            if (str_starts_with($permission->name, 'manage-users') || str_starts_with($permission->name, 'view-user-list') || str_starts_with($permission->name, 'create-user') || str_starts_with($permission->name, 'edit-user') || str_starts_with($permission->name, 'delete-user')) {
-                return 'Manajemen Pengguna';
-            }
+        // KUNCI PERBAIKAN: Ambil status izin yang dicentang dari URL
+        if ($request->has('checked_permissions')) {
+            $persistedCheckedPermissions = json_decode($request->input('checked_permissions'), true);
+        }
 
-            if (str_starts_with($permission->name, 'manage-menus') || str_starts_with($permission->name, 'create-menu-item') || str_starts_with($permission->name, 'edit-menu-item') || str_starts_with($permission->name, 'delete-menu-item')) {
-                return 'Manajemen Menu';
-            }
+        // Gabungkan izin yang sudah ada di database dengan izin yang dicentang dari URL
+        // Ini memastikan status tidak hilang saat navigasi
+        $combinedPermissions = array_unique(array_merge($currentRolePermissionsIds, $persistedCheckedPermissions));
 
-            if (str_starts_with($permission->name, 'manage-permissions') || str_starts_with($permission->name, 'create-permission') || str_starts_with($permission->name, 'edit-permission') || str_starts_with($permission->name, 'delete-permission')) {
+        $groupedPermissions = $allPermissions->groupBy(function ($permission) {
+            $name = $permission->name;
+
+            if (Str::contains($name, '-permission')) {
                 return 'Manajemen Izin';
-            }
-
-            if (str_starts_with($permission->name, 'manage-hierarchy-levels') || str_starts_with($permission->name, 'view-hierarchy-level-list') || str_starts_with($permission->name, 'create-hierarchy-level') || str_starts_with($permission->name, 'edit-hierarchy-level') || str_starts_with($permission->name, 'delete-hierarchy-level')) {
+            } elseif (Str::contains($name, '-dashboard')) {
+                return 'Akses Dashboard';
+            } elseif (Str::contains($name, '-user')) {
+                return 'Manajemen Pengguna';
+            } elseif (Str::contains($name, '-menu')) {
+                return 'Manajemen Menu';
+            } elseif (Str::contains($name, '-hierarchy-level')) {
                 return 'Manajemen Hirarki';
+            } elseif (Str::contains($name, 'master-data') || Str::contains($name, 'master_data')) {
+                return 'Manajemen Master Data';
+            } elseif (Str::startsWith($name, 'view-') || Str::startsWith($name, 'data-dashboard')) {
+                return 'Manajemen View';
+            } elseif (Str::contains($name, 'manage-workers')) {
+                return 'Manajemen Pekerja Queue';
             }
 
-            if (str_starts_with($permission->name, 'view-dashboard')) {
-                return 'Dashboard';
-            }
-
-            // Kelompok default jika tidak cocok dengan kriteria di atas
             return 'Lain-lain';
 
-        })->sortKeys(); // Urutkan kelompok berdasarkan nama
+        })->sortKeys();
+
+        $perPage = 11;
+        $currentPage = LengthAwarePaginator::resolveCurrentPage();
+
+        $currentGroupNames = $groupedPermissions->keys()->slice(($currentPage - 1) * $perPage, $perPage)->values();
+
+        $paginatedGroupedPermissions = $groupedPermissions->filter(function ($value, $key) use ($currentGroupNames) {
+            return $currentGroupNames->contains($key);
+        });
+
+        $paginator = new LengthAwarePaginator(
+            $paginatedGroupedPermissions,
+            $groupedPermissions->count(),
+            $perPage,
+            $currentPage,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
         
-
-        return view('admin.permissions.index', compact('permissions', 'roles', 'selectedRole','groupedPermissions'));
-    }
-
-    public function create()
-    {
-        return view('admin.permissions.create');
-    }
-
-    public function store(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255|unique:permissions,name', // Nama izin harus unik
-            'description' => 'nullable|string|max:500',
-        ]);
-
-        Permission::create($request->all());
-
-        return redirect()->route('admin.permissions.index')->with('success', 'Izin berhasil ditambahkan!');
-    }
-
-    public function edit(Permission $permission)
-    {
-        return view('admin.permissions.edit', compact('permission'));
-    }
-
-    public function update(Request $request, Permission $permission)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255|unique:permissions,name,' . $permission->id,
-            'description' => 'nullable|string|max:500',
-        ]);
-
-        $permission->update($request->all());
-
-        return redirect()->route('admin.permissions.index')->with('success', 'Izin berhasil diperbarui!');
-    }
-
-    public function destroy(Permission $permission)
-    {
-        try {
-            $permission->delete();
-            return redirect()->route('admin.permissions.index')->with('success', 'Izin berhasil dihapus!');
-        } catch (\Exception $e) {
-            return redirect()->route('admin.permissions.index')->with('error', 'Gagal menghapus izin: ' . $e->getMessage());
-        }
+        // Teruskan data yang dibutuhkan ke view
+        return view('admin.permissions.index', compact('paginator', 'roles', 'selectedRole', 'combinedPermissions', 'paginatedGroupedPermissions'));
     }
 
     /**
@@ -106,35 +92,32 @@ class PermissionController extends Controller
      */
     public function updateRolePermissions(Request $request)
     {
+
         $request->validate([
-            'permissions' => 'nullable|array',
-            'permissions.*' => 'array',
-            'permissions.*.*' => 'in:0,1', // Memastikan nilai adalah boolean
+            'role_id' => 'required|exists:roles,id',
+            'all_checked_permissions' => 'nullable|string',
         ]);
 
-      $inputPermissions = $request->input('permissions', []);
+        $targetRoleId = $request->input('role_id');
+        $targetRole = Role::findOrFail($targetRoleId);
 
-        // Iterasi melalui daftar SEMUA PERAN yang kita ketahui,
-        // BUKAN hanya peran yang datanya dikirim oleh form.
-        $allRoles = Role::all();
-        foreach ($allRoles as $role) {
-            // Dapatkan ID izin yang dicentang untuk peran saat ini dari input request
-            // Jika peran tidak ada dalam input, asumsikan tidak ada izin yang dicentang (array kosong)
-            $selectedPermissionIds = collect($inputPermissions[$role->name] ?? [])
-                                     ->filter(fn($value) => $value == 1) // Filter hanya yang nilainya '1' (dicentang)
-                                     ->keys() // Ambil kuncinya, yang merupakan ID izin
-                                     ->map(fn($key) => (int) $key) // Pastikan ID adalah integer
-                                     ->toArray();
+        $permissionIdsToSync = json_decode($request->input('all_checked_permissions', '[]'));
 
-            // Menggunakan metode sync() untuk memperbarui tabel pivot role_permissions
-            // sync() akan:
-            // 1. Menghapus semua izin yang tidak ada di $selectedPermissionIds untuk peran ini.
-            // 2. Menambahkan semua izin di $selectedPermissionIds yang belum ada untuk peran ini.
-            // 3. Membiarkan izin yang sudah ada di kedua sisi.
-            $role->permissions()->sync($selectedPermissionIds);
-            
-        }
+        DB::transaction(function () use ($targetRole, $permissionIdsToSync) {
+            // 1. Sinkronkan izin pada tabel perantara role_permissions
+            $targetRole->permissions()->sync($permissionIdsToSync);
 
-        return redirect()->route('admin.permissions.index')->with('success', 'Izin peran berhasil diperbarui!');
+            // Ambil semua permission_name yang sesuai dengan permission_id yang disinkronkan
+            $syncedPermissionNames = Permission::whereIn('id', $permissionIdsToSync)->pluck('name');
+
+            $menuItemsToSync = MenuItem::whereIn('permission_name', $syncedPermissionNames)->pluck('id');
+        
+            // 3. Sinkronkan item menu pada tabel perantara role_menu
+            $targetRole->menuItems()->sync($menuItemsToSync);
+        });
+        
+        Cache::forget('permissions.all');
+
+        return redirect()->route('admin.permissions.index', ['role_id' => $targetRole->id])->with('success', "Izin untuk peran '{$targetRole->name}' berhasil diperbarui.");
     }
 }

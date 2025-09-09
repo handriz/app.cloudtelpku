@@ -32,10 +32,13 @@ class PermissionSeeder extends Seeder
 
             $permissions = [
             // Dashboard
-            ['name' => 'view-dashboard', 'description' => 'Melihat dashboard utama'],
+            ['name' => 'access-admin-dashboard', 'description' => 'Acces dashboard Admin '],
+            ['name' => 'access-tl_user-dashboard', 'description' => 'Acces dashboard TL User '],
+            ['name' => 'access-app_user-dashboard', 'description' => 'Acces dashboard App User '],
+            ['name' => 'access-executive-dashboard', 'description' => 'Acces dashboard Eksekutif '],
 
             // Manajemen Pengguna
-            ['name' => 'manage-users', 'description' => 'Mengelola modul pengguna (induk)'],
+            ['name' => 'manage-users', 'description' => 'Mengelola modul pengguna'],
             ['name' => 'view-user-list', 'description' => 'Melihat daftar pengguna'],
             ['name' => 'create-user', 'description' => 'Membuat pengguna baru'],
             ['name' => 'edit-user', 'description' => 'Mengedit pengguna'],
@@ -61,12 +64,12 @@ class PermissionSeeder extends Seeder
             ['name' => 'delete-hierarchy-level', 'description' => 'Menghapus level hirarki'],
 
             // Manajemen Data
-            ['name' => 'manage-master-data', 'description' => 'Mengelola modul Master Data (induk)'],
-            ['name' => 'view-master-data-dashboard', 'description' => 'Melihat dashboard rekapan Master Data'],
-            ['name' => 'view-master-data-pelanggan', 'description' => 'Melihat daftar Master Data Pelanggan'],
-            ['name' => 'upload-master-data-pelanggan', 'description' => 'Mengupload Master Data Pelanggan (Excel)'],
-            ['name' => 'edit-master-data-pelanggan', 'description' => 'Mengedit satu data Master Data Pelanggan'],
-            ['name' => 'delete-master-data-pelanggan', 'description' => 'Menghapus data Master Data Pelanggan'],
+            ['name' => 'view-dashboard-master-data', 'description' => 'Melihat dashboard rekapan Master Data'],
+            ['name' => 'manage-master-data', 'description' => 'Mengelola modul Master Data induk'],
+            ['name' => 'view-master-data', 'description' => 'Melihat Data Pelanggan'],
+            ['name' => 'upload-master_data', 'description' => 'Mengupload Master Data Pelanggan (Excel)'],
+            ['name' => 'edit-master-data', 'description' => 'Mengedit satu data Master Data Pelanggan'],
+            ['name' => 'delete-master-data', 'description' => 'Menghapus data Master Data Pelanggan'],
                 
             // Manajemen Worker
             ['name' => 'manage-workers', 'description' => 'Mengelola dan memantau queue workers (Supervisor)'],
@@ -85,11 +88,13 @@ class PermissionSeeder extends Seeder
 
         // --- Kaitkan Izin dengan Peran ---
         $adminRole = Role::where('name', 'admin')->first();
+        $tlUserRole = Role::where('name', 'tl_user')->first();
         $appUserRole = Role::where('name', 'app_user')->first();
         $executiveUserRole = Role::where('name', 'executive_user')->first();
 
         // Pastikan peran ditemukan
         if (!$adminRole) { throw new \Exception('Admin Role not found! Run RoleSeeder first.'); }
+        if (!$tlUserRole) { throw new \Exception('TL User Role not found! Run RoleSeeder first.'); }
         if (!$appUserRole) { throw new \Exception('App User Role not found! Run RoleSeeder first.'); }
         if (!$executiveUserRole) { throw new \Exception('Executive User Role not found!'); }
 
@@ -100,20 +105,26 @@ class PermissionSeeder extends Seeder
         $adminRole->permissions()->sync($adminPermissions);
 
         // --- Izin untuk App User ---
-        $appUserRole->permissions()->sync([
-            Permission::where('name', 'view-dashboard')->first()->id,
+        $tlUserRole->permissions()->sync([
+            Permission::where('name', 'access-tl_user-dashboard')->first()->id,
+            Permission::where('name', 'manage-users')->first()->id,
             Permission::where('name', 'view-user-list')->first()->id,
-            Permission::where('name', 'view-master-data-dashboard')->first()->id,
-            Permission::where('name', 'view-master-data-pelanggan')->first()->id,
+            Permission::where('name', 'create-user')->first()->id,
+            // Tambahkan izin lain yang relevan untuk app_user
+        ]);
+
+        // --- Izin untuk App User ---
+        $appUserRole->permissions()->sync([
+            Permission::where('name', 'access-app_user-dashboard')->first()->id,
             // Tambahkan izin lain yang relevan untuk app_user
         ]);
 
         // --- Izin untuk Executive User ---
         $executiveUserRole->permissions()->sync([
-            Permission::where('name', 'view-dashboard')->first()->id,
+            Permission::where('name', 'access-executive-dashboard')->first()->id,
             Permission::where('name', 'view-user-list')->first()->id,
-            Permission::where('name', 'view-master-data-dashboard')->first()->id,
-            Permission::where('name', 'view-master-data-pelanggan')->first()->id,
+            Permission::where('name', 'view-master-data')->first()->id,
+            Permission::where('name', 'view-dashboard-master-data')->first()->id,
             // Executive tidak bisa menghapus hirarki secara default (delete-hierarchy-level tidak disertakan)
         ]);
     

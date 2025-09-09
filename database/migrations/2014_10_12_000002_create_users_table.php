@@ -17,7 +17,6 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->foreignId('role_id')->nullable()->constrained('roles')->onDelete('set null');
             $table->string('hierarchy_level_code')->nullable();
-            $table->string('dashboard_route_name')->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->boolean('is_approved')->default(false);

@@ -41,6 +41,10 @@ return new class extends Migration
             $table->string('KDAM')->nullable();
             $table->string('VKRN')->nullable();
             $table->timestamps(); // created_at dan updated_at
+
+            $table->index('UNITUP');
+            $table->index('UNITAP');
+            //$table->index(['UNITUP', 'V_BULAN_REKAP']);
         });
     }
 

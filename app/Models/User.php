@@ -28,7 +28,6 @@ class User extends Authenticatable
         'is_approved',
         'role_id',
         'hierarchy_level_code', 
-        'dashboard_route_name',
     ];
 
     /**

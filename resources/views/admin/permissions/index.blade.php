@@ -50,9 +50,13 @@
                         @enderror
                     </div>
 
+                    {{-- Perbaikan: Ganti nama input dari array menjadi string --}}
+                    <input type="hidden" name="all_checked_permissions" id="all_checked_permissions_input">
+
+
                     {{-- Bagian pengelompokan izin --}}
-                    @if ($groupedPermissions->isNotEmpty())
-                        @foreach ($groupedPermissions as $groupName => $groupItems)
+                    @if ($paginatedGroupedPermissions->isNotEmpty())
+                        @foreach ($paginatedGroupedPermissions as $groupName => $groupItems)
                             <div class="mb-6 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
                                 {{-- Header Grup dengan Toggle dan Pilih Semua --}}
                                 <div class="flex items-center justify-between p-4 bg-gray-100 dark:bg-gray-750 cursor-pointer permission-group-toggle" data-target-group="{{ Str::slug($groupName) }}">
@@ -88,10 +92,11 @@
                                                 </tr>
                                             </thead>
                                             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                                @forelse($groupItems as $index => $permission)
+                                                {{-- Iterasi $groupItems --}}
+                                                @forelse($groupItems as $indexInGroup => $permission)
                                                     <tr>
                                                         <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                                                            {{ $permissions->firstItem() + $index }}
+                                                            {{ ($paginator->currentPage() - 1) * $paginator->perPage() + $indexInGroup + 1 }}
                                                         </td>
                                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                                                             {{ $permission->name }}
@@ -100,10 +105,9 @@
                                                             {{ $permission->description }}
                                                         </td>
                                                         <td class="px-6 py-4 whitespace-nowrap text-center text-sm">
-                                                            <input type="hidden" name="permissions[{{ $selectedRole->name ?? 'undefined_role' }}][{{ $permission->id }}]" value="0">
-                                                            <input type="checkbox" name="permissions[{{ $selectedRole->name ?? 'undefined_role' }}][{{ $permission->id }}]" value="1"
+                                                            <input type="checkbox" data-permission-id="{{ $permission->id }}"
                                                                 class="form-checkbox h-5 w-5 text-indigo-600 rounded permission-checkbox group-{{ Str::slug($groupName) }}"
-                                                                {{ (isset($selectedRole) && $selectedRole->permissions->contains($permission->id)) ? 'checked' : '' }}>
+                                                                {{ in_array((string)$permission->id, $combinedPermissions, true) ? 'checked' : '' }}>
                                                         </td>
                                                     </tr>
                                                 @empty
@@ -125,8 +129,8 @@
 
 
                     {{-- Tautan Paginasi --}}
-                    <div class="mt-4">
-                        {{ $permissions->appends(request()->query())->links() }}
+                    <div class="mt-4" id="pagination-links">
+                        {{ $paginator->appends(request()->query())->links('vendor.pagination.tailwind') }}
                     </div>
 
                     <div class="flex items-center justify-end mt-4">
@@ -140,87 +144,137 @@
     </div>
 
     <script>
+        let globalCheckedPermissions = new Set();
+        
         document.addEventListener('DOMContentLoaded', function() {
             const roleSelect = document.getElementById('role_id');
             const permissionsForm = document.getElementById('permissions-form');
+            const allCheckedPermissionsInput = document.getElementById('all_checked_permissions_input');
+            const paginationContainer = document.getElementById('pagination-links');
 
-            // --- Logika untuk Mempertahankan Pilihan Peran Saat Navigasi/Ganti Peran ---
+            // KUNCI PERBAIKAN: Inisialisasi Set dari data yang dikirim server
+            // Ini akan mengambil status terakhir dari database DAN URL
+            const combinedPermissionsFromServer = @json($combinedPermissions ?? []);
+            combinedPermissionsFromServer.forEach(id => globalCheckedPermissions.add(String(id)));
+
+            // Tangani klik pada tautan paginasi
+            if (paginationContainer) {
+                paginationContainer.addEventListener('click', function(e) {
+                    // Cek apakah yang diklik adalah tautan di dalam container
+                    const target = e.target.closest('a');
+                    if (target) {
+                        e.preventDefault();
+                        const url = new URL(target.href);
+                        
+                        // Periksa apakah peran sudah dipilih
+                        if (roleSelect.value) {
+                            url.searchParams.set('role_id', roleSelect.value);
+                            // KUNCI PERBAIKAN: Tambahkan semua izin yang dicentang ke URL saat navigasi
+                            const checkedIdsArray = Array.from(globalCheckedPermissions);
+                            url.searchParams.set('checked_permissions', JSON.stringify(checkedIdsArray));
+                            window.location.href = url.toString();
+                        } else {
+                            // Jika belum ada peran yang dipilih, jangan tambahkan parameter
+                            window.location.href = url.toString();
+                        }
+                    }
+                });
+            }
+
+            // Tangani perubahan dropdown peran
             roleSelect.addEventListener('change', function() {
                 const selectedRoleId = this.value;
                 const url = new URL(window.location.href);
                 if (selectedRoleId) {
                     url.searchParams.set('role_id', selectedRoleId);
+                    // Saat ganti peran, hapus checked_permissions dari URL untuk mendapatkan status baru dari database
+                    url.searchParams.delete('checked_permissions');
                 } else {
                     url.searchParams.delete('role_id');
+                    url.searchParams.delete('checked_permissions');
                 }
-                url.searchParams.delete('page'); // Hapus parameter halaman saat ganti peran
+                url.searchParams.delete('page'); // Selalu kembali ke halaman 1 saat ganti peran
                 window.location.href = url.toString();
             });
+            
+            // Logika untuk memperbarui status globalCheckedPermissions
+            document.querySelectorAll('.permission-checkbox').forEach(checkbox => {
+                const permissionId = checkbox.dataset.permissionId;
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        globalCheckedPermissions.add(permissionId);
+                    } else {
+                        globalCheckedPermissions.delete(permissionId);
+                    }
+                    updateSelectAllCheckboxes();
+                });
+            });
 
-            // --- Logika Expand/Collapse Grup Izin ---
+            // Logika Expand/Collapse Grup Izin
             document.querySelectorAll('.permission-group-toggle').forEach(toggleButton => {
                 toggleButton.addEventListener('click', function() {
                     const targetGroupId = this.dataset.targetGroup;
                     const groupContent = document.getElementById(`group-${targetGroupId}`);
-                    
+                    const closedIcon = this.querySelector('.group-icon-closed');
+                    const openIcon = this.querySelector('.group-icon-open');
+
                     if (groupContent) {
                         groupContent.classList.toggle('hidden');
-                        this.querySelector('.group-icon-closed').classList.toggle('hidden');
-                        this.querySelector('.group-icon-open').classList.toggle('hidden');
+                        closedIcon.classList.toggle('hidden');
+                        openIcon.classList.toggle('hidden');
                     }
                 });
             });
 
-            // --- Logika Pilih Semua Per Grup ---
+            // Logika Pilih Semua Per Grup
             document.querySelectorAll('.permission-group-select-all').forEach(selectAllCheckbox => {
                 selectAllCheckbox.addEventListener('change', function() {
-                    const groupName = this.dataset.groupName;
+                    const groupName = selectAllCheckbox.dataset.groupName;
                     const groupCheckboxes = document.querySelectorAll(`.permission-checkbox.group-${groupName}`);
-                    
+
                     groupCheckboxes.forEach(checkbox => {
                         checkbox.checked = this.checked;
+                        const permissionId = checkbox.dataset.permissionId;
+                        if (this.checked) {
+                            globalCheckedPermissions.add(permissionId);
+                        } else {
+                            globalCheckedPermissions.delete(permissionId);
+                        }
                     });
+                    updateSelectAllCheckboxes();
                 });
             });
-
-            // --- Logika untuk memastikan checkbox "Pilih Semua" sesuai dengan status individual checkbox ---
-            // Saat halaman dimuat atau peran dipilih, periksa status "Pilih Semua"
+            
+            // Logika untuk memastikan checkbox "Pilih Semua" sesuai dengan status individual checkbox
             function updateSelectAllCheckboxes() {
                 document.querySelectorAll('.permission-group-select-all').forEach(selectAllCheckbox => {
                     const groupName = selectAllCheckbox.dataset.groupName;
                     const groupCheckboxes = document.querySelectorAll(`.permission-checkbox.group-${groupName}`);
                     
-                    // Jika tidak ada checkbox dalam grup, tandai "Pilih Semua" sebagai tidak aktif
                     if (groupCheckboxes.length === 0) {
                         selectAllCheckbox.checked = false;
                         selectAllCheckbox.disabled = true;
                         return;
                     }
 
-                    const allChecked = Array.from(groupCheckboxes).every(checkbox => checkbox.checked);
+                    // Perbaikan utama: Cek status dari Set global, bukan hanya elemen di halaman ini
+                    const allChecked = Array.from(groupCheckboxes).every(checkbox => globalCheckedPermissions.has(checkbox.dataset.permissionId));
                     selectAllCheckbox.checked = allChecked;
-                    selectAllCheckbox.disabled = false; // Pastikan tidak dinonaktifkan jika ada checkbox
+                    selectAllCheckbox.disabled = false;
                 });
             }
 
             // Panggil saat DOM siap
             updateSelectAllCheckboxes();
 
-            // Panggil setiap kali checkbox individual diubah
-            document.querySelectorAll('.permission-checkbox').forEach(checkbox => {
-                checkbox.addEventListener('change', updateSelectAllCheckboxes);
-            });
-            
             // Ini memastikan bahwa form update selalu mengirimkan role_id yang saat ini aktif
             permissionsForm.addEventListener('submit', function(event) {
-                const selectedRoleId = roleSelect.value;
-                if (selectedRoleId) {
-                    const hiddenRoleIdInput = document.createElement('input');
-                    hiddenRoleIdInput.type = 'hidden';
-                    hiddenRoleIdInput.name = 'current_role_id'; // Nama baru untuk role_id yang dikirim
-                    hiddenRoleIdInput.value = selectedRoleId;
-                    permissionsForm.appendChild(hiddenRoleIdInput);
-                }
+                event.preventDefault();
+
+                const allCheckedIds = Array.from(globalCheckedPermissions);
+                allCheckedPermissionsInput.value = JSON.stringify(allCheckedIds);
+
+                this.submit();
             });
         });
     </script>

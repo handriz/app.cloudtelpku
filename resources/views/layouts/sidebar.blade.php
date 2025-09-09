@@ -32,9 +32,9 @@
                 @if($menuItem->children->isNotEmpty())
                     <li x-data="{ open: {{ $isActive ? 'true' : 'false' }} }" class="relative">
                         <a href="#"
-                           @click.prevent="open = ! open"
-                           class="flex items-center p-2 text-sm font-medium rounded-lg transition duration-150 ease-in-out
-                                  {{ $isActive ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200' }}">
+                            @click.prevent="open = ! open"
+                            class="flex items-center p-2 text-sm font-medium rounded-lg transition duration-150 ease-in-out
+                                     {{ $isActive ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200' }}">
                             @if($menuItem->icon)
                                 <i class="{{ $menuItem->icon }} w-5 h-5 mr-3"></i>
                             @else
@@ -59,9 +59,11 @@
                                 @endphp
                                 <li>
                                     @if($childMenuItem->route_name && Route::has($childMenuItem->route_name))
+                                        {{-- KUNCI PERUBAHAN: Gunakan Str::replace untuk nama tab --}}
                                         <a href="{{ route($childMenuItem->route_name) }}"
+                                           data-tab-link="{{ Str::replace(['-', '_'], ' ', $childMenuItem->name) }}"
                                            class="flex items-center p-2 text-sm font-normal rounded-lg transition duration-150 ease-in-out
-                                                  {{ $isChildActive ? 'bg-indigo-100 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100' }}">
+                                            {{ $isChildActive ? 'bg-indigo-100 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100' }}">
                                             @if($childMenuItem->icon)
                                                 <i class="{{ $childMenuItem->icon }} w-4 h-4 mr-3"></i>
                                             @else
@@ -71,8 +73,9 @@
                                         </a>
                                     @elseif($childMenuItem->url)
                                         <a href="{{ $childMenuItem->url }}"
+                                            data-tab-link="{{ Str::replace(['-', '_'], ' ', $childMenuItem->name) }}"
                                            class="flex items-center p-2 text-sm font-normal rounded-lg transition duration-150 ease-in-out
-                                                  {{ $isChildActive ? 'bg-indigo-100 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100' }}">
+                                            {{ request()->is(ltrim(parse_url($childMenuItem->url, PHP_URL_PATH), '/')) ? 'bg-indigo-100 text-indigo-700 font-semibold' : 'text-gray-600 hover:bg-gray-100' }}">
                                             @if($childMenuItem->icon)
                                                 <i class="{{ $childMenuItem->icon }} w-4 h-4 mr-3"></i>
                                             @else
@@ -88,9 +91,11 @@
                 @else
                     <li>
                         @if($menuItem->route_name && Route::has($menuItem->route_name))
+                            {{-- KUNCI PERUBAHAN: Gunakan Str::replace untuk nama tab --}}
                             <a href="{{ route($menuItem->route_name) }}"
+                               data-tab-link="{{ Str::replace(['-', '_'], ' ', $menuItem->name) }}"
                                class="flex items-center p-2 text-sm font-normal rounded-lg transition duration-150 ease-in-out
-                                      {{ $isActive ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200' }}">
+                                     {{ $isActive ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200' }}">
                                 @if($menuItem->icon)
                                     <i class="{{ $menuItem->icon }} w-5 h-5 mr-3"></i>
                                 @endif
@@ -98,8 +103,9 @@
                             </a>
                         @elseif($menuItem->url)
                             <a href="{{ $menuItem->url }}"
+                               data-tab-link="{{ Str::replace(['-', '_'], ' ', $menuItem->name) }}"
                                class="flex items-center p-2 text-sm font-normal rounded-lg transition duration-150 ease-in-out
-                                      {{ request()->is(ltrim(parse_url($menuItem->url, PHP_URL_PATH), '/')) ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200' }}">
+                                     {{ request()->is(ltrim(parse_url($menuItem->url, PHP_URL_PATH), '/')) ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-700 hover:bg-gray-200' }}">
                                 @if($menuItem->icon)
                                     <i class="{{ $menuItem->icon }} w-5 h-5 mr-3"></i>
                                 @endif

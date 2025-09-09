@@ -9,11 +9,13 @@ use Illuminate\Support\Facades\Gate;
 
 class DashboardController extends Controller
 {
-        public function index()
+        public function index(Request $request)
     {
         $user = Auth::user();
-        Gate::authorize('access-admin-dashboard'); // Otorisasi berdasarkan Gate dinamis
 
-        return view('admin.dashboard.index',compact('user')); // Sesuaikan dengan lokasi view dashboard admin Anda
+        if ($request->has('is_ajax')) {
+            return view('admin.dashboard.partials.index_content', compact('user'))->render();
+        }
+        return view('admin.dashboard.index',compact('user')); 
     }
 }

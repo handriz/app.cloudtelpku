@@ -7,21 +7,37 @@ use Illuminate\Http\Request;
 use App\Models\MasterDataPelanggan;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use App\Jobs\ProcessMasterDataUpload;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
+
 
 class MasterDataController extends Controller
 {
     public function dashboard()
     {
-        $totalAktif = MasterDataPelanggan::where('STATUS_DIL', 'AKTIF')->count();
-        $distribusiTarif = MasterDataPelanggan::select('TARIF', DB::raw('count(*) as total'))
-                                                ->groupBy('TARIF')->get();
+        $latestBulanRekap = MasterDataPelanggan::max('V_BULAN_REKAP');
+        $totalPelanggan = MasterDataPelanggan::where('STATUS_DIL', 'AKTIF')->count();
+        $distribusilayanan = MasterDataPelanggan::select('JENISLAYANAN', DB::raw('count(*) as total'))
+            ->groupBy('JENISLAYANAN')
+            ->orderBy('JENISLAYANAN')
+            ->pluck('count', 'JENISLAYANAN');
+        $pelangganPrabayarByDaya = MasterDataPelanggan::where('V_BULAN_REKAP', $latestBulanRekap)
+            ->where('JENISLAYANAN', 'Prabayar') // Filter jenis layanan
+            ->select('DAYA', DB::raw('count(*) as count'))
+            ->groupBy('DAYA')
+            ->orderBy('DAYA')
+            ->pluck('count', 'DAYA');
+        $pelangganPaskabayarByDaya = MasterDataPelanggan::where('V_BULAN_REKAP', $latestBulanRekap)
+            ->where('JENISLAYANAN', 'Paskabayar') // Filter jenis layanan
+            ->select('DAYA', DB::raw('count(*) as count'))
+            ->groupBy('DAYA')
+            ->orderBy('DAYA')
+            ->pluck('count', 'DAYA');
 
-         return view('admin.manajemen_data.dashboard', compact('totalPelanggan')); // Variabel tambahan juga perlu di compact
+        $pelangganByDaya = MasterDataPelanggan::select('DAYA', DB::raw('count(*) as total'))
+            ->groupBy('DAYA')
+            ->orderBy('DAYA')
+            ->pluck('count', 'DAYA');
+
+         return view('admin.manajemen_data.dashboard', compact('totalPelanggan','distribusilayanan','pelangganByDaya','pelangganPrabayarByDaya','pelangganPaskabayarByDaya','latestBulanRekap')); // Variabel tambahan juga perlu di compact
     }
 
     public function index()

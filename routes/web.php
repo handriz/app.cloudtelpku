@@ -1,15 +1,19 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Auth; // Pastikan ini diimpor untuk Auth::user()
+use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
-use App\Http\Controllers\AppUser\DashboardController as AppUserDashboardController; // Contoh jika Anda punya
-use App\Http\Controllers\Executive\DashboardController as ExecutiveDashboardController; // Contoh jika Anda punya
+use App\Http\Controllers\AppUser\DashboardController as AppUserDashboardController;
+use App\Http\Controllers\TlUser\DashboardController as TlUserDashboardController; 
+use App\Http\Controllers\Executive\DashboardController as ExecutiveDashboardController; 
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\MenuController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\HierarchyController; 
+use App\Http\Controllers\Admin\SupervisorController; 
+use App\Http\Controllers\Admin\MasterDataController; 
+use App\Models\User;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,89 +32,83 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
-// Middleware grup untuk pengguna yang sudah terautentikasi dan terverifikasi email
-// CATATAN: Verifikasi email (middleware('verified')) akan diperiksa SETELAH
-// pengguna berhasil login DAN is_approved mereka TRUE.
-// Jika email belum diverifikasi, mereka akan dialihkan ke /email/verify.
+// Grup middleware untuk pengguna yang sudah terautentikasi dan terverifikasi email
 Route::middleware(['auth', 'verified'])->group(function () {
 
     // Rute /dashboard umum yang akan mengarahkan pengguna ke dashboard sesuai perannya
     Route::get('/dashboard', function () {
-        $user = Auth::user();
+    $user = Auth::user();
 
-        // Arahkan ke dashboard spesifik berdasarkan peran pengguna
-        if ($user->role === 'admin') {
-            return redirect()->route('admin.dashboard');
-        } elseif ($user->role === 'app_user') {
-            return redirect()->route('app_user.dashboard');
-        } elseif ($user->role === 'executive_user') {
-            return redirect()->route('executive.dashboard');
-        }
-
-        // Jika peran tidak cocok dengan yang didefinisikan, arahkan ke dashboard default atau error
-        // Pastikan Anda memiliki view 'dashboard' ini atau ganti dengan rute yang aman
+    // Arahkan ke dashboard spesifik berdasarkan peran pengguna
+    if ($user->hasRole('admin')) {
+        return redirect()->route('admin.dashboard');
+    } elseif ($user->hasRole('tl_user')) {
+        return redirect()->route('tl_user.dashboard');
+    } elseif ($user->hasRole('app_user')) {
+        return redirect()->route('app_user.dashboard');
+    } elseif ($user->hasRole('executive_user')) {
+        return redirect()->route('executive.dashboard');
+    }
+    // Pengguna tidak memiliki peran khusus, arahkan ke dashboard default
         return view('dashboard');
+        
     })->name('dashboard');
 
+    // ======================================================================
+    // RUTE UNTUK MANAJEMEN PENGGUNA
+    // Dapat diakses oleh peran manapun yang memiliki izin 'manage-users'
+    // ======================================================================
+    Route::prefix('manajemen-pengguna')->name('manajemen-pengguna.')->middleware('can:manage-users')->group(function () {
+        Route::resource('users', UserController::class);
+    });
 
     // ======================================================================
     // RUTE UNTUK PANEL ADMIN
     // Dilindungi oleh middleware 'can:access-admin-dashboard' (diperiksa oleh Gate dinamis)
     // ======================================================================
-    Route::prefix('admin')->name('admin.')->group(function () {
-        // Dashboard Admin
+    Route::prefix('admin')->name('admin.')->middleware('can:access-admin-dashboard')->group(function () {
         Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
-
-        // Manajemen Pengguna (CRUD)
-        // Rute ini mencakup: index, create, store, show, edit, update, destroy
-        Route::resource('users', UserController::class);
-
-        // Manajemen Item Menu (CRUD)
-        // Rute ini mencakup: index, create, store, show, edit, update, destroy
         Route::resource('menu', MenuController::class);
-
-        // Manajemen Level  Hirarki (CRUD)
-        // Rute ini mencakup: index, create, store, show, edit, update, destroy
         Route::resource('hierarchies', HierarchyController::class)->except(['show']);
-
-        // Manajemen Izin Dinamis
-        Route::resource('permissions', PermissionController::class)->except(['show']); // Contoh jika ingin CRUD Permission model
-        // Rute untuk menampilkan matriks izin dan memproses pembaruannya
+        Route::resource('permissions', PermissionController::class)->except(['show']);
         Route::post('/permissions/update-role-permissions', [PermissionController::class, 'updateRolePermissions'])->name('permissions.updateRolePermissions');
     
+        // Manajemen Data
         Route::prefix('manajemen-data')->name('manajemen_data.')->group(function () {
-            // Dashboard Rekapan Data
-            Route::get('dashboard', [MasterDataController::class, 'dashboard'])->name('dashboard')->middleware('can:view-master-data-dashboard');
-            // Daftar Master Data Pelanggan
-            Route::get('pelanggan', [MasterDataController::class, 'index'])->name('index')->middleware('can:view-master-data-pelanggan');
-            // Formulir Upload Data
-            Route::get('pelanggan/upload', [MasterDataController::class, 'uploadForm'])->name('upload.form')->middleware('can:upload-master-data-pelanggan');
-            
-            // --- Rute Khusus untuk Chunking Upload ---
-            Route::post('pelanggan/upload-chunk', [MasterDataController::class, 'uploadChunk'])->name('upload.chunk')->middleware('can:upload-master-data-pelanggan');
-            Route::post('pelanggan/merge-chunks', [MasterDataController::class, 'mergeChunks'])->name('merge.chunks')->middleware('can:upload-master-data-pelanggan');
-            // --- Akhir Rute Khusus Chunking ---
-            
-            // Edit dan Update Data Pelanggan Individual
-            Route::get('pelanggan/{pelanggan}/edit', [MasterDataController::class, 'edit'])->name('edit')->middleware('can:edit-master-data-pelanggan');
-            Route::put('pelanggan/{pelanggan}', [MasterDataController::class, 'update'])->name('update')->middleware('can:edit-master-data-pelanggan');
-            // Hapus Data Pelanggan Individual
-            Route::delete('pelanggan/{pelanggan}', [MasterDataController::class, 'destroy'])->name('destroy')->middleware('can:delete-master-data-pelanggan');
+            Route::get('dashboard', [MasterDataController::class, 'dashboard'])->name('dashboard');
+            Route::resource('pelanggan', MasterDataController::class)->except(['show']);
+            Route::get('pelanggan/upload', [MasterDataController::class, 'uploadForm'])->name('upload.form');  
+        // --- Rute Khusus untuk Chunking Upload ---
+            Route::post('pelanggan/upload-chunk', [MasterDataController::class, 'uploadChunk'])->name('upload.chunk');
+            Route::post('pelanggan/merge-chunks', [MasterDataController::class, 'mergeChunks'])->name('merge.chunks');   
+        // Edit, Update dan Delete Data Pelanggan Individual
+            Route::get('pelanggan/{pelanggan}/edit', [MasterDataController::class, 'edit'])->name('edit');
+            Route::put('pelanggan/{pelanggan}', [MasterDataController::class, 'update'])->name('update');
+            Route::delete('pelanggan/{pelanggan}', [MasterDataController::class, 'destroy'])->name('destroy');
         });
 
         // --- Rute untuk Manajemen Supervisor (Queue Workers) ---
         Route::prefix('supervisor')->name('supervisor.')->group(function () {
-            Route::get('workers', [SupervisorController::class, 'index'])->name('index')->middleware('can:manage-workers');
+            Route::get('workers', [SupervisorController::class, 'index'])->name('index');
             // Rute ini akan mengirimkan Artisan Command ke queue
-            Route::post('update-process', [SupervisorController::class, 'updateProcess'])->name('updateProcess')->middleware('can:manage-workers');
+            Route::post('update-process', [SupervisorController::class, 'updateProcess']);
         });
     
     });
 
     // ======================================================================
+    // RUTE UNTUK PANEL PENGGUNA APLIKASI (TL User)
+    // ======================================================================
+    Route::prefix('tluser')->name('tl_user.')->middleware('can:access-tl_user-dashboard')->group(function () {
+        Route::get('/dashboard', [TlUserDashboardController::class, 'index'])->name('dashboard');
+        // Tambahkan rute khusus untuk pengguna aplikasi di sini
+        // Contoh: Route::get('/reports', [AppUserReportController::class, 'index'])->name('reports');
+    });
+
+        // ======================================================================
     // RUTE UNTUK PANEL PENGGUNA APLIKASI (App User)
     // ======================================================================
-    Route::prefix('app-user')->name('app_user.')->middleware('can:access-app_user-dashboard')->group(function () {
+    Route::prefix('appuser')->name('app_user.')->middleware('can:access-app_user-dashboard')->group(function () {
         Route::get('/dashboard', [AppUserDashboardController::class, 'index'])->name('dashboard');
         // Tambahkan rute khusus untuk pengguna aplikasi di sini
         // Contoh: Route::get('/reports', [AppUserReportController::class, 'index'])->name('reports');
@@ -125,17 +123,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Contoh: Route::get('/analytics', [ExecutiveAnalyticsController::class, 'index'])->name('analytics');
     });
 
-
 });
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-
-
 });
-// Otentikasi Laravel Breeze/Jetstream routes
-// Pastikan ini berada di luar grup middleware 'auth' utama jika Anda ingin
-// halaman login/register dapat diakses oleh non-authenticated users.
-require __DIR__.'/auth.php'; // Atau file auth bawaan Laravel lainnya
+
+require __DIR__.'/auth.php'; //

@@ -16,6 +16,7 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         $adminRole = Role::where('name', 'admin')->first();
+        $tlUserRole = Role::where('name', 'tl_user')->first();
         $appUserRole = Role::where('name', 'app_user')->first();
         $executiveUserRole = Role::where('name', 'executive_user')->first(); 
         
@@ -27,25 +28,33 @@ class UserSeeder extends Seeder
                 'password' =>Hash::make('password'),
                 'role_id' => $adminRole->id, // Set role_id
                 'hierarchy_level_code' => null,
-                'dashboard_route_name' => null,
                 'is_approved' => true,
-                'dashboard_route_name' => 'admin.dashboard',
             ]
         );
 
-        // Buat contoh user App User
+        // Buat contoh user TL User
         User::firstOrCreate(
-            ['email' => 'tl18110@appcloudtelpku.com'],
+            ['email' => 'TL18110@appcloudtelpku.com'],
             [
                 'name' => 'Team Leader ULP KOTIM',
                 'password' => Hash::make('password'),
-                'role_id' => $appUserRole->id, // Set role_id
+                'role_id' => $tlUserRole->id, // Set role_id
                 'hierarchy_level_code' => '18110',
-                'dashboard_route_name' => 'app_user.dashboard',
                 'is_approved' => true,
             ]
         );
 
+         // Buat contoh user TL User
+        User::firstOrCreate(
+            ['email' => 'DalsutPku@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader Dalsut UP3 Pekanbaru',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18PKU',
+                'is_approved' => true,
+            ]
+        );
 
         // Buat contoh user Executive
         User::firstOrCreate(
@@ -55,7 +64,6 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('password'),
                 'role_id' => $executiveUserRole->id, // Set role_id
                 'hierarchy_level_code' => '18PKU',
-                'dashboard_route_name' => 'executive.dashboard',
                 'is_approved' => true,
             ]
         );

@@ -4,10 +4,19 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Supervisor\Supervisor; // Import Supervisor client library
-use Supervisor\Connector\XmlRpc; // Import XML-RPC connector
-use Illuminate\Support\Facades\Log; // Untuk logging
-use Illuminate\Support\Facades\Artisan; // Untuk memanggil Artisan Command
+use Supervisor\Supervisor; // Kelas Supervisor utama
+use fXmlRpc\Client; // Client fXmlRpc
+use fXmlRpc\Transport\HttpAdapterTransport; // Transport HTTP client
+use Http\Adapter\Guzzle7\Client as GuzzleAdapter; // HTTP Client adapter (Guzzle)
+
+// Ini adalah adapter yang kita butuhkan untuk menjembatani PSR-17 ke HTTPlug lama
+use Http\Message\MessageFactory\Psr17MessageFactory; 
+
+// Kita perlu implementasi PSR-17 Message Factory yang akan diadaptasi
+use GuzzleHttp\Psr7\HttpFactory; 
+
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Artisan;
 
 class SupervisorController extends Controller
 {
@@ -15,20 +24,36 @@ class SupervisorController extends Controller
 
     public function __construct()
     {
-        // Dapatkan konfigurasi Supervisor dari .env
         $host = env('SUPERVISOR_HOST', '127.0.0.1');
         $port = env('SUPERVISOR_PORT', '9001');
         $username = env('SUPERVISOR_USERNAME', 'supervisor_user');
-        $password = env('SUPERVISOR_PASSWORD', 'your_strong_password');
+        $password = env('SUPERVISOR_PASSWORD', 'your_strong_password'); // Ganti dengan password yang benar!
 
         try {
-            // Inisialisasi konektor dan instance Supervisor untuk PEMANTAUAN status
-            // Ini akan mencoba terhubung saat controller dibuat
-            $connector = new XmlRpc(sprintf('http://%s:%s/RPC2', $host, $port), $username, $password);
-            $this->supervisor = new Supervisor($connector);
+            // 1. Inisialisasi HTTP Client (GuzzleAdapter)
+            $httpClient = new GuzzleAdapter();
+
+            // 2. Buat objek PSR-17 Message Factory (dari guzzlehttp/psr7)
+            $psr17MessageFactory = new HttpFactory(); 
+
+            // 3. Adaptasikan PSR-17 MessageFactory ke antarmuka Http\Message\MessageFactory yang diharapkan
+            // Ini adalah kunci untuk mengatasi error Argument #1
+            $adaptedMessageFactory = new Psr17MessageFactory($psr17MessageFactory); 
+
+            // 4. Buat Transport dengan Message Factory (yang sudah diadaptasi) dan HTTP Client
+            // URUTAN ARGUMENNYA ADALAH ($adaptedMessageFactory, $httpClient)
+            $transport = new HttpAdapterTransport($adaptedMessageFactory, $httpClient);
+
+            // 5. Buat instance fXmlRpc Client
+            $client = new Client(sprintf('http://%s:%s/RPC2', $host, $port), $transport);
+            $client->setAuthentication($username, $password); // Set otentikasi basic HTTP
+
+            // 6. Inisialisasi Supervisor dengan client fXmlRpc ini
+            $this->supervisor = new Supervisor($client);
+
         } catch (\Exception $e) {
             Log::error('Gagal menginisialisasi Supervisor koneksi (untuk pemantauan): ' . $e->getMessage());
-            $this->supervisor = null; // Set null jika gagal inisialisasi
+            $this->supervisor = null;
         }
     }
 
@@ -37,7 +62,6 @@ class SupervisorController extends Controller
      */
     public function index()
     {
-        // Variabel untuk status koneksi Supervisor
         $pingSuccess = false;
         $processes = [];
         $error = null;
@@ -46,20 +70,17 @@ class SupervisorController extends Controller
             $error = 'Gagal terhubung ke Supervisor. Pastikan Supervisor berjalan dan konfigurasinya benar di file .env dan konfigurasi Supervisor.';
         } else {
             try {
-                // Coba untuk mendapatkan status Supervisor itu sendiri (running/stopped)
                 $pingSuccess = $this->supervisor->getState()['statecode'] === 1; // 1 = RUNNING
                 
                 if ($pingSuccess) {
-                    // Jika Supervisor berjalan, ambil informasi semua proses
                     $allProcesses = $this->supervisor->getAllProcessInfo();
-                    // Filter hanya proses worker Laravel Anda
                     $processes = collect($allProcesses)->filter(function($process) {
                         return str_starts_with($process['group'], 'laravel-worker'); // Sesuaikan nama grup Supervisor Anda
                     })->all();
                 } else {
                     $error = 'Supervisor tidak berjalan (status: ' . $this->supervisor->getState()['statename'] . ').';
                 }
-            } catch (\Exception $e) {
+            } catch (\Exception | \fXmlRpc\Exception\FaultException $e) { // Tangani juga FaultException dari fXmlRpc
                 Log::error('Error saat mengambil status Supervisor: ' . $e->getMessage());
                 $error = 'Terjadi kesalahan saat mengambil status worker: ' . $e->getMessage();
             }
@@ -74,7 +95,6 @@ class SupervisorController extends Controller
      */
     public function updateProcess(Request $request)
     {
-        // Pastikan hanya permintaan AJAX yang diterima
         if (!$request->ajax()) {
             return response()->json(['error' => 'Permintaan tidak valid.'], 400);
         }
@@ -88,25 +108,16 @@ class SupervisorController extends Controller
         $action = $request->input('action');
         
         try {
-            // Memanggil Artisan Command secara synchronous untuk demo atau kasus tertentu
-            // Untuk produksi yang lebih aman dan non-blocking,
-            // Anda akan MENGIRIM JOB yang membungkus pemanggilan Artisan ini ke QUEUE
-            // Contoh: RunSupervisorCommand::dispatch($action, $processName);
-            // Maka pastikan Anda sudah membuat Job tersebut dan mengimpornya.
-
-            // Untuk demonstrasi dan agar response langsung terlihat:
             Artisan::call('supervisor:control', [
                 'action' => $action,
                 'process_name' => $processName
             ]);
-            $commandOutput = Artisan::output(); // Dapatkan output dari command Artisan
+            $commandOutput = Artisan::output(); 
 
             Log::info("Aksi Supervisor '{$action}' berhasil dikirim untuk proses '{$processName}'. Output Artisan: " . $commandOutput);
             
-            // Beri sedikit jeda agar Supervisor dan API-nya punya waktu untuk mengupdate status
             sleep(2); 
 
-            // Setelah aksi, panggil ulang status untuk memastikan UI terupdate
             $newStatus = $this->getProcessStatus($processName);
             return response()->json(['success' => "Perintah '{$action}' untuk proses '{$processName}' berhasil dieksekusi. Output: " . $commandOutput, 'status' => $newStatus]);
         } catch (\Exception $e) {
@@ -121,14 +132,14 @@ class SupervisorController extends Controller
     protected function getProcessStatus(string $processName)
     {
         if (!$this->supervisor) {
-            return 'UNKNOWN_NO_CONNECTION'; // Tidak ada koneksi Supervisor
+            return 'UNKNOWN_NO_CONNECTION'; 
         }
         try {
             $info = $this->supervisor->getProcessInfo($processName);
-            return $info['statename']; // RUNNING, STOPPED, STARTING, FATAL, dll.
-        } catch (\Exception $e) {
+            return $info['statename']; 
+        } catch (\Exception | \fXmlRpc\Exception\FaultException $e) { 
             Log::error("Gagal mendapatkan status proses '{$processName}' setelah aksi: " . $e->getMessage());
-            return 'UNKNOWN_API_ERROR'; // Terjadi error saat memanggil API
+            return 'UNKNOWN_API_ERROR'; 
         }
     }
 }
