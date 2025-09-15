@@ -17,8 +17,6 @@ class PermissionSeeder extends Seeder
      */
     public function run(): void
     {
-
-
         // --- PENTING: Nonaktifkan Foreign Key Checks Sementara ---
         Schema::disableForeignKeyConstraints();
 
@@ -67,6 +65,7 @@ class PermissionSeeder extends Seeder
             ['name' => 'view-dashboard-master-data', 'description' => 'Melihat dashboard rekapan Master Data'],
             ['name' => 'manage-master-data', 'description' => 'Mengelola modul Master Data induk'],
             ['name' => 'view-master-data', 'description' => 'Melihat Data Pelanggan'],
+            ['name' => 'view-queue-monitor', 'description' => 'Monitoring Antrian Upload'],
             ['name' => 'upload-master_data', 'description' => 'Mengupload Master Data Pelanggan (Excel)'],
             ['name' => 'edit-master-data', 'description' => 'Mengedit satu data Master Data Pelanggan'],
             ['name' => 'delete-master-data', 'description' => 'Menghapus data Master Data Pelanggan'],
@@ -85,12 +84,12 @@ class PermissionSeeder extends Seeder
         }
         Permission::whereNotIn('name', $currentPermissionNames)->delete();
 
-
         // --- Kaitkan Izin dengan Peran ---
-        $adminRole = Role::where('name', 'admin')->first();
-        $tlUserRole = Role::where('name', 'tl_user')->first();
-        $appUserRole = Role::where('name', 'app_user')->first();
-        $executiveUserRole = Role::where('name', 'executive_user')->first();
+
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $tlUserRole = Role::where('name', 'tl_user')->firstOrFail();
+        $appUserRole = Role::where('name', 'app_user')->firstOrFail();
+        $executiveUserRole = Role::where('name', 'executive_user')->firstOrFail();
 
         // Pastikan peran ditemukan
         if (!$adminRole) { throw new \Exception('Admin Role not found! Run RoleSeeder first.'); }
@@ -98,35 +97,34 @@ class PermissionSeeder extends Seeder
         if (!$appUserRole) { throw new \Exception('App User Role not found! Run RoleSeeder first.'); }
         if (!$executiveUserRole) { throw new \Exception('Executive User Role not found!'); }
 
-
         // --- Izin untuk Admin (akses semua) ---
         // Admin akan memiliki semua izin yang ada
-        $adminPermissions = Permission::pluck('id')->toArray();
-        $adminRole->permissions()->sync($adminPermissions);
+        $allPermissionIds = Permission::pluck('id');
+        $adminRole->permissions()->sync($allPermissionIds);
 
         // --- Izin untuk App User ---
-        $tlUserRole->permissions()->sync([
-            Permission::where('name', 'access-tl_user-dashboard')->first()->id,
-            Permission::where('name', 'manage-users')->first()->id,
-            Permission::where('name', 'view-user-list')->first()->id,
-            Permission::where('name', 'create-user')->first()->id,
-            // Tambahkan izin lain yang relevan untuk app_user
-        ]);
+        $tlUserPermissions = Permission::whereIn('name', [
+            'access-tl_user-dashboard',
+            'manage-users',
+            'view-user-list',
+            'create-user',
+            'edit-user'
+        ])->pluck('id');
+        $tlUserRole->permissions()->sync($tlUserPermissions);
 
         // --- Izin untuk App User ---
-        $appUserRole->permissions()->sync([
-            Permission::where('name', 'access-app_user-dashboard')->first()->id,
-            // Tambahkan izin lain yang relevan untuk app_user
-        ]);
+        $appUserPermissions = Permission::whereIn('name', [
+            'access-app_user-dashboard'
+        ])->pluck('id');
+        $appUserRole->permissions()->sync($appUserPermissions);
 
         // --- Izin untuk Executive User ---
-        $executiveUserRole->permissions()->sync([
-            Permission::where('name', 'access-executive-dashboard')->first()->id,
-            Permission::where('name', 'view-user-list')->first()->id,
-            Permission::where('name', 'view-master-data')->first()->id,
-            Permission::where('name', 'view-dashboard-master-data')->first()->id,
-            // Executive tidak bisa menghapus hirarki secara default (delete-hierarchy-level tidak disertakan)
-        ]);
-    
+        $executiveUserPermissions = Permission::whereIn('name', [
+            'access-executive-dashboard',
+            'view-user-list',
+            'view-master-data',
+            'view-dashboard-master-data'
+        ])->pluck('id');
+        $executiveUserRole->permissions()->sync($executiveUserPermissions);
     }
 }

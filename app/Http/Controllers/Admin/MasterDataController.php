@@ -5,40 +5,47 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\MasterDataPelanggan;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use App\Jobs\ProcessPelangganImport;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 
 class MasterDataController extends Controller
 {
-    public function dashboard()
+    public function dashboard(Request $request)
     {
+        $rekapData = MasterDataPelanggan::query()
+            ->select('JENISLAYANAN', 'DAYA', DB::raw('count(*) as count'))
+            ->groupBy('JENISLAYANAN', 'DAYA')
+            ->orderBy('DAYA')
+            ->get();
         $latestBulanRekap = MasterDataPelanggan::max('V_BULAN_REKAP');
         $totalPelanggan = MasterDataPelanggan::where('STATUS_DIL', 'AKTIF')->count();
-        $distribusilayanan = MasterDataPelanggan::select('JENISLAYANAN', DB::raw('count(*) as total'))
-            ->groupBy('JENISLAYANAN')
-            ->orderBy('JENISLAYANAN')
-            ->pluck('count', 'JENISLAYANAN');
-        $pelangganPrabayarByDaya = MasterDataPelanggan::where('V_BULAN_REKAP', $latestBulanRekap)
-            ->where('JENISLAYANAN', 'Prabayar') // Filter jenis layanan
-            ->select('DAYA', DB::raw('count(*) as count'))
-            ->groupBy('DAYA')
-            ->orderBy('DAYA')
-            ->pluck('count', 'DAYA');
-        $pelangganPaskabayarByDaya = MasterDataPelanggan::where('V_BULAN_REKAP', $latestBulanRekap)
-            ->where('JENISLAYANAN', 'Paskabayar') // Filter jenis layanan
-            ->select('DAYA', DB::raw('count(*) as count'))
-            ->groupBy('DAYA')
-            ->orderBy('DAYA')
-            ->pluck('count', 'DAYA');
 
-        $pelangganByDaya = MasterDataPelanggan::select('DAYA', DB::raw('count(*) as total'))
-            ->groupBy('DAYA')
-            ->orderBy('DAYA')
-            ->pluck('count', 'DAYA');
+        // Optimasi: Ambil data daya dalam satu query, lalu proses dengan Collection
+        $distribusilayanan = $rekapData->groupBy('JENISLAYANAN')->map->sum('count');
+        $pelangganByDaya = $rekapData->groupBy('DAYA')->map->sum('count');
+        $pelangganPrabayarByDaya = $rekapData->where('JENISLAYANAN', 'Prabayar')->pluck('count', 'DAYA');
+        $pelangganPaskabayarByDaya = $rekapData->where('JENISLAYANAN', 'Paskabayar')->pluck('count', 'DAYA');   
 
-         return view('admin.manajemen_data.dashboard', compact('totalPelanggan','distribusilayanan','pelangganByDaya','pelangganPrabayarByDaya','pelangganPaskabayarByDaya','latestBulanRekap')); // Variabel tambahan juga perlu di compact
-    }
+        $viewData = compact(
+            'totalPelanggan',
+            'distribusilayanan',
+            'pelangganByDaya',
+            'pelangganPrabayarByDaya',
+            'pelangganPaskabayarByDaya',
+            'latestBulanRekap'
+        );
+
+         if ($request->has('is_ajax')) {
+            // Jika request datang dari klik menu, kirim hanya kontennya
+            return view('admin.manajemen_data.partials.dashboard_content', $viewData);
+        }
+
+           return view('admin.manajemen_data.dashboard', $viewData);
+   }
 
     public function index()
     {
@@ -48,7 +55,7 @@ class MasterDataController extends Controller
 
     public function uploadForm()
     {
-        return view('admin.manajemen_data.upload');
+         return view('admin.manajemen_data.partials.upload_form');
     }
 
     /**
@@ -58,39 +65,19 @@ class MasterDataController extends Controller
     public function uploadChunk(Request $request)
     {
         // Validasi permintaan untuk memastikan semua data chunk lengkap
-        $validator = Validator::make($request->all(), [
-            'file_data' => 'required|file', // File chunk itu sendiri
-            'resumableIdentifier' => 'required|string', // ID unik untuk sesi upload ini
-            'resumableFilename' => 'required|string', // Nama file asli
-            'resumableChunkNumber' => 'required|integer', // Nomor chunk saat ini
-            'resumableTotalChunks' => 'required|integer', // Total jumlah chunk
+        $validated = $request->validate([
+            'file' => 'required|file', // Asumsi nama input file dari JS adalah 'file'
+            'chunkIndex' => 'required|integer',
+            'fileName' => 'required|string',
         ]);
 
-        if ($validator->fails()) {
-            // Jika validasi gagal, kembalikan error JSON
-            return response()->json(['error' => $validator->errors()->first()], 422);
-        }
+        $validated['file']->storeAs(
+            'temp_uploads/' . $validated['fileName'], 
+            $validated['chunkIndex']
+        );
 
-        $file = $request->file('file_data'); // Dapatkan file chunk
-        $identifier = $request->input('resumableIdentifier');
-        $chunkNumber = $request->input('resumableChunkNumber');
-        $totalChunks = $request->input('resumableTotalChunks');
-        $filename = $request->input('resumableFilename');
-
-        // Tentukan direktori sementara untuk menyimpan chunk
-        $tempDir = 'uploads/chunks/' . $identifier;
-        if (!Storage::exists($tempDir)) {
-            // Buat direktori jika belum ada
-            Storage::makeDirectory($tempDir);
-        }
-
-        // Simpan chunk dengan nama berdasarkan nomor chunk
-        $chunkPath = $tempDir . '/' . $chunkNumber . '.part';
-        Storage::put($chunkPath, file_get_contents($file->getRealPath()));
-
-        Log::info("Chunk {$chunkNumber}/{$totalChunks} untuk {$filename} ({$identifier}) berhasil diupload.");
-
-        return response()->json(['message' => 'Chunk berhasil diupload.']);
+       Log::info("Chunk {$validated['chunkIndex']} untuk {$validated['fileName']} berhasil diupload.");
+       return response()->json(['message' => 'Chunk berhasil diupload.']);
     }
 
     /**
@@ -100,80 +87,53 @@ class MasterDataController extends Controller
     public function mergeChunks(Request $request)
     {
         // Validasi permintaan penggabungan chunk
-        $validator = Validator::make($request->all(), [
-            'resumableIdentifier' => 'required|string', // ID unik sesi upload
-            'resumableFilename' => 'required|string', // Nama file asli
-            'resumableTotalChunks' => 'required|integer', // Total jumlah chunk
-            'resumableTotalSize' => 'required|integer', // Total ukuran file
+        $validated = $request->validate([
+            'fileName' => 'required|string',
+            'totalChunks' => 'required|integer',
+            'totalSize' => 'required|integer',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json(['error' => $validator->errors()->first()], 422);
-        }
-
-        $identifier = $request->input('resumableIdentifier');
-        $filename = $request->input('resumableFilename');
-        $totalChunks = $request->input('resumableTotalChunks');
-        $totalSize = $request->input('resumableTotalSize');
-
-        $tempDir = 'uploads/chunks/' . $identifier;
-        // Tentukan jalur file akhir setelah semua chunk digabungkan
-        $finalPath = 'uploads/master_data_pelanggan/' . $filename; 
-
-        // Verifikasi bahwa semua chunk yang diharapkan ada
-        for ($i = 1; $i <= $totalChunks; $i++) {
-            if (!Storage::exists($tempDir . '/' . $i . '.part')) {
-                Log::error("Chunk {$i} hilang untuk file {$filename} ({$identifier}).");
-                return response()->json(['error' => 'Satu atau lebih chunk hilang.'], 400);
-            }
-        }
+        $fileName = $validated['fileName'];
+        $totalChunks = $validated['totalChunks'];
+        $tempDir = 'temp_uploads/' . $fileName;
+        $finalPath = 'imports/' . $fileName;
 
         try {
-            // Gabungkan semua chunk menjadi satu file
-            $outputFile = Storage::path($finalPath); // Dapatkan jalur absolut
-            $out = fopen($outputFile, 'wb'); // Buka file output dalam mode write binary
-
-            if (!$out) {
-                throw new \Exception("Tidak dapat membuka file akhir untuk penulisan.");
-            }
-
-            for ($i = 1; $i <= $totalChunks; $i++) {
-                $chunkFile = Storage::path($tempDir . '/' . $i . '.part');
-                $in = fopen($chunkFile, 'rb'); // Buka chunk dalam mode read binary
-                if (!$in) {
-                    throw new \Exception("Tidak dapat membuka file chunk {$i} untuk pembacaan.");
-                }
-                while ($buff = fread($in, 4096)) { // Baca dan tulis per buffer
-                    fwrite($out, $buff);
-                }
-                fclose($in);
-                Storage::delete($tempDir . '/' . $i . '.part'); // Hapus chunk setelah digabungkan
-            }
-            fclose($out); // Tutup file output
-
-            // Verifikasi ukuran file akhir (opsional tapi disarankan)
-            if (Storage::size($finalPath) != $totalSize) {
-                Log::warning("Ukuran file tidak sesuai setelah penggabungan. Diharapkan: {$totalSize}, Aktual: " . Storage::size($finalPath));
-                throw new \Exception("Ukuran file tidak sesuai setelah penggabungan.");
-            }
-
-            // Hapus direktori chunk sementara setelah berhasil digabungkan
-            Storage::deleteDirectory($tempDir);
+            // Pastikan direktori tujuan ada
+            Storage::makeDirectory('imports');
             
-            // --- PENTING: MENGIRIM JOB KE QUEUE UNTUK PEMROSESAN DATA ---
+            // Gabungkan semua chunk
+            $finalFilePath = Storage::path($finalPath);
+            $fileHandle = fopen($finalFilePath, 'w');
+
+            for ($i = 0; $i < $totalChunks; $i++) { // Asumsi chunk index dimulai dari 0 dari JS kita
+                $chunkPath = Storage::path($tempDir . '/' . $i);
+                if (!file_exists($chunkPath)) {
+                     throw new \Exception("Chunk {$i} hilang.");
+                }
+                fwrite($fileHandle, file_get_contents($chunkPath));
+                unlink($chunkPath);
+            }
+            fclose($fileHandle);
+            rmdir(Storage::path($tempDir));
+
+            // Pastikan ukuran file sesuai
+            if (Storage::size($finalPath) != $validated['totalSize']) {
+                Storage::delete($finalPath); // Hapus file yang korup
+                throw new \Exception("Ukuran file tidak sesuai setelah digabungkan.");
+            }
+
+            // Gunakan nama Job yang sesuai dengan kode Anda
             ProcessMasterDataUpload::dispatch($finalPath, auth()->id());
 
-            Log::info("File {$filename} ({$identifier}) berhasil digabungkan dan job pemrosesan dikirim ke queue.");
-            return response()->json(['message' => 'File berhasil digabungkan dan pemrosesan dimulai.']);
+            Log::info("File {$fileName} berhasil digabungkan dan job dikirim ke queue.");
+            return response()->json(['message' => 'File berhasil di-upload dan sedang diproses.']);
 
         } catch (\Exception $e) {
-            Log::error("Gagal menggabungkan chunks untuk {$filename} ({$identifier}): " . $e->getMessage() . " di baris " . $e->getLine());
-            // Tangani kegagalan: bersihkan sisa-sisa dan kembalikan error
+            Log::error("Gagal menggabungkan chunks untuk {$fileName}: " . $e->getMessage());
             Storage::deleteDirectory($tempDir);
-            if (Storage::exists($finalPath)) {
-                Storage::delete($finalPath);
-            }
-            return response()->json(['error' => 'Gagal menggabungkan file: ' . $e->getMessage()], 500);
+            Storage::delete($finalPath);
+            return response()->json(['error' => 'Gagal memproses file di server.'], 500);
         }
     }
 
@@ -226,6 +186,7 @@ class MasterDataController extends Controller
         return redirect()->route('admin.manajemen_data.index')->with('success', 'Data Pelanggan berhasil diperbarui!');
     }
 
+    
     /**
      * Menghapus satu data pelanggan.
      */

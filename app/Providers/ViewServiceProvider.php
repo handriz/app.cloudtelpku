@@ -6,53 +6,77 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use App\Models\MenuItem;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Cache; // Import Cache Facade
 
 class ViewServiceProvider extends ServiceProvider
 {
-    /**
-     * Register services.
-     */
     public function register(): void
     {
         //
     }
 
-    /**
-     * Bootstrap services.
-     */
     public function boot(): void
     {
         View::composer('layouts.sidebar', function ($view) {
+            $user = Auth::user();
             $menuItems = collect();
 
-            if (Auth::check()) {
-                $user = Auth::user();
-                $role = $user->role;
+            if ($user && $user->role) {
+                $cacheKey = 'menu_for_role_' . $user->role->id;
 
-                // KUNCI PERBAIKAN: Ambil item menu langsung dari relasi peran
-                if ($role) {
-                    // Ambil menu items yang terkait dengan role pengguna
-                    $allRoleMenus = $role->menuItems()
-                                         ->where('is_active', true)
-                                         ->where('name', '!=', 'Dashboard') 
-                                         ->orderBy('order')
-                                         ->get();
+                // Ambil data menu dari cache atau database
+                $menuItems = Cache::remember($cacheKey, now()->addMinutes(60), function () use ($user) {
+                    $role = $user->role->load(['menuItems' => function($query) {
+                        $query->where('is_active', true)->orderBy('order');
+                    }]);
 
-                    // Bangun struktur menu bersarang dari koleksi yang sudah difilter
+                    $allRoleMenus = $role->menuItems->where('name', '!=', 'Dashboard');
+
+                    // Bangun struktur menu bertingkat
                     $nestedMenus = $allRoleMenus->whereNull('parent_id')->map(function ($menu) use ($allRoleMenus) {
-                        $menu->setRelation('children', $allRoleMenus->where('parent_id', $menu->id)->sortBy('order'));
+                        $menu->setRelation('children', $allRoleMenus->where('parent_id', $menu->id));
                         return $menu;
                     });
-                
-                    // Filter lagi untuk memastikan menu utama memiliki rute atau anak
-                    $menuItems = $nestedMenus->filter(function ($menu) {
-                        return !empty($menu->route_name) || $menu->children->isNotEmpty();
-                    });
-                }
+                    
+                    return $nestedMenus;
+                });
             }
             
+            // Tambahkan flag 'is_active' pada setiap item menu
+            $menuItems = $menuItems->map(function ($menu) {
+                $menu->is_active = $this->isMenuItemActive($menu);
+                $menu->children = $menu->children->map(function ($child) {
+                    $child->is_active = $this->isMenuItemActive($child);
+                    return $child;
+                });
+                return $menu;
+            });
             $view->with('menuItems', $menuItems);
         });
+    }
+
+    // Fungsi pembantu untuk memeriksa status aktif
+    private function isMenuItemActive($menuItem): bool
+    {
+        if ($menuItem->route_name && Route::has($menuItem->route_name)) {
+            return request()->routeIs($menuItem->route_name);
+        }
+        
+        if ($menuItem->url) {
+            $path = ltrim(parse_url($menuItem->url, PHP_URL_PATH), '/');
+            return request()->is($path);
+        }
+        
+        // Periksa jika salah satu anak aktif (untuk menu parent)
+        if ($menuItem->children && $menuItem->children->isNotEmpty()) {
+            foreach ($menuItem->children as $child) {
+                if ($this->isMenuItemActive($child)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 }

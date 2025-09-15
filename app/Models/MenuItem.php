@@ -45,4 +45,5 @@ class MenuItem extends Model
     {
         return $this->belongsToMany(Role::class, 'role_menu', 'menu_item_id', 'role_id');
     }
+
 }

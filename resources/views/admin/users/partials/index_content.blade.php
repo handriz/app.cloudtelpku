@@ -1,9 +1,34 @@
-    {{-- Container utama tanpa padding atau max-width --}}
-    <div class="pt-2 pb-0">
-        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight mb-4">
+    <div class="pt-2 pb-0 ">
+    <div class="flex justify-between items-center mb-4">
+        
+        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight ml-4 sm:ml-6 lg:ml-8">
             {{ __('Manajemen Pengguna') }}
         </h2>
 
+        <form id="user-search-form" action="{{ route('manajemen-pengguna.users.index') }}" method="GET" class="w-1/2 max-w-sm">
+            <div class="flex items-center">
+                <div class="relative w-full">
+                    <input type="text" name="search"
+                        class="form-input block w-full pl-3 pr-10 sm:text-sm sm:leading-5 rounded-l-md dark:bg-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="Cari nama atau email..."
+                        value="{{ $search ?? '' }}"
+                        autocomplete="off">
+                    
+                    <button type="button" id="clear-search-button" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 hidden">
+                        <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <button type="submit"
+                        class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-semibold text-xs uppercase tracking-widest rounded-r-md hover:bg-indigo-500">
+                    Cari
+                </button>
+            </div>
+        </form>
+
+    </div>
         {{-- Notifikasi Sukses --}}
         @if (session('success'))
             <div id="success-alert" class="bg-green-100 dark:bg-green-900 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-200 px-4 py-3 rounded-lg shadow-md relative w-full mb-4">
@@ -13,8 +38,7 @@
                     <svg class="fill-current h-5 w-5 text-green-500 dark:text-green-300" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l3.029-2.651-3.029-2.651a1.2 1.2 0 0 1 1.697-1.697L10 8.183l2.651-3.029a1.2 1.2 0 1 1 1.697 1.697L11.819 10l3.029 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
                 </span>
             </div>
-        @endif
-        
+        @endif   
         {{-- Notifikasi Error (jika ada) --}}
         @if (session('error'))
             <div id="error-alert" class="bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg shadow-md relative w-full mb-4">
@@ -26,19 +50,19 @@
             </div>
         @endif
 
-        <hr class="border-gray-200 dark:border-gray-700 my-6">
+        <hr class="border-gray-400 dark:border-gray-700 my-2">
 
         {{-- Kartu Konten Utama --}}
         <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg w-full">
-            <div class="p-6 text-gray-900 dark:text-gray-100 w-full">
+            <div class="p-2 text-gray-900 dark:text-gray-100 w-full">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Daftar Pengguna Sistem</h3>
+                    <!-- <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Daftar Pengguna Sistem</h3> -->
                     <!-- @can('create-user') {{-- Hanya tampil jika user punya izin 'create-user' --}}
                         <a href="{{ route('manajemen-pengguna.users.create') }}" class="inline-flex items-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:bg-gray-700 dark:focus:bg-white active:bg-gray-900 dark:active:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-2 transition ease-in-out duration-150">
                             <i class="fas fa-plus mr-2"></i> Tambah Pengguna
                         </a>
                     @endcan -->
-                </div>
+                </div>               
 
                 <div class="overflow-x-auto"> {{-- Ini yang memungkinkan tabel discroll jika terlalu lebar --}}
                     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 table-auto"> {{-- Tambahkan table-auto --}}
@@ -100,13 +124,17 @@
                                     </td>
                                     <td class="px-3 py-2 whitespace-nowrap text-center text-sm font-medium">
                                         @can('edit-user')
-                                            <a href="{{ route('manajemen-pengguna.users.edit', $user->id) }}" class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-500 mr-2">
-                                                <i class="fas fa-edit"></i> Edit
-                                            </a>
+                                        <a href="{{ route('manajemen-pengguna.users.edit', $user->id) }}"
+                                        class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-500 mr-2"
+                                        data-modal-link="true"
+                                        data-modal-title="Edit Pengguna: {{ $user->name }}">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </a>
                                         @endcan
                                         @can('delete-user')
                                             <button type="button"
-                                                    onclick="confirmDeleteUser({{ $user->id }})"
+                                                    data-delete-url="{{ route('manajemen-pengguna.users.destroy', $user->id) }}"
+                                                    data-user-name="{{ $user->name }}"
                                                     class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-500">
                                                 <i class="fas fa-trash"></i> Hapus
                                             </button>
@@ -123,25 +151,9 @@
                 </div>
 
                 {{-- Bagian Paginasi --}}
-                <div class="mt-4">
+                <div class="mt-4" data-pagination-container>
                     {{ $users->links() }}
                 </div>
             </div>
         </div>
     </div>
-
-    {{-- Formulir Hapus Tersembunyi (Disubmit oleh JavaScript) --}}
-    <form id="delete-user-form" method="POST" style="display: none;">
-        @csrf
-        @method('DELETE')
-    </form>
-
-    <script>
-        function confirmDeleteUser(userId) {
-            if (confirm('Apakah Anda yakin ingin menghapus pengguna ini?')) {
-                const form = document.getElementById('delete-user-form');
-                form.action = '/manajemen-pengguna/users/' + userId;
-                form.submit();
-            }
-        }
-    </script>

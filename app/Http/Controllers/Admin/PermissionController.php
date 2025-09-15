@@ -84,6 +84,10 @@ class PermissionController extends Controller
         );
         
         // Teruskan data yang dibutuhkan ke view
+
+        if ($request->has('is_ajax')) {
+            return view('admin.permissions.partials.index_content', compact('paginator', 'roles', 'selectedRole', 'combinedPermissions', 'paginatedGroupedPermissions'))->render();
+        }
         return view('admin.permissions.index', compact('paginator', 'roles', 'selectedRole', 'combinedPermissions', 'paginatedGroupedPermissions'));
     }
 

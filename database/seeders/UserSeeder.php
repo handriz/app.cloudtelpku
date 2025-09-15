@@ -58,9 +58,9 @@ class UserSeeder extends Seeder
 
         // Buat contoh user Executive
         User::firstOrCreate(
-            ['email' => 'executive'],
+            ['email' => 'executive@appcloudtelpku.com'],
             [
-                'name' => 'executive@appcloudtelpku.com',
+                'name' => 'executive',
                 'password' => Hash::make('password'),
                 'role_id' => $executiveUserRole->id, // Set role_id
                 'hierarchy_level_code' => '18PKU',

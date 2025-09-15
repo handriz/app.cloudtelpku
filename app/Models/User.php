@@ -25,9 +25,9 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'is_approved',
         'role_id',
-        'hierarchy_level_code', 
+        'hierarchy_level_code',
+        'is_approved',
     ];
 
     /**

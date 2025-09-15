@@ -8,6 +8,7 @@ use App\Models\MenuItem;
 use App\Models\Role;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class MenuItemSeeder extends Seeder
 {
@@ -16,6 +17,8 @@ class MenuItemSeeder extends Seeder
      */
     public function run(): void
     {
+        Cache::flush();
+        
         // --- PENTING: Nonaktifkan Foreign Key Checks Sementara ---
         Schema::disableForeignKeyConstraints();
 
@@ -93,7 +96,7 @@ class MenuItemSeeder extends Seeder
 
         $DataPelangganIndex = MenuItem::create([
             'name' => 'Master Data Pelanggan',
-            'route_name' => 'admin.manajemen_data.index',
+            'route_name' => '',
             'icon' => 'fas fa-users-cog', // Icon untuk master data pelanggan
             'permission_name' => 'view-master-data',
             'parent_id' => $manajemenData->id,
@@ -101,11 +104,11 @@ class MenuItemSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        $uploadDataPelanggan = MenuItem::create([
-            'name' => 'Upload Data Pelanggan',
-            'route_name' => 'admin.manajemen_data.upload.form',
-            'icon' => 'fas fa-upload', // Icon untuk upload data
-            'permission_name' => 'upload-master_data',
+        $queueImportData = MenuItem::create([
+            'name' => 'Monitoring Antrian',
+            'route_name' => 'admin.queue.monitor',
+            'icon' => 'fas fa-tasks', // Icon untuk upload data
+            'permission_name' => 'view-queue-monitor',
             'parent_id' => $manajemenData->id,
             'order' => 33,
             'is_active' => true,
@@ -178,6 +181,7 @@ class MenuItemSeeder extends Seeder
                 $menuIndex->id,
                 $hierarchyIndex->id,
                 $supervisorWorkers->id,
+                $queueImportData->id,
             ]);
         }
 
