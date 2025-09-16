@@ -11,32 +11,29 @@ use Illuminate\Support\Facades\Cache;
 class QueueMonitorController extends Controller
 {
     public function index(Request $request)
-    {
-        $pendingJobs = DB::table('jobs')->get();
-        $failedJobs = DB::table('failed_jobs')->get();
+{
+    $pendingJobs = DB::table('jobs')->get();
+    $failedJobs = DB::table('failed_jobs')->get();
 
-        // Decode payload JSON agar bisa dibaca
-        $failedJobs->each(function ($job) {
-            $payload = json_decode($job->payload);
-            // Ambil nama class dari job
-            $job->displayName = $payload->displayName ?? 'Unknown Job';
-        });
+    $failedJobs->each(function ($job) {
+        $payload = json_decode($job->payload);
+        $job->displayName = $payload->displayName ?? 'Unknown Job';
+    });
 
-        $lastHeartbeat = Cache::get('scheduler_last_heartbeat');
-        $isWorkerActive = false;
-        if ($lastHeartbeat && $lastHeartbeat->diffInMinutes(now()) < 2) {
-            // Jika detak jantung tercatat dalam 2 menit terakhir, anggap aktif.
-            $isWorkerActive = true;
-        }
+    $lastHeartbeat = Cache::get('scheduler_last_heartbeat');
+    $isWorkerActive = ($lastHeartbeat && $lastHeartbeat->diffInMinutes(now()) < 2);
+    
+    // Ambil data status supervisor dari cache
+    $supervisorStatus = Cache::get('supervisor_status', []);
 
-        $viewData = compact('pendingJobs', 'failedJobs', 'isWorkerActive', 'lastHeartbeat');
+    $viewData = compact('pendingJobs', 'failedJobs', 'isWorkerActive', 'lastHeartbeat', 'supervisorStatus');
 
-        if ($request->has('is_ajax')) {
-            return view('admin.queue.partials.monitor_content', $viewData);
-        }
-        
-        return view('admin.queue.monitor', $viewData);
+    if ($request->has('is_ajax')) {
+        return view('admin.queue.partials.monitor_content', $viewData);
     }
+    
+    return view('admin.queue.monitor', $viewData);
+}
 
     public function retry($id)
     {

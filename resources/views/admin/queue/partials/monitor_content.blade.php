@@ -72,7 +72,31 @@
         @endif
     </div>
 </div>
-
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden p-6 mb-6">
+    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Status Proses Supervisor</h3>
+    @if (!empty($supervisorStatus) && !isset($supervisorStatus['error']))
+        <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+            @foreach($supervisorStatus as $process)
+            <li class="py-2 flex justify-between items-center">
+                <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ $process['name'] }}</span>
+                @if($process['status'] === 'RUNNING')
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        {{ $process['status'] }}
+                    </span>
+                @else
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                        {{ $process['status'] }}
+                    </span>
+                @endif
+            </li>
+            @endforeach
+        </ul>
+    @elseif(isset($supervisorStatus['error']))
+        <p class="text-sm text-red-500">{{ $supervisorStatus['error'] }}</p>
+    @else
+        <p class="text-sm text-gray-500">Menunggu data status dari server (update setiap menit)...</p>
+    @endif
+</div>
 <script>
 // Logika AJAX untuk tombol Retry dan Hapus
 (function() {
