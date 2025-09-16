@@ -135,19 +135,11 @@ jobs:
             sudo chmod -R 755 public # Pastikan public bisa dibaca oleh web server
             echo "File permissions set."
 
-            # Jalankan migrasi database
-            echo "Running database migrations..."
-            # php artisan migrate --force
-            php artisan migrate:fresh
-            echo "Database migrations complete."
-            
-            # --- JALANKAN SEEDER ---
-            # Ini akan menjalankan DatabaseSeeder Anda. Tambahkan --force untuk produksi.
-            echo "Running database seeder..."
-            # php artisan db:seed --force
-            php artisan db:seed
-            echo "Database seeding complete."
-            
+            # Jalankan migrasi dan seeder
+            echo "Running database migrations and seeding..."
+            php artisan migrate:fresh --seed
+            echo "Database migrations and seeding complete."
+                       
             # Bersihkan cache Laravel
             echo "Clearing Laravel cache..."
             php artisan config:clear
