@@ -84,23 +84,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
         // Manajemen Data
         Route::prefix('manajemen-data')->name('manajemen_data.')->group(function () {
-        Route::get('dashboard', [MasterDataController::class, 'dashboard'])->name('dashboard');
-            
-        // Route::resource otomatis membuat route edit, update, dan destroy
-        Route::resource('pelanggan', MasterDataController::class)->except(['show']);
+            Route::get('dashboard', [MasterDataController::class, 'dashboard'])->name('dashboard');
+                
+            // Route::resource otomatis membuat route edit, update, dan destroy
+            Route::resource('pelanggan', MasterDataController::class)->except(['show']);
 
-        // Rute khusus yang tidak termasuk resource
-        Route::get('upload', [MasterDataController::class, 'uploadForm'])->name('upload');  
-        Route::post('upload-chunk', [MasterDataController::class, 'uploadChunk'])->name('upload.chunk');
-        Route::post('merge-chunks', [MasterDataController::class, 'mergeChunks'])->name('merge.chunks');   
+            // Rute khusus yang tidak termasuk resource
+            Route::get('upload', [MasterDataController::class, 'uploadForm'])->name('upload');  
+            Route::post('upload-chunk', [MasterDataController::class, 'uploadChunk'])->name('upload.chunk');
+            Route::post('merge-chunks', [MasterDataController::class, 'mergeChunks'])->name('merge.chunks');   
 
-    });
+        });
 
         // Manajemen Supervisor (Queue Workers)
-    Route::prefix('supervisor')->name('supervisor.')->group(function () {
-            Route::get('workers', [SupervisorController::class, 'index'])->name('index');
-            Route::post('update-process', [SupervisorController::class, 'updateProcess']);
-        });
+        Route::prefix('supervisor')->name('supervisor.')->group(function () {
+                Route::get('workers', [SupervisorController::class, 'index'])->name('index');
+                Route::post('update-process', [SupervisorController::class, 'updateProcess']);
+            });
     
     });
 

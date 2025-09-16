@@ -86,7 +86,7 @@ class MasterDataController extends Controller
      */
     public function mergeChunks(Request $request)
     {
-        // Validasi permintaan penggabungan chunk
+        // Validasi ringkas
         $validated = $request->validate([
             'fileName' => 'required|string',
             'totalChunks' => 'required|integer',
@@ -96,17 +96,16 @@ class MasterDataController extends Controller
         $fileName = $validated['fileName'];
         $totalChunks = $validated['totalChunks'];
         $tempDir = 'temp_uploads/' . $fileName;
-        $finalPath = 'imports/' . $fileName;
+        $finalPath = 'imports/' . $fileName; // <-- BARIS INI TELAH DIPERBAIKI
 
         try {
-            // Pastikan direktori tujuan ada
-            Storage::makeDirectory('imports');
+            Storage::makeDirectory('imports'); // Pastikan direktori tujuan ada
             
-            // Gabungkan semua chunk
             $finalFilePath = Storage::path($finalPath);
             $fileHandle = fopen($finalFilePath, 'w');
 
-            for ($i = 0; $i < $totalChunks; $i++) { // Asumsi chunk index dimulai dari 0 dari JS kita
+            // Asumsi chunk index dari JS dimulai dari 0
+            for ($i = 0; $i < $totalChunks; $i++) { 
                 $chunkPath = Storage::path($tempDir . '/' . $i);
                 if (!file_exists($chunkPath)) {
                      throw new \Exception("Chunk {$i} hilang.");
@@ -117,22 +116,23 @@ class MasterDataController extends Controller
             fclose($fileHandle);
             rmdir(Storage::path($tempDir));
 
-            // Pastikan ukuran file sesuai
+            // Verifikasi ukuran file
             if (Storage::size($finalPath) != $validated['totalSize']) {
-                Storage::delete($finalPath); // Hapus file yang korup
+                Storage::delete($finalPath);
                 throw new \Exception("Ukuran file tidak sesuai setelah digabungkan.");
             }
 
-            // Gunakan nama Job yang sesuai dengan kode Anda
-            ProcessMasterDataUpload::dispatch($finalPath, auth()->id());
+            // Mengirim path file dan ID user yang sedang login ke Job
+            ProcessPelangganImport::dispatch($finalPath, auth()->id());
 
-            Log::info("File {$fileName} berhasil digabungkan dan job dikirim ke queue.");
-            return response()->json(['message' => 'File berhasil di-upload dan sedang diproses.']);
+            Log::info("File {$fileName} berhasil digabungkan dan job dikirim oleh user ID: " . auth()->id());
+            return response()->json(['message' => 'File berhasil di-upload dan sedang diproses di latar belakang.']);
 
         } catch (\Exception $e) {
             Log::error("Gagal menggabungkan chunks untuk {$fileName}: " . $e->getMessage());
+            // Bersihkan file sisa jika terjadi error
             Storage::deleteDirectory($tempDir);
-            Storage::delete($finalPath);
+            Storage::delete($finalPath); // Hapus juga file final yang mungkin korup
             return response()->json(['error' => 'Gagal memproses file di server.'], 500);
         }
     }

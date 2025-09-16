@@ -4,7 +4,26 @@
         Monitor Antrian (Queue)
     </h2>
     <hr class="border-gray-200 dark:border-gray-700 my-2">
-
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden p-6 mb-6">
+        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">Status Queue Worker</h3>
+        <div class="flex items-center">
+            @if($isWorkerActive)
+                <span class="h-4 w-4 rounded-full bg-green-500 animate-pulse"></span>
+                <p class="ml-3 text-green-600 dark:text-green-400 font-semibold">Aktif</p>
+            @else
+                <span class="h-4 w-4 rounded-full bg-red-500"></span>
+                <p class="ml-3 text-red-600 dark:text-red-400 font-semibold">Tidak Aktif / Bermasalah</p>
+            @endif
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            Status ini diperbarui setiap menit. 
+            @if($lastHeartbeat)
+                Laporan terakhir: {{ $lastHeartbeat->diffForHumans() }}.
+            @else
+                Belum ada laporan diterima.
+            @endif
+        </p>
+    </div>
     <div class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg w-full p-6 mb-6">
         <h3 class="text-lg font-medium text-red-600 dark:text-red-400 mb-4">Pekerjaan Gagal ({{ $failedJobs->count() }})</h3>
         <div class="overflow-x-auto">

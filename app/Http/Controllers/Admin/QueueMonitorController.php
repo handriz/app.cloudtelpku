@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 
 class QueueMonitorController extends Controller
 {
@@ -21,11 +22,20 @@ class QueueMonitorController extends Controller
             $job->displayName = $payload->displayName ?? 'Unknown Job';
         });
 
+        $lastHeartbeat = Cache::get('scheduler_last_heartbeat');
+        $isWorkerActive = false;
+        if ($lastHeartbeat && $lastHeartbeat->diffInMinutes(now()) < 2) {
+            // Jika detak jantung tercatat dalam 2 menit terakhir, anggap aktif.
+            $isWorkerActive = true;
+        }
+
+        $viewData = compact('pendingJobs', 'failedJobs', 'isWorkerActive', 'lastHeartbeat');
+
         if ($request->has('is_ajax')) {
-            return view('admin.queue.partials.monitor_content', compact('pendingJobs', 'failedJobs'));
+            return view('admin.queue.partials.monitor_content', $viewData);
         }
         
-        return view('admin.queue.monitor', compact('pendingJobs', 'failedJobs'));
+        return view('admin.queue.monitor', $viewData);
     }
 
     public function retry($id)
