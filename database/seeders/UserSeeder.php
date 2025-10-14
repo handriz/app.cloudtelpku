@@ -16,8 +16,8 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         $adminRole = Role::where('name', 'admin')->first();
-        $tlUserRole = Role::where('name', 'tl_user')->first();
-        $appUserRole = Role::where('name', 'app_user')->first();
+        $tlUserRole = Role::where('name', 'team')->first();
+        $appUserRole = Role::where('name', 'appuser')->first();
         $executiveUserRole = Role::where('name', 'executive_user')->first(); 
         
         // Buat user admin
@@ -32,11 +32,11 @@ class UserSeeder extends Seeder
             ]
         );
 
-        // Buat contoh user TL User
+        // Buat user TL User
         User::firstOrCreate(
             ['email' => 'TL18110@appcloudtelpku.com'],
             [
-                'name' => 'Team Leader ULP KOTIM',
+                'name' => 'Team Leader ULP Kobar',
                 'password' => Hash::make('password'),
                 'role_id' => $tlUserRole->id, // Set role_id
                 'hierarchy_level_code' => '18110',
@@ -44,11 +44,99 @@ class UserSeeder extends Seeder
             ]
         );
 
-         // Buat contoh user TL User
         User::firstOrCreate(
-            ['email' => 'DalsutPku@appcloudtelpku.com'],
+            ['email' => 'TL18111@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader ULP Kobar',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18111',
+                'is_approved' => true,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'TL18120@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader ULP Simpang Tiga',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18120',
+                'is_approved' => true,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'TL18130@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader ULP Rumbai',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18130',
+                'is_approved' => true,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'TL18140@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader ULP Panam',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18140',
+                'is_approved' => true,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'TL18150@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader ULP Perawang',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18150',
+                'is_approved' => true,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'TL18170@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader ULP Siak',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18170',
+                'is_approved' => true,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'TL18170@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader ULP P.Kerinci',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18180',
+                'is_approved' => true,
+            ]
+        );
+
+         // Buat contoh user TL User UP3
+        User::firstOrCreate(
+            ['email' => 'dalsutpku@appcloudtelpku.com'],
             [
                 'name' => 'Team Leader Dalsut UP3 Pekanbaru',
+                'password' => Hash::make('password'),
+                'role_id' => $tlUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18PKU',
+                'is_approved' => true,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'harmetpku@appcloudtelpku.com'],
+            [
+                'name' => 'Team Leader Harmet UP3 Pekanbaru',
                 'password' => Hash::make('password'),
                 'role_id' => $tlUserRole->id, // Set role_id
                 'hierarchy_level_code' => '18PKU',

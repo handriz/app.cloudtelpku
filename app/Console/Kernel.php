@@ -7,6 +7,11 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
+    protected $commands = [
+        // GUNAKAN NAMA CLASS YANG BENAR INI:
+        \App\Console\Commands\FreshWithExceptions::class,
+    ];
+    
     /**
      * Define the application's command schedule.
      */
@@ -15,6 +20,7 @@ class Kernel extends ConsoleKernel
         // $schedule->command('inspire')->hourly();
         $schedule->command('queue:heartbeat')->everyMinute();
         $schedule->command('supervisor:status-check')->everyMinute();
+        $schedule->command('app:clean-temp-photos')->daily();
     }
 
     /**

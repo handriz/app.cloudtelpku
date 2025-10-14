@@ -60,9 +60,9 @@ class UserController extends Controller
 
         if ($user->hasRole('admin')) {
             $roles = Role::all();
-        } elseif ($user->hasRole('tl_user')) {
-            $roles = Role::whereIn('name', ['app_user', 'executive_user'])->get();
-        } elseif ($user->hasRole('app_user')) {
+        } elseif ($user->hasRole('team')) {
+            $roles = Role::whereIn('name', ['team', 'executive_user'])->get();
+        } elseif ($user->hasRole('team')) {
             $roles = Role::where('id', $user->role_id)->get();
             $hierarchyLevels = $hierarchyLevels->where('code', $user->hierarchy_level_code);
         } 
@@ -77,8 +77,7 @@ class UserController extends Controller
     public function store(Request $request)
     {
 
-        $loggedInUser = Auth::user();
-        $allHierarchyLevels = HierarchyLevel::all();
+        $this->authorize('create', User::class);
     
         // Validasi data
         $validator = Validator::make($request->all(), [
@@ -104,7 +103,7 @@ class UserController extends Controller
         // Admin bisa membuat pengguna dengan peran/hierarki apa pun
         if (!$loggedInUser->hasRole('admin')) {
             // TL User hanya bisa membuat pengguna di hierarki di bawah atau sama
-            if ($loggedInUser->hasRole('tl_user')) {
+            if ($loggedInUser->hasRole('team')) {
                 if (!$this->isHierarchyDescendantOrSame($loggedInUser->hierarchy_level_code, $targetHierarchyCode, $allHierarchyLevels)) {
                     return $request->ajax() ? response()->json(['message' => 'Unauthorized action: You cannot create a user at this hierarchy level.'], 403) : abort(403);
                 }
@@ -187,8 +186,8 @@ class UserController extends Controller
                 case 'admin':
                     $updateData['dashboard_route_name'] = 'admin.dashboard';
                     break;
-                case 'tl_user':
-                    $updateData['dashboard_route_name'] = 'tl_user.dashboard';
+                case 'team':
+                    $updateData['dashboard_route_name'] = 'team.dashboard';
                     break;
                 case 'app_user':
                     $updateData['dashboard_route_name'] = 'app_user.dashboard';
@@ -236,7 +235,7 @@ class UserController extends Controller
 
         if ($loggedInUser->hasRole('admin')) {
             $filteredHierarchyLevels = $allHierarchyLevels;
-        } elseif ($loggedInUser->hasRole('tl_user')) {
+        } elseif ($loggedInUser->hasRole('team')) {
             $currentUserHierarchyCode = $loggedInUser->hierarchy_level_code;
             $filteredHierarchyLevels = $allHierarchyLevels->filter(function ($level) use ($currentUserHierarchyCode, $allHierarchyLevels) {
                 return $this->isHierarchyDescendantOrSame($currentUserHierarchyCode, $level->code, $allHierarchyLevels);

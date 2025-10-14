@@ -26,7 +26,8 @@ class UserPolicy
      */
     public function create(User $loggedInUser): bool
     {
-        return $loggedInUser->hasRole('admin') || $loggedInUser->hasRole('tl_user');
+        
+        return $loggedInUser->hasRole('admin') || $loggedInUser->hasRole('team');
     }
 
     /**
@@ -40,7 +41,7 @@ class UserPolicy
         }
 
         // tl_user hanya bisa mengedit user di bawah hierarkinya
-        if ($loggedInUser->hasRole('tl_user')) {
+        if ($loggedInUser->hasRole('team')) {
             return $this->isHierarchyDescendantOrSame(
                 $loggedInUser->hierarchy_level_code,
                 $userToUpdate->hierarchy_level_code

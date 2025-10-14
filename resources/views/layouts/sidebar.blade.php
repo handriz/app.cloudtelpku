@@ -16,7 +16,7 @@
                 @if ($menu->children->isNotEmpty())
                     {{-- Jika punya, buat sebagai menu dropdown --}}
                     <li x-data="{ open: {{ $menu->is_active ? 'true' : 'false' }} }">
-                        <button @click="open = !open" class="flex items-center justify-between w-full p-2 text-sm font-medium text-left rounded-lg transition duration-150 ease-in-out {{ $menu->is_active ? 'bg-indigo-50 text-indigo-600' : 'text-gray-700 hover:bg-gray-100' }}">
+                        <button @click="open = !open" class="flex items-center justify-between w-full p-2 text-sm font-medium text-left rounded-lg transition duration-150 ease-in-out {{ $menu->is_active ? 'bg-indigo-50 text-indigo-600' : 'text-gray-700 hover:bg-indigo-100 hover:text-indigo-700' }}">
                             <div class="flex items-center">
                                 <i class="{{ $menu->icon }} w-6 text-center"></i>
                                 <span class="ml-2 menu-text">{{ $menu->name }}</span>
@@ -28,8 +28,8 @@
                             @foreach ($menu->children as $child)
                                 <li>
                                     <a href="{{ $child->route_name ? route($child->route_name) : '#' }}"
-                                       data-tab-link="{{ $child->name }}"
-                                       class="flex items-center p-2 text-sm font-normal rounded-lg transition duration-150 ease-in-out {{ $child->is_active ? 'text-indigo-700 bg-indigo-50' : 'text-gray-600 hover:bg-gray-50' }}">
+                                       data-tab-link="{{ $child->name }}"                                                                                    
+                                       class="flex items-center p-2 text-sm font-normal rounded-lg transition duration-150 ease-in-out {{ $child->is_active ? 'text-indigo-700 bg-indigo-50' : 'text-gray-600 hover:bg-indigo-100 hover:text-indigo-700' }}">
                                         <i class="{{ $child->icon }} w-6 text-center"></i>
                                         <span class="ml-2 menu-text">{{ $child->name }}</span>
                                     </a>

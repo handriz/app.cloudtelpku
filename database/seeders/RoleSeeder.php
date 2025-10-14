@@ -13,9 +13,9 @@ class RoleSeeder extends Seeder
      */
     public function run(): void
     {
-        Role::firstOrCreate(['name' => 'admin', 'description' => 'Admin CloudTelPk']);
-        Role::firstOrCreate(['name' => 'tl_user', 'description' => 'Team Leader']);
-        Role::firstOrCreate(['name' => 'app_user', 'description' => 'User Aplikasi']);
+        Role::firstOrCreate(['name' => 'admin', 'description' => 'Admin CloudTelPku']);
+        Role::firstOrCreate(['name' => 'team', 'description' => 'Team Leader']);
+        Role::firstOrCreate(['name' => 'appuser', 'description' => 'User Aplikasi']);
         Role::firstOrCreate(['name' => 'executive_user', 'description' => 'Executive User']);
     }
 }

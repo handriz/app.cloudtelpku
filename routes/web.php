@@ -6,7 +6,7 @@ use App\Http\Controllers\ProfileController;
 
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\AppUser\DashboardController as AppUserDashboardController;
-use App\Http\Controllers\TlUser\DashboardController as TlUserDashboardController; 
+use App\Http\Controllers\TeamUser\DashboardController as TeamDashboardController; 
 use App\Http\Controllers\Executive\DashboardController as ExecutiveDashboardController; 
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\MenuController;
@@ -14,6 +14,8 @@ use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\HierarchyController; 
 use App\Http\Controllers\Admin\SupervisorController; 
 use App\Http\Controllers\Admin\MasterDataController; 
+use App\Http\Controllers\TeamUser\SmartTargetController; 
+use App\Http\Controllers\TeamUser\MappingKddkController;
 
 
 /*
@@ -40,8 +42,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Menggunakan array untuk pemetaan yang lebih rapi dan mudah diubah
         $dashboardRoutes = [
             'admin'          => 'admin.dashboard',
-            'tl_user'        => 'tl_user.dashboard',
-            'app_user'       => 'app_user.dashboard',
+            'tl_user'        => 'team.dashboard',
+            'app_user'       => 'appuser.dashboard',
             'executive_user' => 'executive.dashboard',
         ];
         // Temukan peran pengguna dan arahkan ke rute yang sesuai
@@ -93,7 +95,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('upload', [MasterDataController::class, 'uploadForm'])->name('upload');  
             Route::post('upload-chunk', [MasterDataController::class, 'uploadChunk'])->name('upload.chunk');
             Route::post('merge-chunks', [MasterDataController::class, 'mergeChunks'])->name('merge.chunks');   
-
+            Route::get('download-format', [MasterDataController::class, 'downloadFormat'])->name('download-format');
         });
 
         // Manajemen Supervisor (Queue Workers)
@@ -108,11 +110,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // RUTE UNTUK PANEL PENGGUNA APLIKASI (TL & App User)
     // Menggunakan middleware 'role' yang spesifik
     // ======================================================================
-    Route::prefix('tluser')->name('tl_user.')->middleware('role:tl_user')->group(function () {
-        Route::get('/dashboard', [TlUserDashboardController::class, 'index'])->name('dashboard');
+    Route::prefix('team')->name('team.')->middleware('role:team')->group(function () {
+        Route::get('/dashboard', [TeamDashboardController::class, 'index'])->name('dashboard');
+
+        Route::prefix('smart-target')->name('smart-target.')->group(function () {
+            Route::resource('analisis', SmartTargetController::class)->except(['show']);
+        });
+
+        Route::resource('mapping', MappingKddkController::class);
+
+        Route::get('/mapping-coordinates', [MappingKddkController::class, 'getMapCoordinates'])->name('mapping-kddk.coordinates');
+        Route::get('mapping-upload', [MappingKddkController::class, 'uploadForm'])->name('mapping.upload');
+        Route::post('mapping-kddk-upload-chunk', [MappingKddkController::class, 'uploadChunk'])->name('mapping-kddk.upload.chunk');
+        Route::post('mapping-kddk-merge-chunks', [MappingKddkController::class, 'mergeChunks'])->name('mapping-kddk.merge.chunks');
+        Route::post('mapping-upload-photo', [MappingKddkController::class, 'uploadTemporaryPhoto'])->name('mapping.upload-photo');
+        Route::delete('mapping-delete-photo', [MappingKddkController::class, 'deleteTemporaryPhoto'])->name('mapping.delete-photo');
+        Route::get('mapping-download-format', [MappingKddkController::class, 'downloadFormat'])->name('mapping.download-format');
     });
 
-    Route::prefix('appuser')->name('app_user.')->middleware('role:app_user')->group(function () {
+    Route::prefix('appuser')->name('appuser.')->middleware('role:appuser')->group(function () {
         Route::get('/dashboard', [AppUserDashboardController::class, 'index'])->name('dashboard');
     });
 

@@ -52,12 +52,12 @@ class AuthServiceProvider extends ServiceProvider
             }
             
             // TL User bisa mengelola pengguna yang berada di hierarki yang sama atau di bawahnya
-            if ($user->hasRole('tl_user')) {
+            if ($user->hasRole('team')) {
                 return $this->isHierarchyDescendantOrSame($user->hierarchy_level_code, $targetUser->hierarchy_level_code, HierarchyLevel::all());
             }
 
             // App User hanya bisa mengelola dirinya sendiri (jika diperlukan)
-            if ($user->hasRole('app_user')) {
+            if ($user->hasRole('appuser')) {
                 return $user->id === $targetUser->id;
             }
 

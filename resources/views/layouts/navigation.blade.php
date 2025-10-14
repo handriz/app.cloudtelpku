@@ -21,6 +21,45 @@
 
             <!-- Settings Dropdown (biarkan seperti adanya) -->
             <div class="hidden sm:flex sm:items-center sm:ml-6">
+                <div x-data="{ open: false }" class="relative mr-4">
+                    {{-- Tombol Ikon Lonceng --}}
+                    <button @click="open = !open" class="relative text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none">
+                        <i class="fas fa-bell"></i>
+                        {{-- Tanda titik merah jika ada notifikasi belum dibaca --}}
+                        @if(isset($notifications) && $notifications->count() > 0)
+                            <span class="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-red-500 border-2 border-white"></span>
+                        @endif
+                    </button>
+
+                    {{-- Konten Dropdown Notifikasi --}}
+                    <div x-show="open" @click.away="open = false" 
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="transform opacity-0 scale-95"
+                         x-transition:enter-end="transform opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="transform opacity-100 scale-100"
+                         x-transition:leave-end="transform opacity-0 scale-95"
+                         class="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-md shadow-lg overflow-hidden z-20" style="display: none;">
+                        
+                        <div class="py-2">
+                            <div class="px-4 py-2 font-bold text-gray-800 dark:text-gray-200 border-b dark:border-gray-700">Notifikasi</div>
+                            <div class="max-h-80 overflow-y-auto">
+                                @forelse($notifications as $notification)
+                                    {{-- Di sini kita perlu rute untuk menandai notifikasi sudah dibaca --}}
+                                    <a href="#" class="flex items-center px-4 py-3 border-b hover:bg-gray-100 dark:hover:bg-gray-700 -mx-2">
+                                        <i class="{{ $notification->data['icon'] ?? 'fas fa-info-circle' }} text-gray-600 dark:text-gray-200 mx-2"></i>
+                                        <div class="flex-grow">
+                                            <p class="text-sm text-gray-600 dark:text-gray-200">{{ $notification->data['message'] }}</p>
+                                            <p class="text-xs text-gray-400">{{ $notification->created_at->diffForHumans() }}</p>
+                                        </div>
+                                    </a>
+                                @empty
+                                    <p class="text-center text-sm text-gray-500 py-6">Tidak ada notifikasi baru.</p>
+                                @endforelse
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
                         <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none transition ease-in-out duration-150">

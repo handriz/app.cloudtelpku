@@ -54,6 +54,12 @@ class ViewServiceProvider extends ServiceProvider
             });
             $view->with('menuItems', $menuItems);
         });
+
+        View::composer('layouts.navigation', function ($view) {
+        if (Auth::check()) {
+            $view->with('notifications', Auth::user()->unreadNotifications);
+        }
+    });
     }
 
     // Fungsi pembantu untuk memeriksa status aktif

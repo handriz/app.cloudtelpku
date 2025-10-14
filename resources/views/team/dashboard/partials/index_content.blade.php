@@ -4,12 +4,14 @@
         <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight ml-4 sm:ml-6 lg:ml-8">
             {{ __('Dashboard Data Pelanggan ') }}
         </h2>
+        @can('upload-master-data')
         <a href="{{ route('admin.manajemen_data.upload') }}" 
            class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700"
            data-modal-link="true">
             <i class="fas fa-upload mr-2"></i>
-            <span>Upload Kolektif</span>
+            <span>Upload Data</span>
         </a>
+        @endcan
     </div>
     <hr class="border-gray-200 dark:border-gray-700 my-6">
 
@@ -54,7 +56,7 @@
                 <i class="fas fa-calendar-alt text-white text-xl"></i>
             </div>
             <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Bulan Rekap Terakhir</p>
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Bulan Rekap Dil Terakhir</p>
                 <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ $latestBulanRekap ? \Carbon\Carbon::createFromFormat('Ym', $latestBulanRekap)->format('F Y') : 'N/A' }}</p>
             </div>
         </div>

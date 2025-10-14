@@ -10,35 +10,39 @@ use App\Models\HierarchyLevel;
 
 class HierarchyScope implements Scope
 {
-    /**
-     * Apply the scope to a given Eloquent query builder.
-     */
     public function apply(Builder $builder, Model $model): void
     {
+        // Pastikan ada pengguna yang sedang login
         if (Auth::check()) {
             $user = Auth::user();
 
-            // Super admin (role 'admin') bisa melihat semua data, tanpa batasan hirarki
             if ($user->hasRole('admin')) {
-                return; // Jangan terapkan scope
+                // Jika admin, jangan lakukan apa-apa (bisa lihat semua)
+                return;
             }
 
-            // Dapatkan kode hirarki pengguna yang login
             $userHierarchyCode = $user->hierarchy_level_code;
 
-            if ($userHierarchyCode) {
-                $allowedHierarchyCodes = [];
-                HierarchyLevel::getDescendantCodes($userHierarchyCode, $allowedHierarchyCodes);
-
-                // Filter query untuk hanya menyertakan data yang terkait dengan level hirarki yang diizinkan
-                $builder->whereIn('hierarchy_level_code', $allowedHierarchyCodes);
-            } else {
-                // Jika pengguna tidak memiliki hierarchy_level_code, mungkin mereka tidak melihat data apa pun
-                $builder->whereRaw('1 = 0'); // Query yang selalu false, tidak mengembalikan hasil
+            if (!$userHierarchyCode) {
+                // Jika tidak punya hirarki, jangan tampilkan apa-apa
+                $builder->whereRaw('1 = 0'); // Kondisi yang selalu salah
+                return;
             }
-        } else {
-            // Jika pengguna tidak login, mereka tidak melihat data apa pun yang dibatasi hirarki
-            $builder->whereRaw('1 = 0');
+            
+            // Logika ini sama seperti di Trait sebelumnya
+            $level = HierarchyLevel::where('code', $userHierarchyCode)->with('parent.parent')->first();
+
+            if ($level) {
+                 if ($level->parent_code === null) {
+                    $builder->where('unitupi', $userHierarchyCode);
+                } elseif ($level->parent && $level->parent->parent_code === null) {
+                    $builder->where('unitap', $userHierarchyCode);
+                } else {
+                    $builder->where('unitup', $userHierarchyCode);
+                }
+            } else {
+                 $builder->whereRaw('1 = 0');
+            }
         }
     }
 }

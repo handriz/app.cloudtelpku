@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Imports\MasterDataPelangganImport;
+use App\Imports\MappingKddkImport;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,13 +15,17 @@ use App\Notifications\ImportFinishedNotification;
 use App\Notifications\ImportStartedNotification;
 use App\Notifications\ImportHeaderValidationFailedNotification; 
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
-class ProcessPelangganImport implements ShouldQueue
+class ProcessMappingKddkImport implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected $filePath;
     protected $userId;
+
+    private $sourceFolder = 'uploads_sementara_mapping/';
+    private $destinationFolder = 'public/mapping_photos/';
 
     public function __construct(string $filePath, int $userId)
     {
@@ -45,7 +49,7 @@ class ProcessPelangganImport implements ShouldQueue
 
             // Buat instance importer dan langsung jalankan proses import.
             // Gunakan path absolut untuk membaca file.
-            $import = new MasterDataPelangganImport();
+            $import = new MappingKddkImport();
             Excel::import($import, $absolutePath);
                         
             // Hapus file setelah proses import selesai.
@@ -72,3 +76,4 @@ class ProcessPelangganImport implements ShouldQueue
         }
     }
 }
+

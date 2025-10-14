@@ -54,22 +54,26 @@ class PermissionSeeder extends Seeder
             ['name' => 'edit-permission', 'description' => 'Mengedit izin'],
             ['name' => 'delete-permission', 'description' => 'Menghapus izin'],
 
-            // Manajemen Izin
+            // Manajemen Hirarki
             ['name' => 'manage-hierarchy-levels', 'description' => 'Mengelola modul level hirarki (induk)'],
             ['name' => 'view-hierarchy-level-list', 'description' => 'Melihat daftar level hirarki'],
             ['name' => 'create-hierarchy-level', 'description' => 'Membuat level hirarki baru'],
             ['name' => 'edit-hierarchy-level', 'description' => 'Mengedit level hirarki'],
             ['name' => 'delete-hierarchy-level', 'description' => 'Menghapus level hirarki'],
 
-            // Manajemen Data
+            // Manajemen Bank Data
             ['name' => 'view-dashboard-master-data', 'description' => 'Melihat dashboard rekapan Master Data'],
-            ['name' => 'manage-master-data', 'description' => 'Mengelola modul Master Data induk'],
+            ['name' => 'manage-data-bank', 'description' => 'Mengelola modul Bank Data'],
             ['name' => 'view-master-data', 'description' => 'Melihat Data Pelanggan'],
             ['name' => 'view-queue-monitor', 'description' => 'Monitoring Antrian Upload'],
-            ['name' => 'upload-master_data', 'description' => 'Mengupload Master Data Pelanggan (Excel)'],
+            ['name' => 'upload-master-data', 'description' => 'Mengupload Master Data Pelanggan (Csv)'],
+            ['name' => 'upload-mapping-data', 'description' => 'Mengupload Data Mapping Pelanggan (Csv)'],
             ['name' => 'edit-master-data', 'description' => 'Mengedit satu data Master Data Pelanggan'],
             ['name' => 'delete-master-data', 'description' => 'Menghapus data Master Data Pelanggan'],
-                
+            
+            // Manajemen Data
+            ['name' => 'access-data-bank', 'description' => 'Mengelola modul Bank Data'],
+
             // Manajemen Worker
             ['name' => 'manage-workers', 'description' => 'Mengelola dan memantau queue workers (Supervisor)'],
         ];
@@ -87,8 +91,8 @@ class PermissionSeeder extends Seeder
         // --- Kaitkan Izin dengan Peran ---
 
         $adminRole = Role::where('name', 'admin')->firstOrFail();
-        $tlUserRole = Role::where('name', 'tl_user')->firstOrFail();
-        $appUserRole = Role::where('name', 'app_user')->firstOrFail();
+        $tlUserRole = Role::where('name', 'team')->firstOrFail();
+        $appUserRole = Role::where('name', 'appuser')->firstOrFail();
         $executiveUserRole = Role::where('name', 'executive_user')->firstOrFail();
 
         // Pastikan peran ditemukan
@@ -108,7 +112,11 @@ class PermissionSeeder extends Seeder
             'manage-users',
             'view-user-list',
             'create-user',
-            'edit-user'
+            'edit-user',
+            'manage-data-bank',
+            'mapping-pelanggan',
+            'mapping-validasi',
+            'smart-target'
         ])->pluck('id');
         $tlUserRole->permissions()->sync($tlUserPermissions);
 

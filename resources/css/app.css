@@ -1,3 +1,30 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Kontainer untuk header tab */
+#tabs-header {
+    @apply border-b border-gray-200 dark:border-gray-700 flex overflow-x-auto;
+    /* Menyembunyikan scrollbar */
+    scrollbar-width: none; -ms-overflow-style: none;
+}
+#tabs-header::-webkit-scrollbar {
+    @apply hidden;
+}
+
+/* Style default untuk semua tombol tab */
+.tab-button {
+    @apply px-4 py-2 font-medium text-sm whitespace-nowrap rounded-t-lg -mb-px
+           border-x border-t transition-colors duration-150;
+}
+
+/* Style untuk tab yang TIDAK AKTIF */
+.tab-button:not(.active) {
+    @apply text-gray-500 bg-gray-100 dark:bg-gray-700 border-transparent hover:bg-gray-200 dark:hover:bg-gray-600;
+}
+
+/* Style untuk tab yang AKTIF */
+.tab-button.active {
+    @apply bg-white dark:bg-gray-800 text-indigo-600 border-gray-200 dark:border-gray-600 
+          border-b-transparent z-10 relative shadow-sm;
+}

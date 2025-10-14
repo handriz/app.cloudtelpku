@@ -9,57 +9,17 @@
 
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" integrity="sha512-..." crossorigin="anonymous" referrerpolicy="no-referrer" />
         <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
 
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+        
         @vite(['resources/css/app.css', 'resources/js/app.js'])
-        <style>
-            .sidebar-collapsed {
-                width: 70px !important;
-            }
-            .sidebar-collapsed .menu-text {
-                display: none;
-            }
-            html, body {
-                width: 100%;
-            }
-            .flex {
-            }
-            .tab-button.active {
-                border-color: #4f46e5;
-                color: #4f46e5;
-            }
-            /* KUNCI PERBAIKAN CSS */
-            .tabs-header-wrapper {
-                display: flex;
-                align-items: center;
-                overflow: hidden;
-            }
-            #tabs-header {
-                flex-grow: 1;
-                flex-shrink: 1;
-                display: flex;
-                flex-wrap: nowrap;
-                overflow-x: auto;
-                scrollbar-width: none;
-                -ms-overflow-style: none;
-                white-space: nowrap; /* Penting untuk menjaga tab pada satu baris */
-            }
-            #tabs-header::-webkit-scrollbar {
-                display: none;
-            }
-            .tab-scroll-button {
-                flex-shrink: 0;
-                padding: 0.5rem;
-                cursor: pointer;
-            }
-            .tab-close-button {
-                margin-left: 0.5rem;
-                font-size: 0.75rem;
-                cursor: pointer;
-            }
-        </style>
+    <style>
+        .sidebar-collapsed { width: 70px !important; }
+        .sidebar-collapsed .menu-text { display: none; }
+    </style>
     </head>
     <body class="font-sans antialiased bg-gray-100 dark:bg-gray-900" 
           @php
@@ -69,11 +29,11 @@
                   case 'admin':
                       $dashboardRoute = 'admin.dashboard';
                       break;
-                  case 'tl_user':
-                      $dashboardRoute = 'tl_user.dashboard';
+                  case 'team':
+                      $dashboardRoute = 'team.dashboard';
                       break;
-                  case 'app_user':
-                      $dashboardRoute = 'app_user.dashboard';
+                  case 'appuser':
+                      $dashboardRoute = 'appuser.dashboard';
                       break;
                   case 'executive_user':
                       $dashboardRoute = 'executive.dashboard';
@@ -118,15 +78,16 @@
                 </main>
             </div>
         </div>
-        <div id="main-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 dark:bg-opacity-80 flex items-center justify-center z-50 hidden">
-            
-            <div id="modal-panel" class="bg-white dark:bg-gray-800 rounded-lg shadow-xl transform transition-all sm:max-w-lg w-full">
-                
-                <div id="modal-content" class="p-6">
-                    {{-- Konten dari server akan dimuat di sini --}}
-                </div>
 
+        <div id="main-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 dark:bg-opacity-80 flex items-center justify-center z-50 hidden p-4">
+            {{-- Panel utama dibuat menjadi flex container vertikal --}}
+            <div id="modal-panel" class="bg-white dark:bg-gray-800 rounded-lg shadow-xl transform transition-all sm:max-w-4xl w-full max-h-[90vh] flex flex-col">
+                <div id="modal-content" class="overflow-y-auto">
+                    {{-- Konten dinamis (form, dll.) akan dimuat di sini --}}
+                </div>
             </div>
         </div>
+        
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     </body>
 </html>

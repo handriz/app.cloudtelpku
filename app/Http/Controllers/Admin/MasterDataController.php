@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use App\Jobs\ProcessPelangganImport;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 
 class MasterDataController extends Controller
@@ -23,12 +24,32 @@ class MasterDataController extends Controller
             ->get();
         $latestBulanRekap = MasterDataPelanggan::max('V_BULAN_REKAP');
         $totalPelanggan = MasterDataPelanggan::where('STATUS_DIL', 'AKTIF')->count();
-
-        // Optimasi: Ambil data daya dalam satu query, lalu proses dengan Collection
         $distribusilayanan = $rekapData->groupBy('JENISLAYANAN')->map->sum('count');
-        $pelangganByDaya = $rekapData->groupBy('DAYA')->map->sum('count');
-        $pelangganPrabayarByDaya = $rekapData->where('JENISLAYANAN', 'Prabayar')->pluck('count', 'DAYA');
-        $pelangganPaskabayarByDaya = $rekapData->where('JENISLAYANAN', 'Paskabayar')->pluck('count', 'DAYA');   
+
+        $sortableColumns = ['DAYA', 'total_pelanggan'];
+        $sortColumn = $request->input('sort', 'DAYA');
+        $sortDirection = $request->input('direction', 'asc');
+
+        // Validasi untuk keamanan
+        if (!in_array($sortColumn, $sortableColumns)) {
+            $sortColumn = 'DAYA';
+        }
+
+        $query = DB::table('master_data_pelanggan')
+            ->select('DAYA', DB::raw('count(*) as total_pelanggan'))
+            ->groupBy('DAYA');
+        if ($sortColumn === 'DAYA') {
+            // Jika sorting berdasarkan DAYA, paksa untuk diurutkan sebagai angka
+            $query->orderByRaw('CAST(DAYA AS UNSIGNED) ' . $sortDirection);
+        } else {
+            // Jika sorting berdasarkan total_pelanggan, gunakan orderBy biasa
+            $query->orderBy($sortColumn, $sortDirection);
+        }
+
+        $pelangganByDaya = $query->paginate(10)->withQueryString();
+
+        $pelangganPrabayarByDaya = $rekapData->where('JENISLAYANAN', 'PRABAYAR')->pluck('count', 'DAYA');
+        $pelangganPaskabayarByDaya = $rekapData->where('JENISLAYANAN', 'PASKABAYAR')->pluck('count', 'DAYA');   
 
         $viewData = compact(
             'totalPelanggan',
@@ -66,7 +87,7 @@ class MasterDataController extends Controller
     {
         // Validasi permintaan untuk memastikan semua data chunk lengkap
         $validated = $request->validate([
-            'file' => 'required|file', // Asumsi nama input file dari JS adalah 'file'
+            'file' => 'required|file|mimes:csv,txt', // Asumsi nama input file dari JS adalah 'file'
             'chunkIndex' => 'required|integer',
             'fileName' => 'required|string',
         ]);
@@ -135,6 +156,27 @@ class MasterDataController extends Controller
             Storage::delete($finalPath); // Hapus juga file final yang mungkin korup
             return response()->json(['error' => 'Gagal memproses file di server.'], 500);
         }
+    }
+
+
+    public function downloadFormat()
+    {
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="format_upload_master_pelanggan.csv"',
+        ];
+
+        // Ambil daftar kolom langsung dari model untuk memastikan selalu sinkron
+        $columns = (new MasterDataPelanggan)->getFillable();
+
+        $callback = function() use ($columns) {
+            $file = fopen('php://output', 'w');
+            // Tulis header ke file CSV dengan delimiter titik koma (;)
+            fputcsv($file, $columns, ';');
+            fclose($file);
+        };
+
+        return new StreamedResponse($callback, 200, $headers);
     }
 
     /**

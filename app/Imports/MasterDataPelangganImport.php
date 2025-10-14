@@ -7,8 +7,9 @@ use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithUpserts;
+use Maatwebsite\Excel\Concerns\WithCustomCsvSettings; 
 
-class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkReading, WithUpserts
+class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkReading, WithUpserts, WithCustomCsvSettings
 {
     /**
     * @param array $row
@@ -17,34 +18,51 @@ class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkRea
     */
     public function model(array $row)
     {
+        $koordinatX = $row['koordinat_x'];
+        $koordinatY = $row['koordinat_y'];
+
+        // Cek apakah nilai koordinat X valid. Jika tidak, set ke null.
+        // Angka 999 adalah batas aman untuk DECIMAL(11,8) -> 3 digit di depan koma
+        if (!is_numeric($koordinatX) || abs($koordinatX) > 999) {
+            $koordinatX = null;
+        }
+
+        if (!is_numeric($koordinatY) || abs($koordinatY) > 999) {
+        $koordinatY = null;
+        }
+
         return new MasterDataPelanggan([
-            'V_BULAN_REKAP'         => $row['v_bulan_rekap'],
-            'UNITUPI'               => $row['unitupi'],
-            'UNITAP'                => $row['unitap'],
-            'UNITUP'                => $row['unitup'],
-            'IDPEL'                 => $row['idpel'],
-            'TARIF'                 => $row['tarif'],
-            'DAYA'                  => $row['daya'],
-            'KOGOL'                 => $row['kogol'],
-            'KDDK'                  => $row['kddk'],
-            'NOMOR_METER_KWH'       => $row['nomor_meter_kwh'],
-            'MERK_METER_KWH'        => $row['merk_meter_kwh'],
-            'TAHUN_TERA_METER_KWH'  => $row['tahun_tera_meter_kwh'],
-            'TAHUN_BUAT_METER_KWH'  => $row['tahun_buat_meter_kwh'],
-            'CT_PRIMER_KWH'         => $row['ct_primer_kwh'],
-            'CT_SEKUNDER_KWH'       => $row['ct_sekunder_kwh'],
-            'PT_PRIMER_KWH'         => $row['pt_primer_kwh'],
-            'PT_SEKUNDER_KWH'       => $row['pt_sekunder_kwh'],
-            'FKMKWH'                => $row['fkmkwh'],
-            'JENISLAYANAN'          => $row['jenislayanan'],
-            'STATUS_DIL'            => $row['status_dil'],
-            'NOMOR_GARDU'           => $row['nomor_gardu'],
-            'NAMA_GARDU'            => $row['nama_gardu'],
-            'KOORDINAT_X'           => $row['koordinat_x'],
-            'KOORDINAT_Y'           => $row['koordinat_y'],
-            'KDPEMBMETER'           => $row['kdpembmeter'],
-            'KDAM'                  => $row['kdam'],
-            'VKRN'                  => $row['vkrn'],
+            'v_bulan_rekap'     => $row['v_bulan_rekap'],
+            'unitupi'           => $row['unitupi'],
+            'unitap'            => $row['unitap'],
+            'unitup'            => $row['unitup'],
+            'idpel'             => $row['idpel'],
+            'tarif'             => $row['tarif'],
+            'daya'              => $row['daya'],
+            'kogol'             => $row['kogol'],
+            'kddk'              => $row['kddk'],
+            'nomor_meter_kwh'   => $row['nomor_meter_kwh'],
+            'merk_meter_kwh'    => $row['merk_meter_kwh'],
+            'tahun_tera_meter_kwh'  => $row['tahun_tera_meter_kwh'],
+            'tahun_buat_meter_kwh'  => $row['tahun_buat_meter_kwh'],
+            'ct_primer_kwh'     => $row['ct_primer_kwh'],
+            'ct_sekunder_kwh'   => $row['ct_sekunder_kwh'],
+            'pt_primer_kwh'     => $row['pt_primer_kwh'],
+            'pt_sekunder_kwh'   => $row['pt_sekunder_kwh'],
+            'fkmkwh'            => $row['fkmkwh'],
+            'jenislayanan'      => $row['jenislayanan'],
+            'status_dil'        => $row['status_dil'],
+            'nomor_gardu'       => $row['nomor_gardu'],
+            'nama_gardu'        => $row['nama_gardu'],
+            'koordinat_x'       => $koordinatX,
+            'koordinat_y'       => $koordinatY,
+            'kdpembmeter'       => $row['kdpembmeter'],
+            'kdam'              => $row['kdam'],
+            'vkrn'              => $row['vkrn'],
+            'kdpt'              => $row['kdpt'],
+            'kdpt_2'            => $row['kdpt_2'],
+            'pemda'             => $row['pemda'],
+            'ket_keperluan'     => $row['ket_keperluan'],
         ]);
     }
 
@@ -56,5 +74,12 @@ class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkRea
     public function chunkSize(): int
     {
         return 1000; // Proses 1000 baris per putaran (aman untuk file besar)
+    }
+
+    public function getCsvSettings(): array
+    {
+        return [
+            'delimiter' => ';'
+        ];
     }
 }

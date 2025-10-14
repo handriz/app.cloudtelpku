@@ -13,38 +13,55 @@ return new class extends Migration
     {
         Schema::create('master_data_pelanggan', function (Blueprint $table) {
             $table->id(); // Primary key otomatis
-            $table->string('V_BULAN_REKAP')->nullable(); // Contoh: '2023-01' atau 'JAN2023'
-            $table->string('UNITUPI')->nullable();
-            $table->string('UNITAP')->nullable();
-            $table->string('UNITUP')->nullable();
-            $table->string('IDPEL')->unique(); // IDPEL harus unik
-            $table->string('TARIF')->nullable();
-            $table->string('DAYA')->nullable();
-            $table->string('KOGOL')->nullable();
-            $table->string('KDDK')->nullable();
-            $table->string('NOMOR_METER_KWH')->nullable();
-            $table->string('MERK_METER_KWH')->nullable();
-            $table->string('TAHUN_TERA_METER_KWH')->nullable(); // Tahun sebagai string
-            $table->string('TAHUN_BUAT_METER_KWH')->nullable(); // Tahun sebagai string
-            $table->string('CT_PRIMER_KWH')->nullable();
-            $table->string('CT_SEKUNDER_KWH')->nullable();
-            $table->string('PT_PRIMER_KWH')->nullable();
-            $table->string('PT_SEKUNDER_KWH')->nullable();
-            $table->string('FKMKWH')->nullable();
-            $table->string('JENISLAYANAN')->nullable();
-            $table->string('STATUS_DIL')->nullable();
-            $table->string('NOMOR_GARDU')->nullable();
-            $table->string('NAMA_GARDU')->nullable();
-            $table->decimal('KOORDINAT_X', 11, 8)->nullable(); // Decimal untuk koordinat (contoh: 0.81012312)
-            $table->decimal('KOORDINAT_Y', 11, 8)->nullable(); // Decimal untuk koordinat (contoh: 101.21312312)
-            $table->string('KDPEMBMETER')->nullable();
-            $table->string('KDAM')->nullable();
-            $table->string('VKRN')->nullable();
+            $table->string('v_bulan_rekap')->nullable(); // Contoh: '2023-01' atau 'JAN2023'
+            $table->string('unitupi')->nullable();
+            $table->string('unitap')->nullable();
+            $table->string('unitup')->nullable();
+            $table->string('idpel')->unique(); // idpel harus unik
+            $table->string('tarif')->nullable();
+            $table->string('daya')->nullable();
+            $table->string('kogol')->nullable();
+            $table->string('kddk')->nullable();
+            $table->string('nomor_meter_kwh')->nullable();
+            $table->string('merk_meter_kwh')->nullable();
+            $table->string('tahun_tera_meter_kwh')->nullable(); // tahun sebagai string
+            $table->string('tahun_buat_meter_kwh')->nullable(); // tahun sebagai string
+            $table->string('ct_primer_kwh')->nullable();
+            $table->string('ct_sekunder_kwh')->nullable();
+            $table->string('pt_primer_kwh')->nullable();
+            $table->string('pt_sekunder_kwh')->nullable();
+            $table->string('fkmkwh')->nullable();
+            $table->string('jenislayanan')->nullable();
+            $table->string('status_dil')->nullable();
+            $table->string('nomor_gardu')->nullable();
+            $table->string('nama_gardu')->nullable();
+            $table->decimal('koordinat_x', 11, 8)->nullable(); // decimal untuk koordinat (contoh: 0.81012312)
+            $table->decimal('koordinat_y', 11, 8)->nullable(); // decimal untuk koordinat (contoh: 101.21312312)
+            $table->string('kdpembmeter')->nullable();
+            $table->string('kdam')->nullable();
+            $table->string('vkrn')->nullable();
+            $table->string('kdpt')->nullable();
+            $table->string('kdpt_2')->nullable();
+            $table->string('pemda')->nullable();
+            $table->string('ket_keperluan')->nullable();
             $table->timestamps(); // created_at dan updated_at
 
-            $table->index('UNITUP');
-            $table->index('UNITAP');
-            //$table->index(['UNITUP', 'V_BULAN_REKAP']);
+            // 1. Index untuk filter hirarki utama
+            $table->index('idpel');
+            $table->index('unitupi');
+            $table->index('unitup');
+            $table->index('unitap');
+
+            // 2. Index untuk query agregat dan count
+            $table->index('status_dil');
+
+            // 3. Composite Index (Indeks Gabungan) untuk performa query GROUP BY
+            // Ini adalah pengoptimalan paling PENTING untuk query rekapData Anda.
+            // Urutan kolom penting: filter dulu, baru group by.
+            $table->index(['unitupi', 'jenislayanan', 'daya']);
+            $table->index(['unitap', 'jenislayanan', 'daya']);
+            $table->index(['unitup', 'jenislayanan', 'daya']);
+
         });
     }
 

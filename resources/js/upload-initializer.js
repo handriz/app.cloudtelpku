@@ -1,5 +1,5 @@
 // File: resources/js/upload-initializer.js
-// VERSI FINAL PALING STABIL
+// VERSI FINAL DENGAN VALIDASI FORMAT FILE CSV
 
 function initializeUploadForm() {
     const uploadForm = document.getElementById('upload-form');
@@ -60,6 +60,22 @@ function initializeUploadForm() {
             return;
         }
 
+        const file = fileInput.files[0];
+
+        // ===== BLOK VALIDASI TIPE FILE YANG BARU DITAMBAHKAN =====
+        const allowedExtensions = ['.csv'];
+        const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+
+        if (!allowedExtensions.includes(fileExtension)) {
+            statusMessage.textContent = 'Gagal: Format file tidak valid. Harap unggah file dengan format .csv';
+            statusMessage.className = 'mt-2 text-sm text-red-500';
+            // Reset pilihan file yang salah
+            uploadForm.reset(); 
+            fileNameDisplay.textContent = '';
+            return; // Hentikan proses jika file salah
+        }
+        // ===== AKHIR BLOK VALIDASI =====
+
         // Ambil URL dari atribut data-* DARI DALAM FUNGSI INI
         const chunkUrl = uploadForm.dataset.chunkUrl;
         const mergeUrl = uploadForm.dataset.mergeUrl;
@@ -73,7 +89,6 @@ function initializeUploadForm() {
         uploadButton.disabled = true;
         uploadButton.classList.add('opacity-50', 'cursor-not-allowed');
 
-        const file = fileInput.files[0];
         const chunkSize = 1 * 1024 * 1024; // 1MB
         const totalChunks = Math.ceil(file.size / chunkSize);
         const uniqueFileName = Date.now() + '-' + file.name.replace(/[^a-zA-Z0-9.-_]/g, '');

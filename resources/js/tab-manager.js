@@ -109,15 +109,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (!targetLink) return;
 
-        // A. Link Paginasi
-        if (targetLink.closest('[data-pagination-container]')) {
-            e.preventDefault();
+        // ===================================================================
+        // ===== MODIFIKASI UTAMA: Menangani SEMUA Link AJAX dalam Tab =====
+        // ===================================================================
+        // Cek apakah link berada di dalam konten tab (#tabs-content)
+        // dan BUKAN link untuk membuka tab baru.
+        if (targetLink.closest('#tabs-content') && !targetLink.hasAttribute('data-tab-link')) {
+            e.preventDefault(); // Mencegah refresh
             const activeTabName = getActiveTabName();
             if (activeTabName) {
+                // Gunakan fungsi loadTabContent yang sudah ada!
                 loadTabContent(activeTabName, targetLink.href);
             }
             return;
         }
+        // ===================================================================
+
 
         // B. Link Menu Sidebar (Buka Tab)
         if (targetLink.hasAttribute('data-tab-link')) {
@@ -154,7 +161,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // B. Submit Form di Dalam Modal (Edit User, dll)
         if (formInModal) {
-            // Jika form punya handler khusus di file lain (seperti upload), ABAIKAN.
             if (formInModal.hasAttribute('data-custom-handler')) {
                 return;
             }
@@ -225,7 +231,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const params = new URLSearchParams(new FormData(searchForm)).toString();
                 const url = `${searchForm.action}?${params}`;
                 loadTabContent(getActiveTabName(), url);
-            }, 400);
+            }, 900);
         }
     });
     
@@ -251,7 +257,8 @@ document.addEventListener('DOMContentLoaded', function () {
         tabButton.href = url;
         tabButton.dataset.url = url;
         tabButton.textContent = tabName;
-        tabButton.className = 'tab-button flex items-center px-4 py-2 font-medium text-sm whitespace-nowrap rounded-t-lg transition-colors duration-150 ease-in-out text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700';
+        
+        tabButton.className = 'tab-button flex items-center';
         tabButton.dataset.tabName = tabName;
         tabButton.onclick = (e) => {
             e.preventDefault();
@@ -260,7 +267,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (isClosable) {
             const closeButton = document.createElement('i');
-            closeButton.className = 'tab-close-button fas fa-times text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 ml-2';
+            closeButton.className = 'tab-close-button fas fa-times text-gray-400 hover:text-gray-900 ml-2';
             closeButton.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -282,7 +289,14 @@ document.addEventListener('DOMContentLoaded', function () {
     function loadTabContent(tabName, url) {
         const tabContent = document.getElementById(`${tabName}-content`);
         if (!tabContent) return;
-        tabContent.innerHTML = `<div class="p-8 text-center text-gray-500">Memuat...</div>`;
+
+        if (window.mapInstance) {
+            window.mapInstance.remove();
+            window.mapInstance = null;
+        }
+
+        tabContent.innerHTML = `<div class="flex justify-center items-center p-10"><i class="fas fa-spinner fa-spin fa-3x text-gray-400"></i></div>`;
+        
         let fetchUrl = new URL(url, window.location.origin);
         fetchUrl.searchParams.set('is_ajax', '1');
 
@@ -298,18 +312,123 @@ document.addEventListener('DOMContentLoaded', function () {
                 const clearButton = tabContent.querySelector('#clear-search-button');
                 if (clearButton) clearButton.classList.remove('hidden');
             }
+
+            const mapContainer = tabContent.querySelector('#map');
+            if (mapContainer) {
+                initializeMap(mapContainer);
+            }
             updateScrollButtons();
+            
+            const cleanUrl = new URL(url, window.location.origin);
+            cleanUrl.searchParams.delete('is_ajax');
+            history.pushState({ tab: tabName }, '', cleanUrl.toString());
         })
         .catch(error => {
             tabContent.innerHTML = `<div class="p-4 text-red-500">Gagal memuat konten.</div>`;
             console.error('Error loading tab content:', error);
         });
+
+    }
+
+    function initializeMap(mapContainer) {
+        if (!mapContainer) return;
+
+        if (window.mapInstance) {
+            window.mapInstance.remove();
+            window.mapInstance = null;
+        }
+
+        const map = L.map(mapContainer).setView([0.5071, 101.4478], 12);
+        window.mapInstance = map;
+
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(map);
+
+        const redIcon = new L.Icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+        const blueIcon = new L.Icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+        
+        const activeTabContent = mapContainer.closest('.tab-content');
+        const searchInput = activeTabContent.querySelector('#mapping-search-form input[name="search"]');
+        const searchValue = searchInput ? searchInput.value : '';
+
+        let coordinatesUrl = new URL('/team/mapping-coordinates', window.location.origin);
+        if (searchValue) {
+            coordinatesUrl.searchParams.set('search', searchValue);
+        }
+        
+        fetch(coordinatesUrl.toString())
+            .then(response => response.json())
+            .then(data => {
+                const allMarkers = L.featureGroup();
+                let markerToOpen = null;
+
+                // KONDISI 1: Menampilkan semua marker (tanpa pencarian)
+                if (data.all && data.all.length > 0) {
+                    data.all.forEach(point => {
+                        // Gunakan ikon default Leaflet (biru)
+                        const marker = L.marker([point.latitudey, point.longitudex]);
+                        marker.bindPopup(`<b>ID Pelanggan:</b> ${point.idpelanggan}`);
+                        allMarkers.addLayer(marker);
+                    });
+                }
+
+                // KONDISI 2: Menampilkan hasil pencarian (merah) dan terdekat (biru)
+                if (data.searched && data.searched.length > 0) {
+                    data.searched.forEach(point => {
+                        const marker = L.marker([point.latitudey, point.longitudex], { icon: redIcon });
+                        marker.bindPopup(`<b>IDpel (Dicari):</b> ${point.idpelanggan}`);
+                        allMarkers.addLayer(marker);
+
+                        if (!markerToOpen) {
+                            markerToOpen = marker;
+                         }
+                    });
+                }
+                if (data.nearby && data.nearby.length > 0) {
+                    data.nearby.forEach(point => {
+                        const marker = L.marker([point.latitudey, point.longitudex], { icon: blueIcon });
+                        marker.bindPopup(`<b>IDpel (Terdekat):</b> ${point.idpelanggan}`);
+                        allMarkers.addLayer(marker);
+                    });
+                }
+                
+                if (allMarkers.getLayers().length > 0) {
+                    allMarkers.addTo(map);
+                    
+                    // Jika hanya ada satu hasil pencarian (dan tidak ada data sekitar), langsung zoom ke sana
+                    if (searchValue && data.searched && data.searched.length === 1 && (!data.nearby || data.nearby.length === 0)) {
+                        map.setView(markerToOpen.getLatLng(), 18); // Zoom ke titik
+                        markerToOpen.openPopup(); // Buka popup
+                    } 
+                    // Jika ada banyak hasil (hasil cari + data sekitar)
+                    else if (markerToOpen) {
+                        map.fitBounds(allMarkers.getBounds().pad(0.1));
+                        // Kita akan buka popup setelah jeda singkat untuk memastikan fitBounds selesai
+                        setTimeout(() => {
+                            markerToOpen.openPopup();
+                        }, 500); // Jeda 500ms
+                    }
+                    // Jika tidak ada pencarian, cukup tampilkan semua
+                    else {
+                        map.fitBounds(allMarkers.getBounds().pad(0.1));
+                    }
+                }
+            })
+            .catch(error => console.error('Error fetching map data:', error));
     }
 
     function activateTab(tabName, url, pushHistory = true) {
         document.querySelectorAll('.tab-button').forEach(btn => {
-            btn.classList.remove('active', 'bg-white', 'dark:bg-gray-800', 'text-indigo-600');
-            btn.classList.add('text-gray-500', 'hover:bg-gray-200', 'dark:hover:bg-gray-700');
+            btn.classList.remove('active');
         });
         document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
 
@@ -317,21 +436,28 @@ document.addEventListener('DOMContentLoaded', function () {
         const activeTabContent = document.getElementById(`${tabName}-content`);
         
         if (activeTabButton) {
-            activeTabButton.classList.remove('text-gray-500', 'hover:bg-gray-200', 'dark:hover:bg-gray-700');
-            activeTabButton.classList.add('active', 'bg-white', 'dark:bg-gray-800', 'text-indigo-600');
+            activeTabButton.classList.add('active');
             activeTabButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
         if (activeTabContent) {
             activeTabContent.classList.remove('hidden');
+
+            const mapContainer = activeTabContent.querySelector('#map');
+            if (mapContainer) {
+                setTimeout(function() {
+                  initializeMap(mapContainer);
+            }, 150); // Diberi sedikit jeda agar transisi tab selesai
         }
+        }
+        
         if (pushHistory) {
             const newUrl = new URL(url, window.location.origin);
             newUrl.searchParams.delete('is_ajax');
-            history.pushState({ tab: tabName }, '', newUrl.toString());
+            history.replaceState({ tab: tabName }, '', newUrl.toString());
         }
         updateScrollButtons();
     }
-
+    
     function closeTab(tabName) {
         const tabToClose = tabsHeader.querySelector(`[data-tab-name="${tabName}"]`);
         const contentToClose = document.getElementById(`${tabName}-content`);
@@ -355,8 +481,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     
     function openModal(url) {
+        const mainModal = document.getElementById('main-modal');
+        const modalContent = document.getElementById('modal-content');
+
         if (!mainModal || !modalContent) return;
-        modalContent.innerHTML = '<div class="text-center p-8">Memuat...</div>';
+        modalContent.innerHTML = '<div class="text-center p-8"><i class="fas fa-spinner fa-spin fa-2x text-gray-400"></i></div>';
         mainModal.classList.remove('hidden');
 
         let fetchUrl = new URL(url, window.location.origin);
@@ -366,6 +495,17 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.text())
             .then(html => {
                 modalContent.innerHTML = html;
+                setTimeout(function() {
+                    const previewMapContainer = modalContent.querySelector('#preview-map');
+                    if (previewMapContainer) {
+                        initializePreviewMap(modalContent); // Kirim seluruh konten modal
+                    }
+                    const photoUploadInputs = modalContent.querySelectorAll('.photo-upload-input');
+                    if (photoUploadInputs.length > 0) {
+                        initializePhotoUpload(modalContent);
+                    }
+                }, 150);
+
                 if (window.UploadInitializers && typeof window.UploadInitializers.initializeUploadForm === 'function') {
                     window.UploadInitializers.initializeUploadForm();
                 }
@@ -376,6 +516,121 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
+    function initializePreviewMap(modalContent) {
+        const mapContainer = modalContent.querySelector('#preview-map');
+        const latInput = modalContent.querySelector('#latitudey_create');
+        const lonInput = modalContent.querySelector('#longitudex_create');
+
+        if (!mapContainer || !latInput || !lonInput) return;
+
+        if (mapContainer._leaflet_id) { mapContainer._leaflet_id = null; }
+
+        const previewMap = L.map(mapContainer).setView([0.5071, 101.4478], 12);
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(previewMap);
+
+        let previewMarker = null;
+
+        function updateMarker() {
+            const lat = parseFloat(latInput.value);
+            const lon = parseFloat(lonInput.value);
+            if (!isNaN(lat) && !isNaN(lon)) {
+                if (previewMarker) {
+                    previewMarker.remove();
+                }
+                previewMarker = L.marker([lat, lon]).addTo(previewMap);
+                previewMap.setView([lat, lon], 17);
+            }
+        }
+
+        latInput.addEventListener('input', updateMarker);
+        lonInput.addEventListener('input', updateMarker);
+    }
+
+    function initializePhotoUpload(modalContent) {
+        modalContent.querySelectorAll('.photo-upload-input').forEach(input => {
+            input.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                const inputId = e.target.id;
+                const statusDiv = document.getElementById(inputId.replace('_create', '_status'));
+                const filenameInput = document.getElementById(inputId.replace('_create', '_filename'));
+                const progressContainer = document.getElementById(inputId.replace('_create', '_progress_container'));
+                const progressBar = document.getElementById(inputId.replace('_create', '_progress_bar'));
+                const form = input.closest('form');
+                const uploadUrl = form.dataset.uploadPhotoUrl;
+
+                // 1. Hapus file lama jika ada
+                const oldFilename = filenameInput.value;
+                if (oldFilename) {
+                    fetch('/team/mapping-delete-photo', {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        },
+                        body: JSON.stringify({ filename: oldFilename })
+                    });
+                }
+
+                // Reset UI
+                statusDiv.innerHTML = '';
+                filenameInput.value = '';
+                if(progressContainer) progressContainer.classList.add('hidden');
+                if(progressBar) progressBar.style.width = '0%';
+
+                // Jika pengguna batal memilih file, hentikan proses
+                if (!file) {
+                    return;
+                }
+                
+                // 2. Mulai proses upload file baru
+                progressContainer.classList.remove('hidden');
+                
+                const formData = new FormData();
+                formData.append('photo', file);
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', uploadUrl, true);
+                xhr.setRequestHeader('X-CSRF-TOKEN', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
+                xhr.setRequestHeader('Accept', 'application/json');
+
+                // Event listener untuk melacak progress upload
+                xhr.upload.onprogress = function(event) {
+                    if (event.lengthComputable) {
+                        const percentComplete = Math.round((event.loaded / event.total) * 100);
+                        progressBar.style.width = percentComplete + '%';
+                        statusDiv.textContent = `Mengunggah... ${percentComplete}%`;
+                    }
+                };
+
+                // Event listener saat upload selesai
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        const data = JSON.parse(xhr.responseText);
+                        statusDiv.innerHTML = `<i class="fas fa-check-circle text-green-500"></i> Berhasil diunggah`;
+                        filenameInput.value = data.filename;
+                    } else {
+                        const error = JSON.parse(xhr.responseText);
+                        const message = error.errors?.photo?.[0] || 'Upload gagal.';
+                        statusDiv.innerHTML = `<i class="fas fa-times-circle text-red-500"></i> ${message}`;
+                        e.target.value = '';
+                        progressContainer.classList.add('hidden');
+                    }
+                };
+
+                // Event listener untuk error jaringan
+                xhr.onerror = function() {
+                    statusDiv.innerHTML = `<i class="fas fa-times-circle text-red-500"></i> Terjadi error jaringan.`;
+                    e.target.value = '';
+                    progressContainer.classList.add('hidden');
+                };
+
+                xhr.send(formData);
+            });
+        });
+    }
+    
     function closeModal() {
         if (!mainModal) return;
         mainModal.classList.add('hidden');
@@ -444,3 +699,4 @@ document.addEventListener('DOMContentLoaded', function () {
     // --- Panggil Inisialisasi di Akhir ---
     initializeDashboardTab();
 });
+
