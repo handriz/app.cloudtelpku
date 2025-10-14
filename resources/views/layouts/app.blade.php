@@ -41,7 +41,8 @@
               }
           @endphp
           data-dashboard-url="{{ route($dashboardRoute) }}">
-        <div class="flex min-h-screen bg-gray-100 dark:bg-gray-900">
+        <!-- <div class="flex min-h-screen bg-gray-100 dark:bg-gray-900"> -->
+        <div x-data="{ mobileSidebarOpen: false }" class="flex min-h-screen bg-gray-100 dark:bg-gray-900">
 
             {{-- Sidebar Kiri --}}
             @include('layouts.sidebar')
@@ -50,6 +51,18 @@
                 {{-- Navigasi Atas --}}
                 @include('layouts.navigation')
 
+                {{-- 2. Tambahkan overlay gelap yang muncul saat sidebar mobile terbuka --}}
+                <div x-show="mobileSidebarOpen" @click="mobileSidebarOpen = false" 
+                     class="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
+                     x-transition:enter="transition-opacity ease-linear duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="transition-opacity ease-linear duration-300"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     style="display: none;">
+                </div>
+                
                 {{-- Area Konten Halaman --}}
                 <main class="flex-1 overflow-y-auto pt-6 pb-12">
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
