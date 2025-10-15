@@ -16,6 +16,10 @@ use App\Http\Controllers\Api\AuthController;
 */
 Route::post('/login', [AuthController::class, 'login']);
 
+Route::get('/health', function () {
+    return response()->json(['status' => 'ok']);
+});
+
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
