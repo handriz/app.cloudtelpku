@@ -4,6 +4,7 @@ namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -27,7 +28,19 @@ class Handler extends ExceptionHandler
         $this->reportable(function (Throwable $e) {
             //
         });
+
+        $this->renderable(function (ValidationException $e, $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                // Mengembalikan response 422 JSON jika validasi gagal
+                return response()->json([
+                    'message' => 'Input yang dimasukkan tidak valid.',
+                    'errors' => $e->errors(),
+                ], 422);
+            }
+        });
     }
+
+    
 
 /**
      * Convert an authentication exception into a response.
