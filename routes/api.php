@@ -23,3 +23,10 @@ Route::get('/health', function () {
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+Route::get('/version_check', function () {
+    return response()->json([
+        'min_version' => '1.1.0', // Versi minimal yang dibutuhkan
+        'update_url' => 'https://play.google.com/store/apps/details?id=com.yourpackage.app', // URL Play Store/App Store
+    ]);
+});
