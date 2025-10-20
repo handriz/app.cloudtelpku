@@ -28,6 +28,7 @@ class User extends Authenticatable
         'role_id',
         'hierarchy_level_code',
         'is_approved',
+        'mobile_app',
     ];
 
     /**
@@ -49,6 +50,7 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
         'is_approved' => 'boolean', 
+        'mobile_app' => 'boolean', 
     ];
 
     /**

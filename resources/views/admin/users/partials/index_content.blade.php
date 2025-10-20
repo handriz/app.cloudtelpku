@@ -84,8 +84,11 @@
                                     Level Akses
                                 </th>
                                 <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider whitespace-nowrap">
-                                    Status
+                                    Akses Web
                                 </th>
+                                <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider whitespace-nowrap">
+                                    Akses Mobile
+                                </th>                                
                                  @if (Auth::user()->hasRole('admin'))
                                 <th scope="col" class="px-3 py-2 text-center text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider whitespace-nowrap">
                                     Aksi
@@ -122,6 +125,13 @@
                                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800 dark:bg-red-700 dark:text-red-100">Menunggu</span>
                                         @endif
                                     </td>
+                                    <td class="px-3 py-2 whitespace-nowrap text-sm">
+                                        @if($user->mobile_app)
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-700 dark:text-blue-100">Diizinkan</span>
+                                        @else
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-100">Diblokir</span>
+                                        @endif
+                                    </td>                                    
                                     <td class="px-3 py-2 whitespace-nowrap text-center text-sm font-medium">
                                         @can('edit-user')
                                         <a href="{{ route('manajemen-pengguna.users.edit', $user->id) }}"

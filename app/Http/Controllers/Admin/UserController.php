@@ -87,6 +87,7 @@ class UserController extends Controller
             'role_id' => ['required', 'exists:roles,id'],
             'hierarchy_level_code' => ['nullable', 'string', 'exists:hierarchy_levels,code'],
             'is_approved' => ['boolean'],
+            'mobile_app' => $request->has('mobile_app'),
         ]);
     
         if ($validator->fails()) {
@@ -123,6 +124,7 @@ class UserController extends Controller
             'role_id' => $request->role_id,
             'hierarchy_level_code' => $request->hierarchy_level_code,
             'is_approved' => $request->has('is_approved'),
+            'mobile_app' => $request->has('mobile_app'),
         ]);
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => 'Pengguna berhasil ditambahkan!', 'user' => $user]);
@@ -168,6 +170,7 @@ class UserController extends Controller
                 'nullable', 'string', 'exists:hierarchy_levels,code'
             ],
             'is_approved' => ['boolean'], // Validator akan memastikan ini boolean
+            'mobile_app' => ['boolean'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
         ]);
 

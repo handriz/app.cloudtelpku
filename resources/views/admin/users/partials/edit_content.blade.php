@@ -93,7 +93,7 @@
                 </div>
 
                 <div class="mb-4">
-                        <label for="is_approved" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status Akun</label>
+                    <label for="is_approved" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status Akun Web</label>
                         <div class="mt-2 flex items-center">
                             {{-- Trik untuk mengirim nilai 0 jika checkbox tidak dicentang --}}
                             <input type="hidden" name="is_approved" value="0">
@@ -101,11 +101,20 @@
                                    class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                    {{ old('is_approved', $user->is_approved) ? 'checked' : '' }}>
                             <label for="is_approved" class="ml-2 block text-sm text-gray-900 dark:text-gray-100">
-                                Aktif (Pengguna dapat login)
-                            </label>
+                                Aktif - (Pengguna dapat login Web)
+                        </div>
+                    </label>        
+                </div>
+                <div class="mb-4">
+                    <label for="is_approved" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status Akun Mobile</label>
+                        <div class="mt-2 flex items-center">
+                            <input type="hidden" name="mobile_app" value="0">
+                            <input type="checkbox" name="mobile_app" id="mobile_app" value="1"  
+                                    class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                    {{ old('mobile_app', $user->mobile_app) ? 'checked' : '' }}>
+                            <label for="mobile_app" class="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Aktif - (Izinkan Akses Aplikasi Mobile)</label>
                         </div>
                 </div>
-
                 {{-- Tombol Aksi --}}
                 <div class="flex items-center justify-end mt-6">
                     {{-- 3. Ganti link "Batal" menjadi tombol yang memanggil closeModal() --}}
