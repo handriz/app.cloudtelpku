@@ -61,8 +61,8 @@ class UserController extends Controller
         if ($user->hasRole('admin')) {
             $roles = Role::all();
         } elseif ($user->hasRole('team')) {
-            $roles = Role::whereIn('name', ['team', 'executive_user'])->get();
-        } elseif ($user->hasRole('team')) {
+            $roles = Role::whereIn('name', ['team', 'executive_user','appuser'])->get();
+        } elseif ($user->hasRole('appuser')) {
             $roles = Role::where('id', $user->role_id)->get();
             $hierarchyLevels = $hierarchyLevels->where('code', $user->hierarchy_level_code);
         } 

@@ -29,6 +29,7 @@ class UserSeeder extends Seeder
                 'role_id' => $adminRole->id, // Set role_id
                 'hierarchy_level_code' => null,
                 'is_approved' => true,
+                'mobile_app' => true,
             ]
         );
 
