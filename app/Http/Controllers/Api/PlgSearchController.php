@@ -19,7 +19,7 @@ class PlgSearchController extends Controller
     {
         // 1. Validasi input query
         $validator = Validator::make($request->all(), [
-            'query' => 'required|string|min:3|max:50',
+            'query' => 'required|string|min:9|max:12',
         ]);
 
         if ($validator->fails()) {

@@ -32,4 +32,4 @@ Route::get('/version_check', function () {
     ]);
 });
 
-Route::get('/search-customer', [PlgSearchController::class, 'search']);
+Route::middleware('auth:sanctum')->get('/search-customer', [PlgSearchController::class, 'search']);

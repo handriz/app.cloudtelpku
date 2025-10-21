@@ -10,7 +10,7 @@ use fXmlRpc\Transport\HttpAdapterTransport; // Transport HTTP client
 use Http\Adapter\Guzzle7\Client as GuzzleAdapter; // HTTP Client adapter (Guzzle)
 
 // Ini adalah adapter yang kita butuhkan untuk menjembatani PSR-17 ke HTTPlug lama
-use Http\Message\MessageFactory\Psr17MessageFactory; 
+use Nyholm\Psr7\Factory\Psr17Factory;
 
 // Kita perlu implementasi PSR-17 Message Factory yang akan diadaptasi
 use GuzzleHttp\Psr7\HttpFactory; 
