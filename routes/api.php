@@ -30,6 +30,6 @@ Route::get('/version_check', function () {
         'min_version' => '1.1.0', // Versi minimal yang dibutuhkan
         'update_url' => 'http://45.13.132.18/downloads/latest_app.apk', // URL latest apk
     ]);
+});
 
 Route::get('/search-customer', [PlgSearchController::class, 'search']);
-});
