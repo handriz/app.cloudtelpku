@@ -49,8 +49,6 @@ class PlgSearchController extends Controller
                 'mapping_kddk.nokwhmeter',
                 'mapping_kddk.foto_kwh', //
                 'mapping_kddk.foto_bangunan', //
-                'master_data_pelanggan.nama_pelanggan', // PENTING: Ganti 'nama_pelanggan' jika salah
-                'master_data_pelanggan.alamat' // PENTING: Ganti 'alamat' jika salah
             )
             ->first(); // Ambil satu data saja
 
@@ -71,8 +69,6 @@ class PlgSearchController extends Controller
             'data' => [
                 'idpel' => $result->idpel,
                 'nomor_meter' => $result->nokwhmeter,
-                'nama' => $result->nama_pelanggan, // Key 'nama'
-                'alamat' => $result->alamat,           // Key 'alamat'
                 'url_foto_kwh' => $fotoKwhUrl,       // Key 'url_foto_kwh'
                 'url_foto_persil' => $fotoPersilUrl    // Key 'url_foto_persil'
             ]
