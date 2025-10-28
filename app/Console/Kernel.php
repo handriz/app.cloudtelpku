@@ -21,6 +21,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('queue:heartbeat')->everyMinute();
         $schedule->command('supervisor:status-check')->everyMinute();
         $schedule->command('app:clean-temp-photos')->daily();
+        $schedule->command('photos:process-inbox --limit=200')
+             ->everyFiveMinutes()
+                ->withoutOverlapping();
     }
 
     /**

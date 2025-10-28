@@ -66,8 +66,8 @@ class PermissionSeeder extends Seeder
             ['name' => 'manage-data-bank', 'description' => 'Mengelola modul Bank Data'],
             ['name' => 'view-master-data', 'description' => 'Melihat Data Pelanggan'],
             ['name' => 'view-queue-monitor', 'description' => 'Monitoring Antrian Upload'],
-            ['name' => 'upload-master-data', 'description' => 'Mengupload Master Data Pelanggan (Csv)'],
-            ['name' => 'upload-mapping-data', 'description' => 'Mengupload Data Mapping Pelanggan (Csv)'],
+            ['name' => 'upload-master-data', 'description' => 'Mengupload Master Data  (csv)'],
+            ['name' => 'upload-mapping-data', 'description' => 'Mengupload Data Mapping  (csv)'],
             ['name' => 'edit-master-data', 'description' => 'Mengedit satu data Master Data Pelanggan'],
             ['name' => 'delete-master-data', 'description' => 'Menghapus data Master Data Pelanggan'],
             
@@ -116,6 +116,7 @@ class PermissionSeeder extends Seeder
             'manage-data-bank',
             'mapping-pelanggan',
             'mapping-validasi',
+            'upload-mapping-data',
             'smart-target'
         ])->pluck('id');
         $tlUserRole->permissions()->sync($tlUserPermissions);

@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('mapping_kddk', function (Blueprint $table) {
+        Schema::create('temporary_mappings', function (Blueprint $table) {
             $table->id();
             $table->string('objectid')->unique();
             $table->string('idpel')->nullable();
@@ -32,13 +32,19 @@ return new class extends Migration
             $table->string('deret')->nullable();
             $table->string('sr')->nullable();
             $table->text('ket_validasi')->nullable();
+            $table->text('validation_notes')->nullable();
+            $table->json('validation_data')->nullable();
+            $table->unsignedBigInteger('locked_by')->nullable();
+            $table->timestamp('locked_at')->nullable();
             $table->string('foto_kwh')->nullable();
             $table->string('foto_bangunan')->nullable();
             $table->timestamps(); //
 
             $table->index('objectid');
             $table->index('idpel');
+            $table->index(['locked_by', 'locked_at']);
             $table->index('nokwhmeter');
+            $table->foreign('locked_by')->references('id')->on('users')->onDelete('set null');
         });
     }
 
@@ -47,6 +53,12 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('mapping_kddk');
+        Schema::dropIfExists('temporary_mappings');
+
+        Schema::table('temporary_mappings', function (Blueprint $table) {
+            $table->dropForeign(['locked_by']);
+            $table->dropIndex(['locked_by', 'locked_at']);
+            $table->dropColumn(['locked_by', 'locked_at']);
+        });
     }
 };

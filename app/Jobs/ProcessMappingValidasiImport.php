@@ -2,8 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Imports\MappingKddkImport;
+use App\Imports\MappingValidasiImport;
 use App\Models\User;
+use App\Models\TemporaryMapping;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,7 +18,7 @@ use App\Notifications\ImportHeaderValidationFailedNotification;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
-class ProcessMappingKddkImport implements ShouldQueue
+class ProcessMappingValidasiImport implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -35,6 +36,7 @@ class ProcessMappingKddkImport implements ShouldQueue
 
     public function handle(): void
     {
+        Log::info("--- JOB PROCESS MAPPING VALIDASI IMPORT DIMULAI (User: {$this->userId}) ---"); // <-- TAMBAHKAN INI
         $user = User::find($this->userId);
 
         try {
@@ -49,7 +51,7 @@ class ProcessMappingKddkImport implements ShouldQueue
 
             // Buat instance importer dan langsung jalankan proses import.
             // Gunakan path absolut untuk membaca file.
-            $import = new MappingKddkImport();
+            $import = new MappingValidasiImport();
             Excel::import($import, $absolutePath);
                         
             // Hapus file setelah proses import selesai.

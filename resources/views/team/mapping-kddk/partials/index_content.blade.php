@@ -7,11 +7,6 @@
     <div class="flex flex-col md:flex-row justify-between items-start gap-6">
         {{-- Tombol Aksi (sekarang di kiri) --}}
         <div class="flex-shrink-0 flex space-x-2">
-            @can('upload-master_data')
-            <a href="{{ route('team.mapping.upload') }}" class="inline-flex items-center px-4 py-2 bg-green-600 border rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700" data-modal-link="true">
-                <i class="fas fa-file-csv mr-2"></i><span>Upload</span>
-            </a>
-            @endcan
             <a href="{{ route('team.mapping.create') }}" class="inline-flex items-center px-4 py-2 bg-indigo-600 border rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700" data-modal-link="true">
                 <i class="fas fa-plus mr-2"></i><span>Tambah</span>
             </a>
@@ -37,36 +32,93 @@
     {{-- BAGIAN TENGAH (Judul, Peta & Foto) --}}
     {{-- ====================================================== --}}
     <div>
+        {{-- Judul dan Status Stamp --}}
         <div class="mb-4 flex items-center justify-center">
-            @if (isset($search) && $search && $mappingStatus)
-                <h2 class="text-3xl font-semibold text-gray-800 dark:text-gray-200">
-                    <span class="mr-3">Data Mapping Pelanggan - {{ $searchedIdpel }}</span>
-                </h2>
-                @if ($mappingStatus === 'valid')
-                    <img src="{{ asset('images/verified_stamp.png') }}" alt="Verified" class="h-10 w-auto" title="Status: Valid">
-                @else
-                    <img src="{{ asset('images/unverified_stamp.png') }}" alt="Unverified" class="h-10 w-auto" title="Status: Unverified / Belum divalidasi">
-                @endif
-            @else
-                <h2 class="text-3xl font-semibold text-gray-800 dark:text-gray-200">
-                    Mapping Pelanggan
-                </h2>
-            @endif
+            @php
+                $displayIdpel = $searchedIdpel ?? 'Belum Ada Pencarian';
+                $isSearched = (isset($search) && $search);
+                $isVerified = $mappingStatus === 'valid';
+            @endphp
+
+            <h2 class="text-3xl font-semibold text-gray-800 dark:text-gray-200">
+                <span class="mr-3" id="detail-title-span">Data Mapping Pelanggan - {{ $displayIdpel }}</span>
+            </h2>
+            
+            {{-- Status Stamp --}}
+            <img id="detail-status-stamp" 
+                src="{{ $isVerified ? asset('images/verified_stamp.png') : asset('images/unverified_stamp.png') }}" 
+                alt="{{ $isVerified ? 'Verified' : 'Unverified' }}" 
+                class="h-10 w-auto {{ $isSearched ? '' : 'hidden' }}" 
+                title="Status: {{ $isVerified ? 'Valid' : 'Unverified / Belum divalidasi' }}">
         </div>
         
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow">
-                <div id="map" class="w-full h-full min-h-[450px] rounded-lg z-0"></div>
+        {{-- LAYOUT HEADER BARU: 3 Kolom --}}
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6"> 
+            
+            {{-- 1. PETA (Map Container) --}}
+            <div class="lg:col-span-1 space-y-2">
+                <p class="font-semibold text-gray-700 dark:text-gray-300">Posisi Koordinat</p>
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <div id="map" class="w-full h-full min-h-[450px] rounded-lg z-0"></div>
+                </div>
+                {{-- Detail Koordinat Dinamis di bawah peta (Opsional, agar mirip Validasi yang ada di bawah) --}}
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-2 text-sm">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">Koordinat:</span>
+                    <span id="detail-lat-lon" class="font-bold text-indigo-600 dark:text-indigo-400">
+                        @if(isset($searchedMapping) && $searchedMapping->latitudey)
+                            {{ number_format($searchedMapping->latitudey, 6) }}, {{ number_format($searchedMapping->longitudex, 6) }}
+                        @else
+                            Pilih data dari tabel
+                        @endif
+                    </span>
+                </div>
             </div>
-            <div class="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col items-center justify-center min-h-[450px]">
-                <i class="fas fa-camera text-5xl text-gray-300 dark:text-gray-600"></i>
-                <p class="mt-4 font-semibold text-gray-500 dark:text-gray-400">Foto KWH Meter</p>
-                <p class="text-sm text-gray-400 dark:text-gray-500">Akan tampil di sini</p>
+
+
+            {{-- 2. FOTO KWH METER (Zoom & Tampilan Dinamis) --}}
+            <div class="lg:col-span-1 space-y-2">
+                <p class="font-semibold text-gray-700 dark:text-gray-300">Foto KWH Meter</p>
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col items-center justify-center min-h-[450px]">
+                    {{-- Link Pemicu Zoom (<a>) --}}
+                    <a href="#" class="image-zoom-trigger {{ (isset($searchedMapping) && $searchedMapping->foto_kwh) ? '' : 'hidden' }}" 
+                       data-zoom-type="kwh" id="detail-foto-kwh-link">
+                        <img id="detail-foto-kwh" 
+                             src="{{ (isset($searchedMapping) && $searchedMapping->foto_kwh) ? Storage::disk('public')->url($searchedMapping->foto_kwh) : '' }}" 
+                             alt="Foto KWH" 
+                             class="max-w-full max-h-[450px] object-contain rounded-lg">
+                    </a>
+                    
+                    {{-- Placeholder --}}
+                    <div id="placeholder-foto-kwh" 
+                         class="flex-col items-center justify-center {{ (isset($searchedMapping) && $searchedMapping->foto_kwh) ? 'hidden' : 'flex' }}">
+                        <i class="fas fa-camera text-5xl text-gray-300 dark:text-gray-600"></i>
+                        <p class="mt-4 font-semibold text-gray-500 dark:text-gray-400">Foto KWH Meter</p>
+                        <p class="text-sm text-gray-400 dark:text-gray-500">Akan tampil di sini</p>
+                    </div>
+                </div>
             </div>
-            <div class="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col items-center justify-center min-h-[450px]">
-                <i class="fas fa-building text-5xl text-gray-300 dark:text-gray-600"></i>
-                <p class="mt-4 font-semibold text-gray-500 dark:text-gray-400">Foto Bangunan (APP)</p>
-                <p class="text-sm text-gray-400 dark:text-gray-500">Akan tampil di sini</p>
+            
+            {{-- 3. FOTO BANGUNAN (Zoom & Tampilan Dinamis) --}}
+            <div class="lg:col-span-1 space-y-2">
+                <p class="font-semibold text-gray-700 dark:text-gray-300">Foto Bangunan (Persil)</p>
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-col items-center justify-center min-h-[450px]">
+                    {{-- Link Pemicu Zoom (<a>) --}}
+                    <a href="#" class="image-zoom-trigger {{ (isset($searchedMapping) && $searchedMapping->foto_bangunan) ? '' : 'hidden' }}" 
+                       data-zoom-type="persil" id="detail-foto-bangunan-link">
+                        <img id="detail-foto-bangunan" 
+                             src="{{ (isset($searchedMapping) && $searchedMapping->foto_bangunan) ? Storage::disk('public')->url($searchedMapping->foto_bangunan) : '' }}" 
+                             alt="Foto Bangunan" 
+                             class="max-w-full max-h-[450px] object-contain rounded-lg">
+                    </a>
+                         
+                    {{-- Placeholder --}}
+                    <div id="placeholder-foto-bangunan" 
+                         class="flex-col items-center justify-center {{ (isset($searchedMapping) && $searchedMapping->foto_bangunan) ? 'hidden' : 'flex' }}">
+                        <i class="fas fa-building text-5xl text-gray-300 dark:text-gray-600"></i>
+                        <p class="mt-4 font-semibold text-gray-500 dark:text-gray-400">Foto Bangunan (Persil)</p>
+                        <p class="text-sm text-gray-400 dark:text-gray-500">Akan tampil di sini</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -84,20 +136,49 @@
                         <th scope="col" class="py-2 px-6 text-left">ID Pelanggan</th>
                         <th scope="col" class="py-2 px-6 text-left">User Pendataan</th>
                         <th scope="col" class="py-2 px-6 text-left">Tanggal Dibuat</th>
-                        <th scope="col" class="relative py-2 px-6"><span class="sr-only">Aksi</span></th>
+                        <th scope="col" class="relative py-2 px-6">Aksi</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse ($mappings as $index => $map)
-                        <tr class="text-sm text-gray-700 dark:text-gray-300">
+                        {{-- [MODIFIKASI] Menambah class "data-row-clickable" dan semua "data-*" attribute --}}
+                        <tr class="data-row-clickable cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 text-sm text-gray-700 dark:text-gray-300"
+                            data-objectid="{{ $map->objectid }}"
+                            data-idpel="{{ $map->idpel }}"
+                            data-foto-kwh-url="{{ $map->foto_kwh ? Storage::disk('public')->url($map->foto_kwh) : '' }}"
+                            data-foto-bangunan-url="{{ $map->foto_bangunan ? Storage::disk('public')->url($map->foto_bangunan) : '' }}"
+                            data-lat="{{ $map->latitudey ?? 0 }}"
+                            data-lon="{{ $map->longitudex ?? 0 }}"
+                            data-status="{{ $map->ket_validasi === 'valid' ? 'valid' : 'unverified' }}"
+                            >
                             <td class="py-2 px-6 text-center font-medium">{{ $mappings->firstItem() + $index }}</td>
                             <td class="py-2 px-6 whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{{ $map->objectid }}</td>
-                            <td class="py-2 px-6 whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{{ $map->idpelanggan }}</td>
+                            <td class="py-2 px-6 whitespace-nowrap font-medium text-gray-900 dark:text-gray-100">{{ $map->idpel }}</td>
                             <td class="py-2 px-6 whitespace-nowrap">{{ $map->user_pendataan }}</td>
-                            <!-- <td class="py-2 px-6 whitespace-nowrap">{{ $map->created_at->format('d M Y, H:i') }}</td> -->
+                            <td class="py-2 px-6 whitespace-nowrap">{{ $map->user_pendataan }}</td>
                             <td class="py-2 px-6 whitespace-nowrap text-right font-medium">
+                                @if(
+                                    Auth::user()->hasRole('admin') ||
+                                    trim(Auth::user()->hierarchy_level_code) == trim($map->unitup) ||
+                                    trim(Authg->user()->hierarchy_level_code) == trim($map->unitap)
+                                )
+                                {{-- Tombol Edit --}}
                                 <a href="{{ route('team.mapping.edit', $map) }}" class="text-indigo-600 hover:text-indigo-900 mr-3" data-modal-link="true">Edit</a>
+
+                                {{-- Tombol Invalidate --}}
+                                <form action="{{ route('team.mapping-kddk.invalidate', $map->id) }}" 
+                                      method="POST" 
+                                      data-custom-handler="invalidate-action" {{-- MARKER UNTUK JS --}}
+                                      class="inline-block mr-3">
+                                    @csrf
+                                    <button type="submit" class="text-yellow-600 hover:text-yellow-900">
+                                        Invalidate
+                                    </button>
+                                </form>
+
+                                {{-- Tombol Hapus --}}
                                 <a href="#" class="text-red-600 hover:text-red-900" data-delete-url="{{ route('team.mapping.destroy', $map) }}" data-user-name="data mapping untuk {{ $map->idpelanggan }}">Hapus</a>
+                            @endif
                             </td>
                         </tr>
                     @empty

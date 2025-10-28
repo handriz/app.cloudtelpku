@@ -28,3 +28,21 @@
     @apply bg-white dark:bg-gray-800 text-indigo-600 border-gray-200 dark:border-gray-600 
           border-b-transparent z-10 relative shadow-sm;
 }
+
+.leaflet-popup-small .leaflet-popup-content {
+    /* Mengurangi ukuran font (misalnya 0.8rem atau 12px) */
+    font-size: 0.7rem !important; 
+    /* Mengurangi padding default agar pop-up lebih ringkas */
+    padding: 5px !important; 
+    /* Mengatasi masalah tinggi baris yang terlalu besar */
+    line-height: 1.2 !important; 
+}
+/* Memastikan judul/bold juga kecil */
+.leaflet-popup-small .leaflet-popup-content b {
+    font-size: 0.7rem !important;
+}
+
+.notification-alert {
+    /* Menambahkan transisi untuk efek fade-out yang mulus */
+    transition: opacity 0.5s ease-out; 
+}

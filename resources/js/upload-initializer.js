@@ -163,7 +163,172 @@ function initializeUploadForm() {
     uploadForm._handleSubmit = handleSubmit; // Simpan referensi ke handler saat ini
 }
 
+function initializeBatchPhotoUploadForm() {
+    const photoForm = document.getElementById('batch-photo-upload-form');
+    // Keluar jika form ini tidak ditemukan
+    if (!photoForm) return;
+
+    console.log("Initializing Batch Photo Upload Form..."); // Debug log
+
+    const photoInput = document.getElementById('photo-file-input');
+    const fileListDiv = document.getElementById('photo-file-list');
+    const uploadButton = document.getElementById('batch-upload-button');
+    const progressContainer = document.getElementById('batch-progress-container');
+    const progressBar = document.getElementById('batch-progress-bar');
+    const progressText = document.getElementById('batch-progress-text');
+    const statusMessage = document.getElementById('batch-status-message');
+    const dropzone = document.getElementById('photo-dropzone'); // Tambahkan dropzone
+
+    // Pastikan semua elemen ditemukan sebelum melanjutkan
+    if (!photoInput || !fileListDiv || !uploadButton || !progressContainer || !progressBar || !progressText || !statusMessage || !dropzone) {
+        console.error("Satu atau lebih elemen form batch photo upload tidak ditemukan!");
+        return;
+    }
+
+
+    let filesToUpload = [];
+
+    function updateFileList() {
+        fileListDiv.innerHTML = ''; // Kosongkan list
+        if (filesToUpload.length > 0) {
+            const list = document.createElement('ul');
+            list.className = 'list-disc pl-5';
+            filesToUpload.forEach((file) => { // Dihapus index agar tidak error jika array kosong
+                const li = document.createElement('li');
+                li.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                list.appendChild(li);
+            });
+            fileListDiv.appendChild(list);
+            uploadButton.disabled = false;
+        } else {
+             uploadButton.disabled = true;
+        }
+    }
+
+     // Event listener untuk input file
+     photoInput.addEventListener('change', (e) => {
+        filesToUpload = Array.from(e.target.files);
+        updateFileList();
+    });
+
+    // --- Logika Drag and Drop ---
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, e => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, false);
+    });
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, () => dropzone.classList.add('border-indigo-500', 'bg-indigo-50', 'dark:bg-gray-700'), false);
+    });
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, () => dropzone.classList.remove('border-indigo-500', 'bg-indigo-50', 'dark:bg-gray-700'), false);
+    });
+    dropzone.addEventListener('drop', e => {
+         // Ambil file, filter hanya gambar, lalu simpan ke filesToUpload
+         const droppedFiles = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+         filesToUpload = droppedFiles;
+
+         // Buat objek FileList baru untuk disinkronkan ke input (penting agar form submit tahu filenya)
+         const dataTransfer = new DataTransfer();
+         droppedFiles.forEach(file => dataTransfer.items.add(file));
+         photoInput.files = dataTransfer.files; // Sinkronkan
+
+         updateFileList();
+    }, false);
+    // --- Akhir Drag and Drop ---
+
+    // Pisahkan handler submit agar bisa dihapus listenernya
+    const handleBatchSubmit = async (e) => {
+        e.preventDefault();
+        if (filesToUpload.length === 0) return;
+
+        uploadButton.disabled = true;
+        uploadButton.classList.add('opacity-50', 'cursor-not-allowed');
+        progressContainer.classList.remove('hidden');
+        statusMessage.textContent = '';
+        statusMessage.className = 'mt-2 text-sm';
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+
+        let successCount = 0;
+        let errorCount = 0;
+        const totalFiles = filesToUpload.length;
+
+        // Upload satu per satu
+        for (let i = 0; i < totalFiles; i++) {
+            const file = filesToUpload[i];
+            const formData = new FormData();
+            // Penting: Nama field harus 'photos[]' sesuai validasi controller
+            formData.append('photos[]', file);
+
+            progressText.textContent = `Mengunggah foto ${i + 1} dari ${totalFiles}: ${file.name}...`;
+
+            try {
+                const response = await fetch(photoForm.action, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json'
+                    },
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    const errorMsg = result.errors ? Object.values(result.errors).flat().join(', ') : (result.message || `Upload gagal (Status ${response.status})`);
+                    console.error(`Gagal upload ${file.name}:`, errorMsg);
+                    statusMessage.innerHTML += `<p class="text-red-500">- Gagal: ${file.name} (${errorMsg})</p>`;
+                    errorCount++;
+                } else {
+                    successCount++;
+                }
+
+            } catch (error) {
+                console.error(`Error jaringan upload ${file.name}:`, error);
+                statusMessage.innerHTML += `<p class="text-red-500">- Error jaringan saat upload ${file.name}</p>`;
+                errorCount++;
+            }
+
+            // Update progress bar setelah setiap file
+            const progress = Math.round(((i + 1) / totalFiles) * 100);
+            progressBar.style.width = progress + '%';
+            progressBar.textContent = progress + '%';
+        }
+
+        // Tampilkan hasil akhir
+        progressText.textContent = `Proses upload selesai.`;
+        if (errorCount === 0) {
+            statusMessage.innerHTML = `<p class="text-green-600">Berhasil mengunggah ${successCount} foto ke inbox server.</p>`;
+            filesToUpload = [];
+            photoInput.value = '';
+            updateFileList();
+        } else {
+             statusMessage.innerHTML += `<p class="font-semibold mt-2">Total: ${successCount} sukses, ${errorCount} gagal.</p>`;
+        }
+
+        uploadButton.disabled = false;
+        uploadButton.classList.remove('opacity-50', 'cursor-not-allowed');
+    };
+
+    // Hapus listener lama jika ada sebelum menambahkan yang baru
+    if (photoForm._handleBatchSubmit) {
+        photoForm.removeEventListener('submit', photoForm._handleBatchSubmit);
+        console.log("Removed old batch submit listener."); // Debug log
+    }
+    photoForm.addEventListener('submit', handleBatchSubmit);
+    photoForm._handleBatchSubmit = handleBatchSubmit; // Simpan referensi
+    console.log("Added new batch submit listener."); // Debug log
+
+
+    // Panggil updateFileList di awal
+    updateFileList();
+    console.log("Batch Photo Upload Form Initialized."); // Debug log
+}
+
 // Daftarkan fungsi ke objek global agar bisa dipanggil oleh tab-manager.js
 window.UploadInitializers = {
-    initializeUploadForm: initializeUploadForm
+    initializeUploadForm: initializeUploadForm,
+    initializeBatchPhotoUploadForm: initializeBatchPhotoUploadForm
 };

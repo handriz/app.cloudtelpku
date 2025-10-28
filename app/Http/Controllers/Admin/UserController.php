@@ -47,9 +47,6 @@ class UserController extends Controller
         return view('admin.users.index', compact('users', 'roles', 'hierarchyLevels', 'search'));
     }
 
-    /**
-     * Tampilkan formulir untuk membuat pengguna baru.
-     */
     public function create(Request $request)
     {
         $this->authorize('create', User::class);
@@ -61,7 +58,7 @@ class UserController extends Controller
         if ($user->hasRole('admin')) {
             $roles = Role::all();
         } elseif ($user->hasRole('team')) {
-            $roles = Role::whereIn('name', ['team', 'executive_user','appuser'])->get();
+            $roles = Role::whereIn('name', ['executive_user','appuser'])->get();
         } elseif ($user->hasRole('appuser')) {
             $roles = Role::where('id', $user->role_id)->get();
             $hierarchyLevels = $hierarchyLevels->where('code', $user->hierarchy_level_code);
@@ -149,9 +146,6 @@ class UserController extends Controller
          return view('admin.users.edit', $viewData);
     }
 
-    /**
-     * Perbarui pengguna.
-     */
     public function update(Request $request, User $user)
     {
         // Otorisasi menggunakan UserPolicy
@@ -209,13 +203,6 @@ class UserController extends Controller
         return response()->json(['message' => 'Pengguna berhasil diperbarui!']);
     }
 
-    /**
-     * Hapus pengguna.
-     *
-     * @param Request $request
-     * @param  \App\Models\User  $user
-     * @return \Illuminate\Http\Response
-     */
     public function destroy(Request $request, User $user)
     {
        $this->authorize('delete', $user);

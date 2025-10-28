@@ -100,6 +100,25 @@
                 </div>
             </div>
         </div>
+
+        <div id="image-viewer-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 dark:bg-opacity-90 flex items-center justify-center z-[99] hidden p-4" style="backdrop-filter: blur(4px);">
+            <button id="image-viewer-close" class="absolute top-4 right-6 text-white text-4xl opacity-80 hover:opacity-100 z-[101]">&times;</button>
+            
+            <div class="relative w-full h-full flex items-center justify-center">
+                <img id="image-viewer-img" src="" alt="Pratinjau Gambar" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-xl">
+            
+                {{-- == INPUT METER SEMENTARA (AWALNYA HIDDEN) == --}}
+                <div id="modal-meter-input-container" class="w-full max-w-md hidden">
+                    <label for="modal-meter-input" class="block text-sm font-medium text-gray-300 mb-1 text-center">
+                        Ketik Nomor Meter Lengkap:
+                    </label>
+                    <input type="text" id="modal-meter-input" class="block w-full rounded-md border-gray-500 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-center text-lg p-2" placeholder="Nomor lengkap...">
+                </div>
+                
+            </div>
+
+            <div id="image-viewer-overlay" class="absolute inset-0 z-[100] cursor-pointer"></div>
+        </div>
         
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     </body>

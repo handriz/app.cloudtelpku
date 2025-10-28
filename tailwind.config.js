@@ -7,8 +7,18 @@ export default {
         './vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php',
         './storage/framework/views/*.php',
         './resources/views/**/*.blade.php',
+        './resources/js/**/*.js',
     ],
 
+    safelist: [
+        'h-80', // Paksa Tailwind untuk membuat kelas ini
+        // Anda mungkin perlu menambahkan kelas lain 
+        // yang gagal dimuat di sini di masa depan
+        // 'lg:col-span-1',
+        // 'lg:col-span-2',
+        // 'lg:col-span-3',
+    ],
+    
     theme: {
         extend: {
             fontFamily: {

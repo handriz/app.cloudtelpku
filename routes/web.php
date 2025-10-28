@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\SupervisorController;
 use App\Http\Controllers\Admin\MasterDataController; 
 use App\Http\Controllers\TeamUser\SmartTargetController; 
 use App\Http\Controllers\TeamUser\MappingKddkController;
+use App\Http\Controllers\TeamUser\MappingValidationController;
 
 
 /*
@@ -118,14 +119,30 @@ Route::middleware(['auth', 'verified'])->group(function () {
         });
 
         Route::resource('mapping', MappingKddkController::class);
-
         Route::get('/mapping-coordinates', [MappingKddkController::class, 'getMapCoordinates'])->name('mapping-kddk.coordinates');
-        Route::get('mapping-upload', [MappingKddkController::class, 'uploadForm'])->name('mapping.upload');
-        Route::post('mapping-kddk-upload-chunk', [MappingKddkController::class, 'uploadChunk'])->name('mapping-kddk.upload.chunk');
-        Route::post('mapping-kddk-merge-chunks', [MappingKddkController::class, 'mergeChunks'])->name('mapping-kddk.merge.chunks');
+        Route::post('/mapping-kddk/{id}/invalidate', [MappingKddkController::class, 'invalidate'])->name('mapping-kddk.invalidate');
         Route::post('mapping-upload-photo', [MappingKddkController::class, 'uploadTemporaryPhoto'])->name('mapping.upload-photo');
         Route::delete('mapping-delete-photo', [MappingKddkController::class, 'deleteTemporaryPhoto'])->name('mapping.delete-photo');
         Route::get('mapping-download-format', [MappingKddkController::class, 'downloadFormat'])->name('mapping.download-format');
+   
+        Route::prefix('mapping-validation')->name('mapping_validation.')->group(function () {
+            Route::get('/', [MappingValidationController::class, 'index'])->name('index');
+            Route::get('upload', [MappingValidationController::class, 'uploadForm'])->name('upload.form');
+            Route::get('upload-photos', [MappingValidationController::class, 'uploadPhotosForm'])->name('upload.photos.form');
+            Route::post('upload-batch-photos', [MappingValidationController::class, 'uploadBatchPhotos'])->name('upload.batch_photos');
+            Route::get('monitoring/photo-processing', [MonitoringController::class, 'photoProcessingStatus'])->name('monitoring.photos');
+            Route::post('upload-chunk', [MappingValidationController::class, 'uploadChunk'])->name('upload.chunk');
+            Route::post('merge-chunks', [MappingValidationController::class, 'mergeChunks'])->name('merge.chunks');
+
+            // Rute AJAX untuk mengunci & mendapatkan detail (Method POST)
+            Route::post('/item/{id}/lock', [MappingValidationController::class, 'lockAndGetDetails'])
+                 ->where('id', '[0-9]+')
+                 ->name('lock');
+            // Rute Aksi (tetap sama)
+            Route::post('/{id}/approve', [MappingValidationController::class, 'approve'])->name('approve');
+            Route::delete('/{id}/reject', [MappingValidationController::class, 'reject'])->name('reject');
+        });
+
     });
 
     Route::prefix('appuser')->name('appuser.')->middleware('role:appuser')->group(function () {

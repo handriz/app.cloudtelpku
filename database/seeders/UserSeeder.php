@@ -37,7 +37,7 @@ class UserSeeder extends Seeder
         User::firstOrCreate(
             ['email' => 'TL18110@appcloudtelpku.com'],
             [
-                'name' => 'Team Leader ULP Kobar',
+                'name' => 'Team Leader ULP Kotim',
                 'password' => Hash::make('password'),
                 'role_id' => $tlUserRole->id, // Set role_id
                 'hierarchy_level_code' => '18110',

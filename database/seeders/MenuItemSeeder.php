@@ -75,7 +75,7 @@ class MenuItemSeeder extends Seeder
         ]);
 
         $manajemenData = MenuItem::create([
-            'name' => 'Manajemen Bank Data',
+            'name' => 'Bank Data TE',
             'route_name' => null,
             'icon' => 'fas fa-database',
             'permission_name' => 'manage-data-bank', 
@@ -115,17 +115,17 @@ class MenuItemSeeder extends Seeder
         ]);
 
         $mapping = MenuItem::create([
-            'name' => 'Mapping Pelanggan',
+            'name' => 'Peta Pelanggan',
             'route_name' => 'team.mapping.index', 
-            'icon' => 'fas fa-map-marker-alt', 
+            'icon' => 'fas fa-location-arrow', 
             'permission_name' => 'mapping-pelanggan',
             'parent_id' => $manajemenData->id,
             'order' => 34, 
             'is_active' => true,
         ]);
         $mappingvalidasi = MenuItem::create([
-            'name' => 'Validasi KDDK',
-            'route_name' => 'team.mapping.index', 
+            'name' => 'Validasi Pendataan',
+            'route_name' => 'team.mapping_validation.index', 
             'icon' => 'fas fa-map-marker-alt', 
             'permission_name' => 'mapping-validasi',
             'parent_id' => $manajemenData->id,
@@ -224,12 +224,15 @@ class MenuItemSeeder extends Seeder
                 $top2tl->id,
                 $mapping->id,
                 $mappingvalidasi->id,
+                $pengaturan->id, 
             ]);
         }
 
         if ($appUserRole) {
             $appUserRole->menuItems()->attach([
                 $usersIndex->id,
+                $manajemenData->id,
+                $mappingvalidasi->id,
             ]);
         }
 
