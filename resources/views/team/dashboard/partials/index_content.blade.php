@@ -2,7 +2,7 @@
     {{-- Header dengan Tombol Upload --}}
     <div class="flex justify-between items-center mb-4">
         <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight ml-4 sm:ml-6 lg:ml-8">
-            {{ __('Dashboard Data Pelanggan ') }}
+            {{ __('Dashboard Rekap Pelanggan ') }}
         </h2>
         @can('upload-master-data')
         <a href="{{ route('admin.manajemen_data.upload') }}" 
@@ -67,7 +67,7 @@
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
         <div class="p-6">
             <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
-                Pelanggan Berdasarkan Daya
+                Cluster Daya
             </h3>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm text-left text-gray-700 dark:text-gray-300">
@@ -155,7 +155,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
             <div class="p-6">
                 <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4 text-center">
-                    Rekapitulasi Pelanggan Prabayar
+                    Rekap Jumlah LPB
                 </h3>
                 <ul class="divide-y divide-gray-200 dark:divide-gray-700 max-h-96 overflow-y-auto">
                     @forelse ($pelangganPrabayarByDaya->sortKeys() as $daya => $count)
@@ -174,7 +174,7 @@
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
             <div class="p-6">
                 <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4 text-center">
-                    Rekapitulasi Pelanggan Paskabayar
+                    Rekap Jumlah Paska
                 </h3>
                 <ul class="divide-y divide-gray-200 dark:divide-gray-700 max-h-96 overflow-y-auto">
                     @forelse ($pelangganPaskabayarByDaya->sortKeys() as $daya => $count)

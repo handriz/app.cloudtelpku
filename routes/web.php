@@ -120,7 +120,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::resource('mapping', MappingKddkController::class);
         Route::get('/mapping-coordinates', [MappingKddkController::class, 'getMapCoordinates'])->name('mapping-kddk.coordinates');
-        Route::post('/mapping-kddk/{id}/invalidate', [MappingKddkController::class, 'invalidate'])->name('mapping-kddk.invalidate');
+        Route::post('mapping-kddk/{id}/invalidate', [MappingKddkController::class, 'invalidate'])->name('mapping-kddk.invalidate');
+        Route::POST('mapping-kddk/{id}/promote', [MappingKddkController::class, 'promoteToValid'])->name('mapping-kddk.promote');
         Route::post('mapping-upload-photo', [MappingKddkController::class, 'uploadTemporaryPhoto'])->name('mapping.upload-photo');
         Route::delete('mapping-delete-photo', [MappingKddkController::class, 'deleteTemporaryPhoto'])->name('mapping.delete-photo');
         Route::get('mapping-download-format', [MappingKddkController::class, 'downloadFormat'])->name('mapping.download-format');

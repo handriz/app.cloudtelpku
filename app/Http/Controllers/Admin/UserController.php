@@ -84,7 +84,7 @@ class UserController extends Controller
             'role_id' => ['required', 'exists:roles,id'],
             'hierarchy_level_code' => ['nullable', 'string', 'exists:hierarchy_levels,code'],
             'is_approved' => ['boolean'],
-            'mobile_app' => $request->has('mobile_app'),
+            'mobile_app' => ['boolean'],
         ]);
     
         if ($validator->fails()) {
@@ -95,6 +95,8 @@ class UserController extends Controller
         }
     
         // Periksa izin pengguna yang sedang login
+        $loggedInUser = Auth::user();
+        $allHierarchyLevels = HierarchyLevel::all();
         $targetRole = Role::find($request->role_id);
         $targetHierarchyCode = $request->hierarchy_level_code;
     

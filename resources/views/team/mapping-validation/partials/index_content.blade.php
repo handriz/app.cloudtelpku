@@ -119,7 +119,23 @@
                         <div class="space-y-2">
                             <h4 class="font-semibold">Posisi Koordinat</h4>
                             <div id="validation-map" class="w-full h-80 lg:h-[300px] rounded-lg z-0 bg-gray-200" style="height: 300px;"></div>
-
+                            <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-2 text-sm flex items-center justify-between mt-2">
+                                {{-- Tampilan Koordinat --}}
+                                <div>
+                                    <span class="font-medium text-gray-700 dark:text-gray-300">Koordinat:</span>
+                                    <span id="validation-lat-lon" class="font-bold text-indigo-600 dark:text-indigo-400">
+                                        Memuat...
+                                    </span>
+                                </div>
+                                
+                                {{-- Ikon Street View (Gunakan ID unik: validation-street-view-link) --}}
+                                <a id="validation-street-view-link" 
+                                href="#" 
+                                rel="noopener noreferrer" 
+                                title="Buka Google Street View"
+                                class="text-blue-500 hover:text-blue-700 hidden"> <i class="fas fa-street-view fa-lg"></i>
+                                </a>
+                            </div>
                         @if(isset($itemToValidate) && $itemToValidate->latitudey && $itemToValidate->longitudex)
                             <script>
                                 document.addEventListener('DOMContentLoaded', function() {
@@ -219,4 +235,32 @@
         </div>
     </div>
 
+        {{-- ====================================================== --}}
+    {{-- MODAL UNTUK GOOGLE STREET VIEW --}}
+    {{-- ====================================================== --}}
+    <div id="street-view-modal" class="fixed top-10 right-10 hidden z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[50vw] h-[75vh] flex flex-col relative border dark:border-gray-700">
+            
+            {{-- Tombol Close (dibuat lebih besar dan mudah di-klik) --}}
+            <button id="street-view-close-button" class="absolute -top-3 -right-3 bg-red-500 hover:bg-red-700 text-white rounded-full p-2 z-10 w-8 h-8 flex items-center justify-center">
+                <i class="fas fa-times"></i>
+            </button>
+
+            {{-- Header Modal --}}
+            <div id="street-view-header" class="px-6 py-3 border-b border-gray-200 dark:border-gray-700 cursor-move">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Google Street View</h3>
+            </div>
+
+            {{-- Konten Iframe --}}
+            <div class="flex-grow p-1"> {{-- p-1 agar ada sedikit padding --}}
+                <iframe id="street-view-iframe" 
+                        src="" 
+                        frameborder="0" 
+                        allowfullscreen="" 
+                        loading="lazy"
+                        referrerpolicy="no-referrer-when-downgrade"
+                        class="w-full h-full rounded-md"></iframe>
+            </div>
+        </div>
+    </div>
 </div>

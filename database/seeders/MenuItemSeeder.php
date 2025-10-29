@@ -46,7 +46,7 @@ class MenuItemSeeder extends Seeder
         ]);
 
         $manajemenPengguna = MenuItem::create([
-            'name' => 'Manajemen Pengguna',
+            'name' => 'Manajemen User',
             'route_name' => null, 
             'icon' => 'fas fa-users',
             'permission_name' => 'manage-users', 

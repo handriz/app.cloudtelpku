@@ -224,7 +224,9 @@ class MappingValidationController extends Controller
 
             // 1. Salin data ke array & atur status valid
             $validatedData = $tempData->toArray();
-            $validatedData['ket_validasi'] = 'valid';
+
+            $validatedData['ket_validasi'] = 'verified';
+            $validatedData['enabled'] = false;
 
             // 2. Pindahkan foto dari 'unverified' ke 'verified'
             $newPhotoPaths = [];
@@ -244,27 +246,29 @@ class MappingValidationController extends Controller
                 $newPhotoPaths['foto_bangunan'] = $newPathBangunan;
             }
 
-            // 3. Buat entri baru di tabel mapping_kddk utama
+            // 3. Bersihkan data array sebelum pindah ke tabel utama
             unset(
                 $validatedData['id'], 
                 $validatedData['locked_by'], 
                 $validatedData['locked_at'],
                 $validatedData['validation_data'],
                 $validatedData['validation_notes'],
-                $validatedData['foto_kwh'],      // <-- Perbaikan
-                $validatedData['foto_bangunan']  // <-- Perbaikan
+                $validatedData['foto_kwh'],     
+                $validatedData['foto_bangunan']  
             );
+
+            // 5. Buat entri baru di tabel mapping_kddk utama
             MappingKddk::updateOrCreate(
                 ['objectid' => $objectid], // Kunci pencarian
                 array_merge($validatedData, $newPhotoPaths) // Data baru/update
             );
 
-            // 4. Hapus entri dari tabel temporary
+            // 6. Hapus entri dari tabel temporary
             $tempData->delete();
 
             DB::commit();
 
-            // 5. Kirim respon sukses (untuk AJAX)
+            // 7. Kirim respon sukses (untuk AJAX)
             if ($request->expectsJson()) {
                  // Cari item berikutnya yang tersedia untuk divalidasi user ini
                  $nextItem = $this->findNextAvailableItem(Auth::id());

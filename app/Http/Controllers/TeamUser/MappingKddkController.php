@@ -59,44 +59,68 @@ class MappingKddkController extends Controller
             
             // SKENARIO 1: User mencari IDPEL. Tampilkan semua objectid.
             $query->where('mapping_kddk.idpel', $search);
-        
+            $query->orderBy('mapping_kddk.enabled', 'DESC');
+            $query->orderByRaw("
+                CASE 
+                    WHEN mapping_kddk.ket_validasi = 'verified' THEN 1
+                    WHEN mapping_kddk.ket_validasi = 'superseded' THEN 2
+                    WHEN mapping_kddk.ket_validasi = 'recalled_1' THEN 3
+                    WHEN mapping_kddk.ket_validasi = 'rejected' THEN 4
+                    ELSE 5
+                END ASC
+            ");
+            $query->orderBy('mapping_kddk.created_at', 'desc');
+
         } else {
             
-            // SKENARIO 2: User mencari hal lain ATAU tidak mencari.
-            // Tampilkan HANYA SATU record per IDPEL (yang terbaru).
-            
-            // Buat SubQuery untuk mendapatkan ID unik (terbaru) per grup IDPEL
-            $subQuery = DB::table('mapping_kddk')->select(DB::raw('MAX(mapping_kddk.id) as id'))
-                
-                // SubQuery ini juga HARUS difilter berdasarkan hirarki
+            // 1. Buat query dalam (ranking)
+            $rankingQuery = DB::table('mapping_kddk')
+                ->select(
+                    'mapping_kddk.id', // Hanya butuh ID
+                    DB::raw("ROW_NUMBER() OVER(
+                        PARTITION BY mapping_kddk.idpel 
+                        ORDER BY 
+                            mapping_kddk.enabled DESC, -- Prioritas 1: enabled = true
+                            CASE mapping_kddk.ket_validasi
+                                WHEN 'verified' THEN 1
+                                WHEN 'superseded' THEN 2
+                                WHEN 'recalled_1' THEN 3
+                                WHEN 'rejected' THEN 4
+                                ELSE 5
+                            END ASC, -- Prioritas 2: Status 'verified'
+                            mapping_kddk.created_at DESC -- Prioritas 3: Paling baru
+                    ) as rn")
+                )
+                // Filter hirarki HARUS diterapkan di dalam ranking
                 ->when(!$user->hasRole('admin'), function ($q) use ($hierarchyFilter) {
                     $q->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
                       ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
                 });
-
+                // Terapkan filter pencarian (non-IDPEL) di dalam ranking juga
             if ($search) {
-                // Jika ini pencarian "Other" (bukan IDPEL), filter grup IDPEL
-                $subQuery->where(function($q) use ($search) {
+                $rankingQuery->where(function($q) use ($search) {
                     $q->where('mapping_kddk.idpel', 'like', "%{$search}%")
                       ->orWhere('mapping_kddk.nokwhmeter', 'like', "%{$search}%")
                       ->orWhere('mapping_kddk.user_pendataan', 'like', "%{$search}%");
                 });
             }
-            
-            $subQuery->groupBy('mapping_kddk.idpel');
-            
-            // Query utama HANYA mengambil ID yang ada di hasil SubQuery
-            $query->whereIn('mapping_kddk.id', $subQuery);
-        }
 
-        // 5. Terapkan sorting dan paginasi
-        $query->orderBy($sortColumn, $sortDirection);
-        // Terapkan paginasi ke query yang sudah lengkap
+            // 2. Buat SubQuery (query luar) yang mengambil hanya rank 1
+            $subQuery = DB::table($rankingQuery, 'ranked_mappings')
+                ->select('id')
+                ->where('rn', 1);
+            
+            // 3. Query utama HANYA mengambil ID yang ada di hasil SubQuery
+            $query->whereIn('mapping_kddk.id', $subQuery);
+            // Terapkan sorting HANYA untuk general search (non-IDPEL)    
+            $query->orderBy($sortColumn, $sortDirection);
+        }    
+
+        // 5. Terapkan paginasi
         $mappings = $query->paginate(15)->withQueryString();
 
         // 6. Siapkan Data Header (Foto, Peta, Status)
-        // Ambil data dari hasil query utama, BUKAN query terpisah
-       $searchedMapping = null;
+        $searchedMapping = null;
         $mappingStatus = null;
         $searchedIdpel = null;
         
@@ -104,8 +128,10 @@ class MappingKddkController extends Controller
             $searchedMapping = $mappings->first();
 
             if ($searchedMapping) {
-            $searchedIdpel = $searchedMapping->idpel;
-            $mappingStatus = ($searchedMapping->ket_validasi === 'valid') ? 'valid' : 'unverified';
+                $searchedIdpel = $searchedMapping->idpel;
+
+                $mappingStatus = ($searchedMapping->enabled) ? 'valid' : 'unverified';
+                
             } elseif ($isIdpelSearch) {
             // Kasus jika IDPEL dicari tapi tidak ada hasil (misal: IDPEL hanya ada di temporary)
             $searchedIdpel = $search;
@@ -424,7 +450,7 @@ class MappingKddkController extends Controller
         ]);
         // --- AKHIR LOG ---
 
-    try {
+        try {
             // Simpan file di folder sementara ('temp_photos') di disk 'local'
             // store() akan generate nama unik + mempertahankan ekstensi asli
             $path = $photo->store('temp_photos', 'local'); // <-- Lebih eksplisit pakai 'local'
@@ -520,9 +546,10 @@ class MappingKddkController extends Controller
             // --- Logika Status Baru ---
             // Kita set status baru sebagai "recalled" (ditarik)
             $tempDataArray['ket_validasi'] = 'recalled_1'; 
-            $tempDataArray['validation_notes'] = $reason; // Simpan alasan penarikan
-            $tempDataArray['validation_data'] = null;    // Pastikan kolom ini bersih
-            $tempDataArray['locked_by'] = null;      // Pastikan tidak terkunci
+            $tempDataArray['enabled'] = false;
+            $tempDataArray['validation_notes'] = $reason; 
+            $tempDataArray['validation_data'] = null;   
+            $tempDataArray['locked_by'] = null;     
             $tempDataArray['locked_at'] = null;
 
             // 5. Gunakan updateOrCreate untuk memasukkan data ke temporary_mappings
@@ -534,6 +561,10 @@ class MappingKddkController extends Controller
 
             // 6. Hapus data dari mapping_kddk (tabel utama)
             $validData->delete();
+
+            MappingKddk::where('idpel', $idpel)
+                       ->where('ket_validasi', 'superseded')
+                       ->update(['ket_validasi' => 'verified']);
 
             DB::commit();
 
@@ -552,6 +583,43 @@ class MappingKddkController extends Controller
             }
 
             return back()->with('error', 'Gagal menarik data: ' . $e->getMessage());
+        }
+    }
+
+    public function promoteToValid(Request $request, $id)
+    {
+        $dataToPromote = MappingKddk::findOrFail($id);
+        $idpel = $dataToPromote->idpel;
+
+        DB::beginTransaction();
+        try {
+            // 1. Nonaktifkan (Supersede) data LAMA yang sedang aktif
+            // Cari data dengan IDPEL yang sama & enabled = true
+            MappingKddk::where('idpel', $idpel)
+                    ->where('id', '!=', $id)
+                    ->where(function ($query) {
+                        $query->where('enabled', true)
+                           ->orWhere('ket_validasi', 'verified');
+                        })
+                       ->update([
+                            'enabled' => false,
+                            'ket_validasi' => 'superseded'
+                        ]);
+
+            // 2. Aktifkan (Promosikan) data BARU
+            $dataToPromote->enabled = true;
+            // Pastikan ket_validasi adalah 'verified' (atau 'valid' jika Anda mau, tapi 'verified' sudah cukup)
+            $dataToPromote->ket_validasi = 'verified'; 
+            $dataToPromote->save();
+
+            DB::commit();
+            
+            return back()->with('success', 'Data Object ID ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Gagal promote data ID {$id}: " . $e->getMessage());
+            return back()->with('error', 'Gagal memproses: ' . $e->getMessage());
         }
     }
 }

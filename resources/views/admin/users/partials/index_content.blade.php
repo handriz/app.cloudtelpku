@@ -2,7 +2,7 @@
     <div class="flex justify-between items-center mb-4">
         
         <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight ml-4 sm:ml-6 lg:ml-8">
-            {{ __('Manajemen Pengguna') }}
+            {{ __('Manajemen User Apps') }}
         </h2>
 
         <form id="user-search-form" action="{{ route('manajemen-pengguna.users.index') }}" method="GET" class="w-1/2 max-w-sm">

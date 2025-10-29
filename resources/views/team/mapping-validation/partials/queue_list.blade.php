@@ -25,6 +25,6 @@
         
         <p class="font-bold text-lg" title="{{ $item->idpel }}">{{ $maskedIdpel }}</p> 
         
-        <p class="text-xs text-gray-500">{{ $item->user_pendataan }}-{{ $item->objectid  }}</p>
+        <p class="text-xs text-gray-500">{{ $item->user_pendataan }} <br>ObjectId : {{ $item->objectid  }}</p>
     </a>
 @endforeach

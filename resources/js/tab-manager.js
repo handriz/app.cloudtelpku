@@ -114,6 +114,67 @@ const blueIcon = new L.Icon({
             }, 15500); // 15.5 detik untuk memastikan logikanya sama dengan yang di atas
         }
     }
+
+    function showCustomConfirm(title, message, onConfirm) {
+        const modal = document.getElementById('custom-confirm-modal');
+        const titleEl = document.getElementById('custom-confirm-title');
+        const messageEl = document.getElementById('custom-confirm-message');
+        const okButton = document.getElementById('custom-confirm-ok');
+        const cancelButton = document.getElementById('custom-confirm-cancel');
+        const overlay = modal; // Modal itu sendiri adalah overlay
+
+        if (!modal || !titleEl || !messageEl || !okButton || !cancelButton) {
+            console.error('Elemen modal konfirmasi kustom tidak ditemukan!');
+            // Fallback ke konfirmasi bawaan jika modal tidak ada
+            if (confirm(message)) {
+                onConfirm();
+            }
+            return;
+        }
+
+        // 1. Set konten
+        titleEl.textContent = title || 'Konfirmasi Tindakan';
+        messageEl.textContent = message;
+
+        // 2. Tampilkan modal
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        // 3. Buat fungsi handler (agar bisa di-remove nanti)
+        const handleConfirm = () => {
+            cleanup();
+            onConfirm(); // Jalankan callback (logika fetch)
+        };
+
+        const handleCancel = () => {
+            cleanup();
+        };
+
+        const handleOverlayClick = (e) => {
+            if (e.target === overlay) {
+                cleanup();
+            }
+        };
+
+        // 4. Buat fungsi cleanup untuk menyembunyikan modal & hapus listener
+        const cleanup = () => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            okButton.removeEventListener('click', handleConfirm);
+            cancelButton.removeEventListener('click', handleCancel);
+            overlay.removeEventListener('click', handleOverlayClick);
+        };
+
+        // 5. Hapus listener lama (jika ada sisa) dan tambahkan yang baru
+        okButton.removeEventListener('click', handleConfirm);
+        cancelButton.removeEventListener('click', handleCancel);
+        overlay.removeEventListener('click', handleOverlayClick);
+
+        okButton.addEventListener('click', handleConfirm);
+        cancelButton.addEventListener('click', handleCancel);
+        overlay.addEventListener('click', handleOverlayClick);
+    }
+
     // ===================================================================
     // ===== SATU EVENT LISTENER UNTUK SEMUA AKSI KLIK =====
     // ===================================================================
@@ -123,7 +184,8 @@ const blueIcon = new L.Icon({
         const modalCloseButton = e.target.closest('[data-modal-close]');
         const clearButton = e.target.closest('#clear-search-button');
         const targetLink = e.target.closest('a');
-        const isActionOrForm = e.target.closest('form[data-custom-handler="invalidate-action"]') || 
+        const isActionOrForm = e.target.closest('form[data-custom-handler="invalidate-action"]') ||
+                            e.target.closest('form[data-custom-handler="promote-action"]') || 
                                e.target.closest('[data-delete-url]');
 
         if (isActionOrForm) {
@@ -147,7 +209,146 @@ const blueIcon = new L.Icon({
             const bangunanLinkEl = activePanel.querySelector('#detail-foto-bangunan-link');
             const bangunanImgEl = activePanel.querySelector('#detail-foto-bangunan');
             const bangunanPlaceholderEl = activePanel.querySelector('#placeholder-foto-bangunan');
-            
+            const latLonEl = activePanel.querySelector('#detail-lat-lon');
+            const streetViewLinkEl = activePanel.querySelector('#google-street-view-link');
+            if (latLonEl && streetViewLinkEl) {
+                // Cek apakah data lat/lon valid (bukan 0 atau string kosong)
+                if (data.lat && data.lon && parseFloat(data.lat) !== 0 && parseFloat(data.lon) !== 0) {
+                    const lat = parseFloat(data.lat);
+                    const lon = parseFloat(data.lon);
+                    
+                    // 1. Update Teks Koordinat
+                    latLonEl.textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+                    
+                    // 2. Buat URL Street View
+                    const streetViewUrl = `https://www.google.com/maps?q&layer=c&cbll=${lat},${lon}`;
+                    
+                    // 3. Update Link Icon
+                    streetViewLinkEl.href = streetViewUrl;
+                    
+                    // 4. Tampilkan Icon
+                    streetViewLinkEl.classList.remove('hidden');
+                    
+                } else {
+                    // Jika data tidak valid (misal 0,0 atau null)
+                    latLonEl.textContent = 'Koordinat tidak valid';
+                    streetViewLinkEl.classList.add('hidden'); // Sembunyikan icon
+                }
+            }
+
+            const streetViewModal = document.getElementById('street-view-modal');
+            const streetViewIframe = document.getElementById('street-view-iframe');
+            const streetViewCloseButton = document.getElementById('street-view-close-button');
+            const streetViewHeader = document.getElementById('street-view-header');
+
+            if (streetViewModal && streetViewIframe && streetViewCloseButton && streetViewHeader) {
+
+                // Fungsi handler untuk membuka modal
+                const handleStreetViewClick = (e) => {
+                    e.preventDefault(); // Mencegah link href="#" melompat ke atas halaman
+                    e.stopPropagation(); // Mencegah event klik baris (dataRow) terpicu lagi
+
+                    if (data.lat && data.lon && parseFloat(data.lat) !== 0 && parseFloat(data.lon) !== 0) {
+                        const lat = parseFloat(data.lat);
+                        const lon = parseFloat(data.lon);
+                        
+                        // URL Google Maps Embed API untuk Iframe
+                        const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=AIzaSyCf3yOKoZPFB7y0clP6Jdks4mJtpmzWMe4`;
+                        
+                        streetViewIframe.src = streetViewUrl; // Atur src iframe
+                        streetViewModal.classList.remove('hidden'); // Tampilkan modal
+                        // streetViewModal.classList.add('flex'); // Gunakan flex untuk centering
+                        // document.body.style.overflow = 'hidden'; // Nonaktifkan scroll body
+                    } else {
+                        alert('Koordinat tidak valid untuk Street View.');
+                    }
+                };
+
+                // Fungsi handler untuk menutup modal
+                const closeStreetViewModal = () => {
+                    streetViewModal.classList.add('hidden');
+                    streetViewIframe.src = ""; // Kosongkan src iframe untuk menghentikan proses
+                    // streetViewModal.classList.remove('flex');
+                    // document.body.style.overflow = ''; // Aktifkan kembali scroll body
+                };
+
+                streetViewModal.style.left = '';
+                streetViewModal.style.top = '';
+                streetViewModal.style.right = '';
+
+                let isDragging = false;
+                let offsetX, offsetY;
+
+                // Fungsi saat mousedown di header
+                const onMouseDown = (e) => {
+                    // Hanya geser jika targetnya adalah header (bukan tombol close di header)
+                    if (e.target.id !== 'street-view-header' && !e.target.closest('#street-view-header')) return;
+
+                    isDragging = true;
+                    
+                    // Hitung posisi mouse relatif terhadap pojok kiri atas modal
+                    offsetX = e.clientX - streetViewModal.getBoundingClientRect().left;
+                    offsetY = e.clientY - streetViewModal.getBoundingClientRect().top;
+                    
+                    streetViewHeader.style.cursor = 'grabbing'; // Ubah cursor saat digeser
+                    document.body.style.userSelect = 'none'; // Matikan seleksi teks saat digeser
+
+                    // Tambahkan listener ke seluruh dokumen
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                };
+
+                // Fungsi saat mouse digerakkan
+                const onMouseMove = (e) => {
+                    if (!isDragging) return;
+                    
+                    // Hitung posisi baru modal
+                    let newX = e.clientX - offsetX;
+                    let newY = e.clientY - offsetY;
+
+                    // Terapkan posisi baru via inline style
+                    streetViewModal.style.left = `${newX}px`;
+                    streetViewModal.style.top = `${newY}px`;
+                    
+                    // Hapus style 'right' agar 'left' bisa bekerja
+                    streetViewModal.style.right = 'auto'; 
+                };
+
+                // Fungsi saat mouse dilepas
+                const onMouseUp = () => {
+                    isDragging = false;
+                    
+                    streetViewHeader.style.cursor = 'move'; // Kembalikan cursor
+                    document.body.style.userSelect = ''; // Nyalakan lagi seleksi teks
+
+                    // Hapus listener dari dokumen
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+                
+                // --- 4. ATUR EVENT LISTENERS ---
+                
+                // PENTING: Hapus listener lama sebelum menambah yang baru
+                streetViewLinkEl.removeEventListener('click', streetViewLinkEl.__handler);
+                streetViewCloseButton.removeEventListener('click', streetViewCloseButton.__handler);
+                streetViewHeader.removeEventListener('mousedown', streetViewHeader.__dragHandler);
+                // Hapus listener modal (karena overlay dihilangkan)
+                streetViewModal.removeEventListener('click', streetViewModal.__handler); 
+
+                // Simpan referensi handler baru
+                streetViewLinkEl.__handler = handleStreetViewClick;
+                streetViewCloseButton.__handler = closeStreetViewModal;
+                streetViewHeader.__handler = onMouseDown;
+
+                // Tambahkan event listener baru
+                streetViewLinkEl.addEventListener('click', handleStreetViewClick);
+                streetViewCloseButton.addEventListener('click', closeStreetViewModal);
+                streetViewHeader.addEventListener('mousedown', onMouseDown); // Tambahkan listener drag
+
+            } else {
+                console.error("Elemen modal Street View (street-view-modal, iframe, atau close-button) tidak ditemukan.");
+            }
+
             if (titleSpanEl) {
                 // Perbarui teks di dalam span
                 titleSpanEl.textContent = `Detail Peta - ${data.idpel} (Object ID: ${data.objectid})`;
@@ -158,14 +359,19 @@ const blueIcon = new L.Icon({
                 const verifiedStamp = '/images/verified_stamp.png'; 
                 const unverifiedStamp = '/images/unverified_stamp.png';
 
-                if (data.status === 'valid') {
+                if (data.enabled === 'true') {
                     stampEl.src = verifiedStamp;
-                    stampEl.alt = 'Verified';
-                    stampEl.title = 'Status: Valid';
+                    stampEl.alt = 'Valid (Aktif)';
+                    stampEl.title = 'Status: Valid (Aktif)';
                 } else {
                     stampEl.src = unverifiedStamp;
-                    stampEl.alt = 'Unverified';
-                    stampEl.title = 'Status: Unverified / Belum divalidasi';
+                    stampEl.alt = 'Tidak Aktif';
+                    // Tampilkan status spesifik jika tidak aktif
+                    let statusTitle = 'Status: Data Tidak Aktif';
+                    if (data.status === 'verified') statusTitle = 'Status: Terverifikasi (Belum Aktif)';
+                    if (data.status === 'superseded') statusTitle = 'Status: Digantikan';
+                    if (data.status === 'recalled_1') statusTitle = 'Status: Ditarik';
+                    stampEl.title = statusTitle;
                 }
                 stampEl.classList.remove('hidden'); // Pastikan stamp terlihat
             }
@@ -359,7 +565,12 @@ const blueIcon = new L.Icon({
         // ===================================================================
         // Cek apakah link berada di dalam konten tab (#tabs-content)
         // dan BUKAN link untuk membuka tab baru.
-        if (targetLink.closest('#tabs-content') && !targetLink.hasAttribute('data-tab-link')) {
+        if (targetLink.closest('#tabs-content') &&
+            !targetLink.hasAttribute('data-tab-link') && 
+            targetLink.getAttribute('target') !== '_blank' &&
+            targetLink.id !== 'google-street-view-link' &&
+            targetLink.id !== 'validation-street-view-link')
+            {
             e.preventDefault(); // Mencegah refresh
             const activeTabName = getActiveTabName();
             if (activeTabName) {
@@ -549,11 +760,15 @@ const blueIcon = new L.Icon({
     // ===== SATU EVENT LISTENER UNTUK SEMUA SUBMIT FORM =====
     // ===================================================================
     document.addEventListener('submit', function(e) {
+        console.log('SUBMIT EVENT TERDETEKSI', e.target);
+
         const searchForm = e.target.closest('form[id*="-search-form"]');
         const validationForm = e.target.closest('#detail-form-validate, #detail-form-reject');
         const invalidateForm = e.target.closest('form[data-custom-handler="invalidate-action"]');
         const formInModal = e.target.closest('#modal-content form');
+        const promoteForm = e.target.closest('form[data-custom-handler="promote-action"]');
 
+        console.log('Mencari promoteForm:', promoteForm);
         // A. Submit Form Pencarian
         if (searchForm) {
             e.preventDefault();
@@ -564,14 +779,12 @@ const blueIcon = new L.Icon({
             return;
         }
 
+        // B. Submit Form Invalidate
         if (invalidateForm) {
             e.preventDefault();
             
-            // 1. Konfirmasi
-            if (!confirm('Anda yakin ingin mengembalikan data ini ke antrian validasi?')) {
-                return;
-            }
-
+            // 1. Definisikan aksi yang akan dijalankan JIKA user menekan "OK"
+            const onConfirmAction = () => {
             const originalButton = invalidateForm.querySelector('button[type="submit"]');
             const originalText = originalButton.textContent;
             
@@ -590,19 +803,25 @@ const blueIcon = new L.Icon({
             })
             .then(response => {
                 const contentType = response.headers.get("content-type");
-                
-                // Cek apakah server mengirim JSON
-                if (contentType && contentType.indexOf("application/json") !== -1) {
-                    // Ini JSON, aman untuk diproses
-                    if (!response.ok) {
-                        return response.json().then(err => { throw err; });
+
+                if (response.ok) { // Server melaporkan SUKSES (status 2xx)
+                    if (contentType && contentType.indexOf("application/json") !== -1) {
+                        return response.json();
+                    } else {
+                        // Kasus Aneh: Sukses tapi BUKAN JSON (misal redirect setelah aksi)
+                        console.warn("Server sukses (2xx) tapi mengirim non-JSON. Anggap aksi berhasil.");
+                        // Buat objek sukses generik agar .then() berikutnya tetap jalan
+                        return { message: 'Aksi invalidate berhasil diproses.' }; 
                     }
-                    return response.json();
-                } else {
-                    // Ini HTML. Ini pasti error (Sesi Habis atau Fatal Error PHP)
-                    console.error("Server mengirim HTML, bukan JSON. Kemungkinan sesi habis.");
-                    // Paksa error untuk ditangkap oleh .catch()
-                    throw new Error('Sesi Anda telah habis. Halaman akan dimuat ulang.'); 
+                } else { // Server melaporkan ERROR (status non-2xx)
+                    if (contentType && contentType.indexOf("application/json") !== -1) {
+                        // Kasus Error Terstruktur: Gagal + pesan error JSON
+                        return response.json().then(err => { throw err; }); // Lempar error dari JSON
+                    } else {
+                        // Kasus Error Tidak Terstruktur: Gagal + HTML (Ini kemungkinan besar Sesi Habis atau Error PHP Fatal)
+                        console.error("Server error (non-2xx) dan mengirim non-JSON. Kemungkinan sesi habis.");
+                        throw new Error('Sesi Anda mungkin telah habis atau terjadi error server. Halaman akan dimuat ulang.'); // Lempar error sesi habis
+                    }
                 }
             })
             .then(data => {
@@ -611,8 +830,10 @@ const blueIcon = new L.Icon({
                 originalButton.disabled = false;
                 originalButton.classList.remove('opacity-50', 'cursor-not-allowed');
 
+                // Tampilkan notifikasi sukses
                 displayNotification('success', data.message || 'Aksi berhasil diproses.');
-
+                
+                // Refresh tab (dengan cache busting)
                 const tabNameToRefresh = getActiveTabName();
                 if (tabNameToRefresh) {
                     const tabContent = document.getElementById(`${tabNameToRefresh}-content`);
@@ -621,23 +842,22 @@ const blueIcon = new L.Icon({
                         let refreshUrl;
                         
                         if (searchForm) {
-                            // Jika ada form pencarian di tab, ambil parameternya
                             const params = new URLSearchParams(new FormData(searchForm)).toString();
                             refreshUrl = `${searchForm.action}?${params}`;
                         } else {
-                            // Fallback ke URL default tab (jika tidak ada pencarian)
                             const tabButton = document.querySelector(`#tabs-header .tab-button[data-tab-name="${tabNameToRefresh}"]`);
                             if (tabButton) refreshUrl = tabButton.dataset.url || tabButton.href;
                         }
 
                         if (refreshUrl) {
-                            loadTabContent(tabNameToRefresh, refreshUrl);
+                            let bustUrl = new URL(refreshUrl, window.location.origin);
+                            bustUrl.searchParams.set('_cb', new Date().getTime()); 
+                            loadTabContent(tabNameToRefresh, bustUrl.toString()); 
                         } else {
                             console.error("Gagal menentukan URL refresh tab.");
                         }
                     }
                 }
-                
             })
             .catch(error => {
                 // Reset tombol
@@ -645,18 +865,54 @@ const blueIcon = new L.Icon({
                 originalButton.disabled = false;
                 originalButton.classList.remove('opacity-50', 'cursor-not-allowed');
 
-                console.error('Error:', error);
-                if (error.message.includes('Sesi Anda telah habis')) {
+                console.error('Error Invalidate:', error);
+                
+                // Cek apakah ini error "Sesi Habis" yang kita buat
+                if (error.message.includes('Sesi Anda mungkin telah habis')) {
                     alert(error.message); // Beri tahu pengguna
-                    window.location.reload(); // Muat ulang halaman untuk login
+                    window.location.reload(); // Muat ulang halaman
                 } else {
-                    // Tampilkan error lain
+                    // Tampilkan error lain (misal dari JSON error server atau network error)
                     const errorMessage = error.message || 'Terjadi kesalahan saat memproses invalidate.';
                     displayNotification('error', errorMessage);
                 }
             });
+            };
 
-            return;
+            // 2. Panggil modal kustom baru kita
+            showCustomConfirm(
+                'Konfirmasi Invalidate', // Judul
+                'Anda yakin ingin mengembalikan data ini ke antrian validasi?', // Pesan
+                onConfirmAction // Aksi yang dijalankan jika "OK"
+            );
+
+            return; // Penting agar listener submit berhenti di sini
+        }
+
+        if (promoteForm) {
+            e.preventDefault(); // Cegah submit
+
+            // Definisikan aksi jika "OK"
+            const onConfirmAction = () => {
+                // Tampilkan loading di tombol
+                const originalButton = promoteForm.querySelector('button[type="submit"]');
+                originalButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; // Ganti ikon jadi spinner
+                originalButton.disabled = true;
+                
+                // Kirim form-nya
+                promoteForm.submit(); 
+                // Kita biarkan submit form biasa (bukan AJAX) karena akan me-refresh halaman
+                // dengan pesan success/error dari controller (lebih sederhana).
+            };
+
+            // Panggil modal kustom
+            showCustomConfirm(
+                'Konfirmasi Promosi Data', // Judul
+                'Jadikan data ini sebagai data VALID (AKTIF)? Data valid yang lama (jika ada) akan digantikan.', // Pesan
+                onConfirmAction // Aksi
+            );
+
+            return; // Hentikan listener
         }
 
         // C. Submit Form di Dalam Modal (Edit User, dll)
@@ -1204,10 +1460,10 @@ const blueIcon = new L.Icon({
             if (mappingClickedMarker) {
                  mappingClickedMarker.addTo(window.mapInstance);
             }
-            if (mappingClickedMarker) {
+            if (clickedMarkerRef) {
                 // Gunakan setTimeout 0 untuk menunda eksekusi ke akhir event loop saat ini
                 setTimeout(() => {
-                    mappingClickedMarker.openPopup(); 
+                    clickedMarkerRef.openPopup();
                 }, 50); // Jeda 50ms
             }
 
@@ -1781,7 +2037,64 @@ const blueIcon = new L.Icon({
             }
         } else {
             console.warn("Elemen UI Riwayat Penolakan (#rejection-history-alert) tidak ditemukan.");
-        }        
+        }
+        // --- LOGIKA BARU UNTUK STREET VIEW VALIDASI ---
+        // 1. Temukan elemen-elemen baru di panel validasi
+        const latLonEl = content.querySelector('#validation-lat-lon');
+        const streetViewLinkEl = content.querySelector('#validation-street-view-link');
+
+        // 2. Temukan elemen modal (yang seharusnya sudah ada di DOM)
+        const streetViewModal = document.getElementById('street-view-modal');
+        const streetViewIframe = document.getElementById('street-view-iframe');
+
+        // 3. Update Teks Koordinat dan Tampilkan/Sembunyikan Ikon
+        if (latLonEl && streetViewLinkEl) {
+            if (details.lat && details.lon && parseFloat(details.lat) !== 0) {
+                latLonEl.textContent = `${details.lat.toFixed(6)}, ${details.lon.toFixed(6)}`;
+                streetViewLinkEl.classList.remove('hidden');
+            } else {
+                latLonEl.textContent = 'Koordinat tidak valid';
+                streetViewLinkEl.classList.add('hidden');
+            }
+        }
+        
+        // 4. Pasang Event Listener 'click' HANYA ke ikon baru
+        if (streetViewLinkEl && streetViewModal && streetViewIframe) {
+            
+            // Definisikan handler 'click'
+            const handleValidationStreetViewClick = (e) => {
+                e.preventDefault();
+                e.stopPropagation(); // Hentikan event lain
+
+                // Ambil data 'details' yang relevan saat ini
+                if (details.lat && details.lon && parseFloat(details.lat) !== 0) {
+                    const lat = details.lat;
+                    const lon = details.lon;
+                    
+                    // Pastikan YOUR_API_KEY sudah diganti di sini juga
+                    const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=AIzaSyCf3yOKoZPFB7y0clP6Jdks4mJtpmzWMe4`;
+                    
+                    streetViewIframe.src = streetViewUrl; 
+                    
+                    // Tampilkan modal dan RESET posisinya ke default (pojok kanan atas)
+                    streetViewModal.classList.remove('hidden'); 
+                    streetViewModal.style.left = '';
+                    streetViewModal.style.top = '';
+                    streetViewModal.style.right = ''; 
+                    
+                } else {
+                    alert('Koordinat tidak valid untuk Street View.');
+                }
+            };
+
+            // Hapus listener lama (PENTING saat item diganti)
+            streetViewLinkEl.removeEventListener('click', streetViewLinkEl.__handler);
+            // Simpan referensi handler baru
+            streetViewLinkEl.__handler = handleValidationStreetViewClick;
+            // Pasang listener baru
+            streetViewLinkEl.addEventListener('click', handleValidationStreetViewClick);
+        }
+
         // 7. Tampilkan Konten Utama, Sembunyikan Loading & Placeholder
         content.classList.remove('hidden');
         loading.classList.add('hidden');
