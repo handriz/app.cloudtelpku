@@ -62,7 +62,8 @@ jobs:
           sudo add-apt-repository -y ppa:ondrej/php
           sudo apt-get update
           # Instal PHP 8.1 dan ekstensi yang dibutuhkan untuk Laravel
-          sudo apt-get install -y php8.1-cli php8.1-common php8.1-mysql php8.1-xml php8.1-curl php8.1-mbstring php8.1-zip php8.1-bcmath php8.1-gd
+          ##sudo apt-get install -y php8.1-cli php8.1-common php8.1-mysql php8.1-xml php8.1-curl php8.1-mbstring php8.1-zip php8.1-bcmath php8.1-gd
+          sudo apt-get install -y php8.3-cli php8.3-common php8.3-mysql php8.3-xml php8.3-curl php8.3-mbstring php8.3-zip php8.3-bcmath php8.3-gd
           # Instal Composer
           sudo apt-get install -y composer
           # Verifikasi instalasi PHP dan Composer
@@ -85,7 +86,8 @@ jobs:
 
       # Langkah 8: Membuat file .env di runner (SEBELUM build)
       - name: Create .env file
-        run: echo "${{ secrets.DOT_ENV_CONTENT }}" > .env
+        # run: echo "${{ secrets.DOT_ENV_CONTENT }}" > .env
+        run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
         env:
           DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
 
