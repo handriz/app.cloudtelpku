@@ -86,7 +86,7 @@ jobs:
 
       # Langkah 8: Membuat file .env di runner (SEBELUM build)
       - name: Create .env file
-        # run: echo "${{ secrets.DOT_ENV_CONTENT }}" > .env
+        ##run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
         run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
         env:
           DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
