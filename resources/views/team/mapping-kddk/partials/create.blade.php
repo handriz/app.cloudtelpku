@@ -36,9 +36,49 @@
                     <input type="text" name="longitudex" id="longitudex_create" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600" placeholder="Contoh: 101.4478" required>
                 </div>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pratinjau Lokasi</label>
-                <div id="preview-map" class="w-full h-64 rounded-lg z-0"></div>
+{{-- Pratinjau Lokasi (Struktur Tab Baru) --}}
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pratinjau Lokasi</label>
+                
+                {{-- Tab Headers --}}
+                <div class="border-b border-gray-200 dark:border-gray-700">
+                    <nav class="flex -mb-px space-x-4" aria-label="Tabs">
+                        {{-- Tombol Tab Peta Satelit (Default Aktif) --}}
+                        <button type_button id="tab-btn-map" 
+                           class="tab-preview-button whitespace-nowrap py-2 px-3 border-b-2 font-medium text-sm border-indigo-500 text-indigo-600 dark:text-indigo-400">
+                           Peta Satelit
+                        </button>
+                        {{-- Tombol Tab Street View --}}
+                        <button type_button id="tab-btn-streetview" 
+                           class="tab-preview-button whitespace-nowrap py-2 px-3 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300">
+                           Street View
+                        </button>
+                    </nav>
+                </div>
+
+                {{-- Tab Panels --}}
+                <div class="pt-2">
+                    {{-- Panel Peta Satelit (Default Terlihat) --}}
+                    <div id="tab-panel-map" class="tab-preview-panel w-full h-64 rounded-lg z-0">
+                         <div id="preview-map" class="w-full h-full rounded-lg z-0"></div>
+                    </div>
+                    
+                    {{-- Panel Street View (Default Tersembunyi) --}}
+                    <div id="tab-panel-streetview" class="tab-preview-panel w-full h-64 rounded-lg z-0 hidden">
+                        {{-- Iframe untuk Street View --}}
+                        <iframe id="create-street-view-iframe"
+                                src=""
+                                class="w-full h-full rounded-lg border-0"
+                                loading="lazy"
+                                referrerpolicy="no-referrer-when-downgrade"
+                                allowfullscreen>
+                        </iframe>
+                        {{-- Placeholder jika Lat/Lon kosong --}}
+                        <div id="create-street-view-placeholder" class="flex items-center justify-center w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg">
+                            <p class="text-gray-500 dark:text-gray-400">Masukkan Lat/Lon untuk melihat</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">

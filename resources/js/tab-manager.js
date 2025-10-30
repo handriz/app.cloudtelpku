@@ -1,3 +1,5 @@
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
 // VARIABEL UNTUK KDDK MAPPING (Peta Sebaran)
 let mappingFeatureGroup = null; 
 let mappingClickedMarker = null; 
@@ -211,6 +213,7 @@ const blueIcon = new L.Icon({
             const bangunanPlaceholderEl = activePanel.querySelector('#placeholder-foto-bangunan');
             const latLonEl = activePanel.querySelector('#detail-lat-lon');
             const streetViewLinkEl = activePanel.querySelector('#google-street-view-link');
+
             if (latLonEl && streetViewLinkEl) {
                 // Cek apakah data lat/lon valid (bukan 0 atau string kosong)
                 if (data.lat && data.lon && parseFloat(data.lat) !== 0 && parseFloat(data.lon) !== 0) {
@@ -236,10 +239,10 @@ const blueIcon = new L.Icon({
                 }
             }
 
-            const streetViewModal = document.getElementById('street-view-modal');
-            const streetViewIframe = document.getElementById('street-view-iframe');
-            const streetViewCloseButton = document.getElementById('street-view-close-button');
-            const streetViewHeader = document.getElementById('street-view-header');
+            const streetViewModal = activePanel.querySelector('#street-view-modal');
+            const streetViewIframe = activePanel.querySelector('#street-view-iframe');
+            const streetViewCloseButton = activePanel.querySelector('#street-view-close-button');
+            const streetViewHeader = activePanel.querySelector('#street-view-header');
 
             if (streetViewModal && streetViewIframe && streetViewCloseButton && streetViewHeader) {
 
@@ -253,7 +256,7 @@ const blueIcon = new L.Icon({
                         const lon = parseFloat(data.lon);
                         
                         // URL Google Maps Embed API untuk Iframe
-                        const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=AIzaSyCf3yOKoZPFB7y0clP6Jdks4mJtpmzWMe4`;
+                        const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
                         
                         streetViewIframe.src = streetViewUrl; // Atur src iframe
                         streetViewModal.classList.remove('hidden'); // Tampilkan modal
@@ -918,9 +921,16 @@ const blueIcon = new L.Icon({
         // C. Submit Form di Dalam Modal (Edit User, dll)
         if (formInModal) {
             if (formInModal.hasAttribute('data-custom-handler')) {
-                return;
+                return; // Abaikan jika sudah ditangani (seperti upload chunk)
             }
             e.preventDefault();
+            const submitButton = formInModal.querySelector('button[type="submit"]');
+            const originalButtonText = submitButton ? submitButton.innerHTML : 'Simpan';
+            if(submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+            }
+
             fetch(formInModal.action, {
                 method: 'POST',
                 headers: {
@@ -936,37 +946,60 @@ const blueIcon = new L.Icon({
             .then(data => {
                 if (data.message) {
                     closeModal();
-                    const tabNameToRefresh = 'Daftar Pengguna';
-                    const tabContent = document.getElementById(`${tabNameToRefresh}-content`);
-                    if (tabContent) {
-                        const searchFormInTab = tabContent.querySelector('form[id*="-search-form"]');
-                        let refreshUrl;
-                        if (searchFormInTab) {
-                            const params = new URLSearchParams(new FormData(searchFormInTab)).toString();
-                            refreshUrl = `${searchFormInTab.action}?${params}`;
-                        } else {
-                            const tabButton = document.querySelector(`#tabs-header .tab-button[data-tab-name="${tabNameToRefresh}"]`);
-                            if (tabButton) refreshUrl = tabButton.dataset.url || tabButton.href;
-                        }
-                        if (refreshUrl) loadTabContent(tabNameToRefresh, refreshUrl);
-                    }
                     alert(data.message);
-                } else if (data.errors) {
-                    const errorDiv = formInModal.querySelector('#edit-user-errors');
-                    if (errorDiv) {
-                        let errorList = '<ul>';
-                        for (const key in data.errors) {
-                            errorList += `<li class="text-sm">- ${data.errors[key][0]}</li>`;
-                        }
-                        errorList += '</ul>';
-                        errorDiv.innerHTML = errorList;
-                        errorDiv.classList.remove('hidden');
+
+                    // Logika refresh tab yang dinamis
+                    let tabNameToRefresh = 'Dashboard'; // default
+
+                    if (formInModal.id === 'create-mapping-form') {
+                        tabNameToRefresh = 'Data Mapping Pelanggan';
+                    } else if (formInModal.id === 'edit-user-form') { // Asumsi ID form edit user
+                        tabNameToRefresh = 'Daftar Pengguna';
+                    }
+
+                    // Panggil fungsi refresh
+                    const tabButton = document.querySelector(`#tabs-header .tab-button[data-tab-name="${tabNameToRefresh}"]`);
+                    if(tabButton) {
+                         loadTabContent(tabNameToRefresh, tabButton.dataset.url || tabButton.href);
                     }
                 }
             })
             .catch(error => {
+                // --- PENANGANAN ERROR (422) ---
                 console.error('Error:', error);
-                alert(error.message || 'Terjadi kesalahan saat memproses data.');
+                if(submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = originalButtonText;
+                }
+
+                if (error.errors) {
+                    let errorDiv = null;
+                    // Cari div error yang tepat berdasarkan ID form
+                    if (formInModal.id === 'create-mapping-form') {
+                        errorDiv = formInModal.querySelector('#create-mapping-errors');
+                    } else if (formInModal.id === 'edit-user-form') { // Ganti jika ID form edit user Anda beda
+                        errorDiv = formInModal.querySelector('#edit-user-errors');
+                    }
+
+                    if (errorDiv) {
+                        let errorList = '<ul>';
+                        for (const key in error.errors) {
+                            // error.errors[key] adalah array, ambil pesan pertama [0]
+                            errorList += `<li class="text-sm">- ${error.errors[key][0]}</li>`;
+                        }
+                        errorList += '</ul>';
+                        errorDiv.innerHTML = errorList;
+                        errorDiv.classList.remove('hidden');
+                        
+                        // Scroll ke atas modal agar error terlihat
+                        modalContent.scrollTop = 0;
+                    } else {
+                        // Fallback jika div error tidak ditemukan
+                        alert('Validasi gagal. Cek console untuk detail.');
+                    }
+                } else {
+                    alert(error.message || 'Terjadi kesalahan saat memproses data.');
+                }
             });
         }
 
@@ -1611,10 +1644,22 @@ const blueIcon = new L.Icon({
         const latInput = modalContent.querySelector('#latitudey_create');
         const lonInput = modalContent.querySelector('#longitudex_create');
 
-        if (!mapContainer || !latInput || !lonInput) return;
+        // Elemen Tab Peta
+        const mapTabButton = modalContent.querySelector('#tab-btn-map');
+        const mapTabPanel = modalContent.querySelector('#tab-panel-map');
+        
+        // Elemen Tab Street View
+        const streetViewTabButton = modalContent.querySelector('#tab-btn-streetview');
+        const streetViewTabPanel = modalContent.querySelector('#tab-panel-streetview');
+        const streetViewIframe = modalContent.querySelector('#create-street-view-iframe');
+        const streetViewPlaceholder = modalContent.querySelector('#create-street-view-placeholder');
 
+        if (!mapContainer || !latInput || !lonInput || !streetViewIframe || !mapTabButton) return;
+
+        // Hancurkan map lama jika ada
         if (mapContainer._leaflet_id) { mapContainer._leaflet_id = null; }
 
+        // --- 2. Inisialisasi Peta Leaflet ---
         const previewMap = L.map(mapContainer).setView([0.5071, 101.4478], 12);
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             attribution: 'Tiles &copy; Esri'
@@ -1622,20 +1667,76 @@ const blueIcon = new L.Icon({
 
         let previewMarker = null;
 
-        function updateMarker() {
+        // --- 3. Fungsi untuk Update SEMUA Pratinjau ---
+        // --- 3. Fungsi untuk Update SEMUA Pratinjau ---
+        function updatePreviews() {
             const lat = parseFloat(latInput.value);
             const lon = parseFloat(lonInput.value);
+            
             if (!isNaN(lat) && !isNaN(lon)) {
+                // A. Update Peta Satelit
                 if (previewMarker) {
                     previewMarker.remove();
                 }
                 previewMarker = L.marker([lat, lon]).addTo(previewMap);
                 previewMap.setView([lat, lon], 17);
+                
+                // B. Update Street View
+                const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
+                streetViewIframe.src = streetViewUrl;
+                streetViewIframe.classList.remove('hidden');
+                streetViewPlaceholder.classList.add('hidden');
+
+            } else {
+                // Reset jika Lat/Lon tidak valid
+                if (previewMarker) {
+                    previewMarker.remove();
+                    previewMarker = null;
+                }
+                streetViewIframe.src = '';
+                streetViewIframe.classList.add('hidden');
+                streetViewPlaceholder.classList.remove('hidden');
             }
         }
 
-        latInput.addEventListener('input', updateMarker);
-        lonInput.addEventListener('input', updateMarker);
+        // --- 4. Pasang Event Listener ---
+        
+        // Panggil update saat mengetik Lat/Lon
+        latInput.addEventListener('input', updatePreviews);
+        lonInput.addEventListener('input', updatePreviews);
+
+        // Listener untuk ganti Tab
+        streetViewTabButton.addEventListener('click', () => {
+            // Aktifkan tombol Street View
+            streetViewTabButton.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+            streetViewTabButton.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300');
+            // Nonaktifkan tombol Peta
+            mapTabButton.classList.remove('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+            mapTabButton.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300');
+            
+            // Tampilkan panel Street View
+            streetViewTabPanel.classList.remove('hidden');
+            mapTabPanel.classList.add('hidden');
+        });
+
+        mapTabButton.addEventListener('click', () => {
+            // Aktifkan tombol Peta
+            mapTabButton.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+            mapTabButton.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300');
+            // Nonaktifkan tombol Street View
+            streetViewTabButton.classList.remove('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
+            streetViewTabButton.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300');
+
+            // Tampilkan panel Peta
+            mapTabPanel.classList.remove('hidden');
+            streetViewTabPanel.classList.add('hidden');
+            
+            // PENTING: Peta Leaflet perlu "refresh" ukuran saat panelnya terlihat
+            setTimeout(() => previewMap.invalidateSize(), 50);
+        });
+
+        // Panggil sekali saat inisialisasi
+        updatePreviews();
     }
 
     function initializePhotoUpload(modalContent) {
@@ -2038,14 +2139,19 @@ const blueIcon = new L.Icon({
         } else {
             console.warn("Elemen UI Riwayat Penolakan (#rejection-history-alert) tidak ditemukan.");
         }
+
         // --- LOGIKA BARU UNTUK STREET VIEW VALIDASI ---
         // 1. Temukan elemen-elemen baru di panel validasi
         const latLonEl = content.querySelector('#validation-lat-lon');
         const streetViewLinkEl = content.querySelector('#validation-street-view-link');
 
-        // 2. Temukan elemen modal (yang seharusnya sudah ada di DOM)
-        const streetViewModal = document.getElementById('street-view-modal');
-        const streetViewIframe = document.getElementById('street-view-iframe');
+        // 2. Temukan elemen modal RELATIF TERHADAP 'container' TAB VALIDASI
+        const validationTabPanel = container.closest('.tab-content'); 
+
+        const streetViewModal = validationTabPanel ? validationTabPanel.querySelector('#street-view-modal') : null;
+        const streetViewIframe = validationTabPanel ? validationTabPanel.querySelector('#street-view-iframe') : null;
+        const streetViewHeader = validationTabPanel ? validationTabPanel.querySelector('#street-view-header') : null;
+        const streetViewCloseButton = validationTabPanel ? validationTabPanel.querySelector('#street-view-close-button') : null;
 
         // 3. Update Teks Koordinat dan Tampilkan/Sembunyikan Ikon
         if (latLonEl && streetViewLinkEl) {
@@ -2059,7 +2165,7 @@ const blueIcon = new L.Icon({
         }
         
         // 4. Pasang Event Listener 'click' HANYA ke ikon baru
-        if (streetViewLinkEl && streetViewModal && streetViewIframe) {
+        if (streetViewLinkEl && streetViewModal && streetViewIframe && streetViewHeader && streetViewCloseButton) {
             
             // Definisikan handler 'click'
             const handleValidationStreetViewClick = (e) => {
@@ -2072,8 +2178,7 @@ const blueIcon = new L.Icon({
                     const lon = details.lon;
                     
                     // Pastikan YOUR_API_KEY sudah diganti di sini juga
-                    const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=AIzaSyCf3yOKoZPFB7y0clP6Jdks4mJtpmzWMe4`;
-                    
+                    const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
                     streetViewIframe.src = streetViewUrl; 
                     
                     // Tampilkan modal dan RESET posisinya ke default (pojok kanan atas)
@@ -2086,13 +2191,62 @@ const blueIcon = new L.Icon({
                     alert('Koordinat tidak valid untuk Street View.');
                 }
             };
+            // B. Handler untuk TUTUP modal
+            const closeValidationStreetView = () => {
+                streetViewModal.classList.add('hidden');
+                streetViewIframe.src = ""; 
+                streetViewModal.style.left = '';
+                streetViewModal.style.top = '';
+                streetViewModal.style.right = '';
+            }
+        
+        // C. Handler untuk DRAG (Logika disalin dari KDDK)
+            let isDragging = false;
+            let offsetX, offsetY;
+            
+            const onMouseDown = (e) => {
+                if (e.target.id !== 'street-view-header' && !e.target.closest('#street-view-header')) return;
+                isDragging = true;
+                offsetX = e.clientX - streetViewModal.getBoundingClientRect().left;
+                offsetY = e.clientY - streetViewModal.getBoundingClientRect().top;
+                streetViewHeader.style.cursor = 'grabbing';
+                document.body.style.userSelect = 'none';
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            };
+
+            const onMouseMove = (e) => {
+                if (!isDragging) return;
+                let newX = e.clientX - offsetX;
+                let newY = e.clientY - offsetY;
+                streetViewModal.style.left = `${newX}px`;
+                streetViewModal.style.top = `${newY}px`;
+                streetViewModal.style.right = 'auto'; 
+            };
+            
+            const onMouseUp = () => {
+                isDragging = false;
+                streetViewHeader.style.cursor = 'move';
+                document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            };
 
             // Hapus listener lama (PENTING saat item diganti)
             streetViewLinkEl.removeEventListener('click', streetViewLinkEl.__handler);
+            streetViewCloseButton.removeEventListener('click', streetViewCloseButton.__handler);
+            streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
+
             // Simpan referensi handler baru
             streetViewLinkEl.__handler = handleValidationStreetViewClick;
+            streetViewCloseButton.__handler = closeValidationStreetView;
+            streetViewHeader.__handler = onMouseDown;
+            
             // Pasang listener baru
             streetViewLinkEl.addEventListener('click', handleValidationStreetViewClick);
+            streetViewCloseButton.addEventListener('click', closeValidationStreetView);
+            streetViewHeader.addEventListener('mousedown', onMouseDown);
+
         }
 
         // 7. Tampilkan Konten Utama, Sembunyikan Loading & Placeholder

@@ -17,15 +17,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # --- BARU: Tambahkan Host Key VPS ke known_hosts di runner ---
+      # Langkah 2: Tambahkan Host Key VPS ke known_hosts di runner
       - name: Add SSH Host Key to Known Hosts
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_PUBLIC_HOST_KEY }}" | sed 's/\r$//' >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      # --- Akhir langkah penambahan host key ---
 
-      # --- BARU: Menyiapkan SSH Agent ---
+      # Langkah 3: Menyiapkan SSH Agent
       - name: Setup SSH Agent
         uses: webfactory/ssh-agent@v0.7.0
         with:
@@ -53,8 +52,7 @@ jobs:
 
       # --- END: Caching Dependensi ---
 
-      # --- BARU: Instalasi PHP Manual di runner GitHub Actions ---
-      # Mengganti `shivamathur/setup-php` yang bermasalah
+      # Langkah 4: Instalasi PHP Manual di runner GitHub Actions
       - name: Manual Setup PHP
         run: |
           # Perbarui daftar paket dan instal software-properties-common
@@ -70,33 +68,32 @@ jobs:
           # Verifikasi instalasi PHP dan Composer
           php -v
           composer -V
-      # --- Akhir instalasi PHP Manual ---
 
-      # Langkah 3: Menginstal Dependensi PHP (Composer) di runner
+      # Langkah 5: Menginstal Dependensi PHP (Composer) di runner
       - name: Install Composer Dependencies
         run: composer install --no-dev --optimize-autoloader
 
-      # Langkah 4: Menyiapkan Node.js Environment di runner
+      # Langkah 6: Menyiapkan Node.js Environment di runner
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18' # <--- SESUAIKAN DENGAN VERSI Node.js YANG ANDA INGINKAN UNTUK BUILD
 
-      # Langkah 5: Menginstal Dependensi Node.js (npm) di runner
+      # Langkah 7: Menginstal Dependensi Node.js (npm) di runner
       - name: Install Node.js Dependencies
         run: npm install
 
-      # Langkah 6: Mengkompilasi Aset Frontend (CSS/JS) di runner
-      - name: Build Frontend Assets
-        run: npm run build
-
-      # Langkah 7: Membuat file .env di runner (penting untuk migrasi & konfigurasi)
+      # Langkah 8: Membuat file .env di runner (SEBELUM build)
       - name: Create .env file
         run: echo "${{ secrets.DOT_ENV_CONTENT }}" > .env
         env:
           DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
 
-      # Langkah 8: Deployment: Sinkronisasi File ke VPS menggunakan rsync langsung
+      # Langkah 9: Mengkompilasi Aset Frontend (CSS/JS) di runner
+      - name: Build Frontend Assets
+        run: npm run build
+
+      # Langkah 10: Deployment: Sinkronisasi File ke VPS menggunakan rsync langsung
       # Ini sepenuhnya bergantung pada ssh-agent untuk autentikasi.
       # Tambahan: Perintah `sudo chown` awal untuk memastikan izin direktori target.
       - name: Sync Files to VPS using rsync directly
@@ -117,7 +114,7 @@ jobs:
            rsync -avz --delete --exclude='.git' -e "ssh -o StrictHostKeyChecking=yes" ${{ github.workspace }}/ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
             
 
-      # Langkah 9: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
+      # Langkah 11: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
       - name: Run Post-Deployment Commands on VPS
         uses: appleboy/ssh-action@master
         with:
