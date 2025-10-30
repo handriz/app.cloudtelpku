@@ -50,70 +50,79 @@ const blueIcon = new L.Icon({
 
     // --- FUNGSI UTILITY: Tampilkan Notifikasi ---
     function displayNotification(type, message) {
-        const container = document.getElementById('interactive-validation-container');
-        if (!container) return;
+        let container = null;
 
-        // Hapus notifikasi sebelumnya (Success atau Error)
+        // 1. Coba cari container di tab yang sedang aktif
+        const activeTabContent = document.querySelector('.tab-content:not(.hidden)');
+        if (activeTabContent) {
+            // Cek container validasi (jika kita di tab itu)
+            container = activeTabContent.querySelector('#interactive-validation-container');
+            if (!container) {
+                // Cek container KDDK (jika kita di tab itu)
+                container = activeTabContent.querySelector('#kddk-notification-container');
+            }
+        }
+
+        // 2. Jika masih tidak ketemu (fallback), gunakan alert
+        if (!container) {
+            console.warn("displayNotification: Tidak ada container di tab aktif. Fallback ke alert.");
+            alert(message);
+            return;
+        }
+
+        // 3. Hapus notifikasi sebelumnya (Success atau Error)
         container.querySelectorAll('.bg-green-100, .bg-red-100').forEach(el => el.remove());
 
+        // 4. Tentukan style
         let alertClass = type ;
         let strongText = type ;
 
-        // Tipe 'success' atau 'validate' (untuk aksi setuju) akan tetap hijau
         if (type === 'success' || type === 'validate') { 
             alertClass = 'bg-green-100 border-green-400 text-green-700';
             strongText = 'Berhasil!';
-        } else if (type === 'reject') { // MAPPING BARU: 'reject' akan berwarna merah
+        } else if (type === 'reject') { 
             alertClass = 'bg-red-100 border-red-400 text-red-700';
             strongText = 'Penolakan Berhasil!'; 
-        } else { // Jika 'error' atau kegagalan
+        } else { 
             alertClass = 'bg-red-100 border-red-400 text-red-700';
             strongText = 'Error!';
         }            
+        
+        // 5. Buat HTML Notifikasi
         const notificationHtml = `
                 <div id="action-notification-alert" class="mt-4 ${alertClass} border px-4 py-3 rounded relative" role="alert" style="margin-top: 0.5rem !important;">
                     <strong class="font-bold">${strongText}</strong>
                     <span class="block sm:inline"> ${message}</span>
 
                     <button type="button" class="absolute top-0 right-0 p-4 text-xl" data-dismiss="alert" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
+                        <span aria-hidden="true">×</span>
                     </button>
                 </div>
             `;
-        // Sisipkan notifikasi di bagian atas container interaktif
-        // Menggunakan insertAdjacentHTML untuk performa
+        
+        // 6. Sisipkan notifikasi
         container.insertAdjacentHTML('afterbegin', notificationHtml); 
 
-        // Sisipkan notifikasi
-        const newAlert = document.getElementById('action-notification-alert');
+        const newAlert = container.querySelector('#action-notification-alert');
 
-        // Scroll otomatis
+        // 7. Logika Auto-hide
         if (newAlert) {
-        newAlert.scrollIntoView({ 
-            behavior: 'smooth', 
-            block: 'start' // Gulir ke bagian atas elemen
-            });
+            newAlert.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-            setTimeout(() => {
-                newAlert.style.opacity = 0; // Mulai memudar
-                // Hapus elemen setelah selesai memudar (misal 500ms)
-                setTimeout(() => {
-                    newAlert.remove();
-                }, 500); 
-            }, 15000);
+            const autoHideTimer = setTimeout(() => {
+                if (newAlert) {
+                    newAlert.style.opacity = 0; 
+                    setTimeout(() => newAlert.remove(), 500);
+                }
+            }, 15000); // Waktu 15 detik
 
             const closeButton = newAlert.querySelector('[data-dismiss="alert"]');
             if (closeButton) {
                 closeButton.addEventListener('click', () => {
                     newAlert.remove();
-                    // Hapus timeout otomatis jika tombol ditekan
-                    clearTimeout(newAlert.autoHideTimer); 
+                    clearTimeout(autoHideTimer); 
                 });
             }
-
-            newAlert.autoHideTimer = setTimeout(() => {
-                newAlert.remove();
-            }, 15500); // 15.5 detik untuk memastikan logikanya sama dengan yang di atas
         }
     }
 
@@ -832,9 +841,6 @@ const blueIcon = new L.Icon({
                 originalButton.textContent = originalText;
                 originalButton.disabled = false;
                 originalButton.classList.remove('opacity-50', 'cursor-not-allowed');
-
-                // Tampilkan notifikasi sukses
-                displayNotification('success', data.message || 'Aksi berhasil diproses.');
                 
                 // Refresh tab (dengan cache busting)
                 const tabNameToRefresh = getActiveTabName();
@@ -855,7 +861,10 @@ const blueIcon = new L.Icon({
                         if (refreshUrl) {
                             let bustUrl = new URL(refreshUrl, window.location.origin);
                             bustUrl.searchParams.set('_cb', new Date().getTime()); 
-                            loadTabContent(tabNameToRefresh, bustUrl.toString()); 
+                            loadTabContent(tabNameToRefresh, bustUrl.toString());
+                            setTimeout(() => {
+                                displayNotification('success', data.message || 'Aksi berhasil diproses.');
+                            }, 1000); // Jeda 1 detik (1000ms) 
                         } else {
                             console.error("Gagal menentukan URL refresh tab.");
                         }
@@ -895,20 +904,94 @@ const blueIcon = new L.Icon({
         if (promoteForm) {
             e.preventDefault(); // Cegah submit
 
-            // Definisikan aksi jika "OK"
+            // 1. Definisikan aksi jika "OK"
             const onConfirmAction = () => {
                 // Tampilkan loading di tombol
                 const originalButton = promoteForm.querySelector('button[type="submit"]');
+                const originalInnerHTML = originalButton.innerHTML; // Simpan ikon aslinya
+                
                 originalButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; // Ganti ikon jadi spinner
                 originalButton.disabled = true;
                 
-                // Kirim form-nya
-                promoteForm.submit(); 
-                // Kita biarkan submit form biasa (bukan AJAX) karena akan me-refresh halaman
-                // dengan pesan success/error dari controller (lebih sederhana).
+                // --- LOGIKA FETCH BARU ---
+                fetch(promoteForm.action, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                        'Accept': 'application/json', // Minta JSON, bukan HTML redirect
+                    },
+                    body: new FormData(promoteForm)
+                })
+                .then(response => {
+                    // 1. Jika respons BUKAN OK (misalnya 401, 419, 500)
+                    if (!response.ok) {
+                        // Jika status 419 (CSRF token expired), kita harus reload
+                        if (response.status === 419) {
+                            throw new Error('Sesi telah kedaluwarsa (CSRF Token Hilang). Halaman akan dimuat ulang.');
+                        }
+                        // Coba ambil pesan error dari JSON
+                        return response.json().then(err => {
+                            throw new Error(err.message || `Gagal: ${response.status} ${response.statusText}`);
+                        }).catch(() => {
+                            // Jika gagal parse JSON (kemungkinan HTML error page), lempar error umum
+                            throw new Error(`Aksi Gagal. Status: ${response.status}. Periksa log server.`);
+                        });
+                    }
+                    
+                    // 2. Jika respons OK (200), coba parse JSON untuk sukses
+                    return response.json(); 
+                })
+                .then(data => {
+                    // Reset tombol
+                    originalButton.innerHTML = originalInnerHTML;
+                    originalButton.disabled = false;
+                    
+                    // Muat ulang tab + tunda notifikasi
+                    const tabNameToRefresh = getActiveTabName();
+                    if (tabNameToRefresh) {
+                        const tabContent = document.getElementById(`${tabNameToRefresh}-content`);
+                        if (tabContent) {
+                            // Ambil URL refresh (gunakan URL yang sedang dicari/aktif)
+                            const searchForm = tabContent.querySelector('form[id*="-search-form"]');
+                            let refreshUrl;
+                            if (searchForm) {
+                                const params = new URLSearchParams(new FormData(searchForm)).toString();
+                                refreshUrl = `${searchForm.action}?${params}`;
+                            } else {
+                                const tabButton = document.querySelector(`#tabs-header .tab-button[data-tab-name="${tabNameToRefresh}"]`);
+                                if (tabButton) refreshUrl = tabButton.dataset.url || tabButton.href;
+                            }
+
+                            if (refreshUrl) {
+                                let bustUrl = new URL(refreshUrl, window.location.origin);
+                                bustUrl.searchParams.set('_cb', new Date().getTime()); 
+                                
+                                loadTabContent(tabNameToRefresh, bustUrl.toString()); 
+                                
+                                // TUNDA notifikasi
+                                setTimeout(() => {
+                                    displayNotification('success', data.message || 'Data berhasil dipromosikan.');
+                                }, 1000); 
+                            }
+                        }
+                    }
+                })
+                .catch(error => {
+                    // Reset tombol
+                    originalButton.innerHTML = originalInnerHTML;
+                    originalButton.disabled = false;
+
+                    console.error('Error Promote:', error);
+                    if (error.message.includes('Sesi habis')) {
+                        alert(error.message);
+                        window.location.reload();
+                    } else {
+                        displayNotification('error', error.message || 'Gagal mempromosikan data.');
+                    }
+                });
             };
 
-            // Panggil modal kustom
+            // 2. Panggil modal kustom
             showCustomConfirm(
                 'Konfirmasi Promosi Data', // Judul
                 'Jadikan data ini sebagai data VALID (AKTIF)? Data valid yang lama (jika ada) akan digantikan.', // Pesan
@@ -946,7 +1029,7 @@ const blueIcon = new L.Icon({
             .then(data => {
                 if (data.message) {
                     closeModal();
-                    alert(data.message);
+                    displayNotification('success', data.message);
 
                     // Logika refresh tab yang dinamis
                     let tabNameToRefresh = 'Dashboard'; // default
@@ -1618,6 +1701,10 @@ const blueIcon = new L.Icon({
                     if (photoUploadInputs.length > 0) {
                         initializePhotoUpload(modalContent);
                     }
+                    const createForm = modalContent.querySelector('#create-mapping-form');
+                    if (createForm) {
+                        initializeCreateFormValidation(createForm); // Panggil fungsi helper baru
+                    }
                 }, 150);
 
                 if (window.UploadInitializers && typeof window.UploadInitializers.initializeUploadForm === 'function') {
@@ -1822,6 +1909,126 @@ const blueIcon = new L.Icon({
         });
     }
     
+    function initializeCreateFormValidation(formElement) {
+        const idpelInput = formElement.querySelector('#idpel_create');
+        const statusIconDiv = formElement.querySelector('#idpel-status-icon');
+        const statusMessageEl = formElement.querySelector('#idpel-status-message');
+        const submitButton = formElement.querySelector('#create-mapping-submit-button');
+        const ketSurveyTextarea = formElement.querySelector('#ket_survey_create');
+        let debounceTimer;
+        const checkUrlBase = 'master-pelanggan/check/'; // Sesuaikan jika route Anda berbeda
+
+        if (!idpelInput || !statusIconDiv || !statusMessageEl || !submitButton || !ketSurveyTextarea) {
+            console.error("Elemen form create tidak lengkap untuk validasi live IDPEL.");
+            return;
+        }
+
+        const updateIdpelStatusUI = (isLoading, exists, isActive, message) => {
+            statusMessageEl.textContent = message || '';
+            statusIconDiv.classList.toggle('hidden', !isLoading && !exists && message === ''); // Sembunyi jika tidak ada status
+
+            // Reset warna pesan
+            statusMessageEl.classList.remove('text-green-600', 'text-red-600', 'text-yellow-600', 'text-gray-500');
+
+            if (isLoading) {
+                statusIconDiv.innerHTML = '<i class="fas fa-spinner fa-spin text-gray-400"></i>';
+                statusIconDiv.classList.remove('hidden');
+                statusMessageEl.classList.add('text-gray-500');
+                submitButton.disabled = true;
+                ketSurveyTextarea.readOnly = true; // Kunci textarea saat loading
+                ketSurveyTextarea.value = '';      // Kosongkan textarea saat loading
+
+            } else if (exists && isActive) { // Ditemukan & AKTIF
+                statusIconDiv.innerHTML = '<i class="fas fa-check-circle text-green-500"></i>';
+                statusIconDiv.classList.remove('hidden');
+                statusMessageEl.classList.add('text-green-600');
+                submitButton.disabled = false; // <<< ENABLE Simpan
+                ketSurveyTextarea.readOnly = false; // <<< BUKA Kunci textarea
+                ketSurveyTextarea.value = '';       // Kosongkan (biarkan user isi)
+                ketSurveyTextarea.placeholder = ''; // Hapus placeholder
+
+            } else if (exists && !isActive) { // Ditemukan & NON AKTIF
+                statusIconDiv.innerHTML = '<i class="fas fa-exclamation-triangle text-yellow-500"></i>'; // Ikon warning
+                statusIconDiv.classList.remove('hidden');
+                statusMessageEl.classList.add('text-yellow-600'); // Warna warning
+                statusMessageEl.textContent = message || 'Pelanggan ditemukan tapi status tidak aktif.'; // Pastikan pesan warning
+                submitButton.disabled = false; // <<< TETAP ENABLE Simpan
+                ketSurveyTextarea.readOnly = true;  // <<< KUNCI textarea
+                ketSurveyTextarea.value = 'Pelanggan Non Aktif'; // Isi otomatis
+                ketSurveyTextarea.placeholder = ''; // Hapus placeholder
+
+            } else if (!exists && message) { // Tidak ditemukan (Error)
+                statusIconDiv.innerHTML = '<i class="fas fa-times-circle text-red-500"></i>';
+                statusIconDiv.classList.remove('hidden');
+                statusMessageEl.classList.add('text-red-600');
+                submitButton.disabled = true;
+                ketSurveyTextarea.readOnly = true; // Kunci textarea
+                ketSurveyTextarea.value = '';      // Kosongkan
+                ketSurveyTextarea.placeholder = 'ID Pelanggan tidak valid';
+
+            } else { // Status netral (input kosong atau belum 12 digit)
+                statusIconDiv.classList.add('hidden');
+                statusMessageEl.classList.add('text-gray-500');
+                submitButton.disabled = true;
+                ketSurveyTextarea.readOnly = true; // Kunci textarea
+                ketSurveyTextarea.value = '';      // Kosongkan
+                ketSurveyTextarea.placeholder = 'Masukkan ID Pelanggan untuk mengecek status';
+            }
+
+             // Atur style textarea saat dikunci
+             if (ketSurveyTextarea.readOnly) {
+                ketSurveyTextarea.classList.add('bg-gray-100', 'dark:bg-gray-800', 'cursor-not-allowed');
+             } else {
+                ketSurveyTextarea.classList.remove('bg-gray-100', 'dark:bg-gray-800', 'cursor-not-allowed');
+             }
+        };
+
+        idpelInput.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            const idpelValue = idpelInput.value.trim();
+
+            // Reset status jika input kosong atau belum 12 digit
+            if (idpelValue.length === 0) {
+                updateIdpelStatusUI(false, null, null, '');
+                return;
+            }
+            if (idpelValue.length < 12) {
+                updateIdpelStatusUI(false, null, null, 'ID Pelanggan harus 12 digit.');
+                return;
+            }
+             if (idpelValue.length > 12) {
+                updateIdpelStatusUI(false, false, null, 'ID Pelanggan tidak boleh lebih 12 digit.');
+                return;
+            }
+
+            // Mulai debounce
+            debounceTimer = setTimeout(() => {
+                updateIdpelStatusUI(true, null, null, 'Mengecek...'); // Loading
+
+                fetch(`${checkUrlBase}${idpelValue}`)
+                    .then(response => {
+                        // Selalu coba parse JSON, baik OK maupun error
+                        return response.json().then(data => ({ ok: response.ok, status: response.status, data }));
+                    })
+                    .then(({ ok, status, data }) => {
+                        if (!ok) {
+                            // Jika server kirim error (4xx, 5xx), gunakan pesan dari JSON
+                            throw new Error(data.message || `Error ${status}`);
+                        }
+                        // Jika OK (200), update UI berdasarkan data
+                        updateIdpelStatusUI(false, data.exists, data.is_active, data.message);
+                    })
+                    .catch(error => {
+                        console.error("Error cek IDPEL:", error);
+                        updateIdpelStatusUI(false, false, null, `Gagal mengecek: ${error.message}`);
+                    });
+            }, 800);
+        });
+
+        // Set status awal saat modal dibuka
+        updateIdpelStatusUI(false, null, null, '');
+    }
+
     function closeModal() {
         if (!mainModal) return;
         mainModal.classList.add('hidden');

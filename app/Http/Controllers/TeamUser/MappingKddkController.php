@@ -568,6 +568,10 @@ class MappingKddkController extends Controller
 
             DB::commit();
 
+            if ($request->expectsJson()) {
+                 return response()->json(['message' => 'Data IDPEL ' . $idpel . ' berhasil ditarik kembali ke antrian validasi. Data lama kini siap untuk dipromosikan ulang.'], 200);
+            }
+
             return back()->with('success', 'Data IDPEL ' . $idpel . ' berhasil ditarik kembali ke antrian validasi.');
 
         } catch (\Exception $e) {
@@ -582,6 +586,10 @@ class MappingKddkController extends Controller
                 Storage::disk('public')->move($newBangunanPath, $oldBangunanPath);
             }
 
+            if ($request->expectsJson()) {
+                 return response()->json(['error' => 'Gagal menarik data: ' . $e->getMessage()], 500);
+            }
+            
             return back()->with('error', 'Gagal menarik data: ' . $e->getMessage());
         }
     }
@@ -613,12 +621,18 @@ class MappingKddkController extends Controller
             $dataToPromote->save();
 
             DB::commit();
-            
+            if ($request->expectsJson()) {
+                 return response()->json(['message' => 'Data Object ID ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.'], 200);
+            }
+
             return back()->with('success', 'Data Object ID ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.');
 
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Gagal promote data ID {$id}: " . $e->getMessage());
+            if ($request->expectsJson()) {
+                 return response()->json(['error' => 'Gagal memproses: ' . $e->getMessage()], 500);
+            }
             return back()->with('error', 'Gagal memproses: ' . $e->getMessage());
         }
     }

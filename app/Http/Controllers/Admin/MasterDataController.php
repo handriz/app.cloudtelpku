@@ -11,6 +11,8 @@ use App\Jobs\ProcessPelangganImport;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Support\Facades\Auth;
+use App\Models\HierarchyLevel;
 
 
 class MasterDataController extends Controller
@@ -228,14 +230,71 @@ class MasterDataController extends Controller
         return redirect()->route('admin.manajemen_data.index')->with('success', 'Data Pelanggan berhasil diperbarui!');
     }
 
-    
-    /**
-     * Menghapus satu data pelanggan.
-     */
     public function destroy(MasterDataPelanggan $pelanggan)
     {
         $pelanggan->delete();
         return redirect()->route('admin.manajemen_data.index')->with('success', 'Data Pelanggan berhasil dihapus!');
     }
     
+    public function checkIdpelExistsAjax(Request $request, $idpel)
+    {
+        // Validasi dasar: Pastikan IDPEL 12 digit numerik
+        if (!preg_match('/^\d{12}$/', $idpel)) {
+            return response()->json(['exists' => false, 'message' => 'Format ID Pelanggan tidak valid.'], 400); // Bad Request
+        }
+
+        $user = Auth::user();
+        $query = MasterDataPelanggan::where('idpel', $idpel);
+
+        // Terapkan filter hirarki HANYA untuk non-admin
+        if (!$user->hasRole('admin')) {
+            $hierarchyFilter = $this->getHierarchyFilterForMaster($user); // Helper function (lihat di bawah)
+            if ($hierarchyFilter) {
+                // Pastikan filter diterapkan dengan benar
+                $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+            } else {
+                 // Jika user tidak punya hirarki, cegah dia melihat data apa pun
+                return response()->json(['exists' => false, 'message' => 'User tidak memiliki hak akses hirarki.'], 403); // Forbidden
+            }
+        }
+
+        $pelanggan = $query->select('idpel', 'status_dil')->first();
+
+        $exists = !is_null($pelanggan);
+        $statusDil = $exists ? $pelanggan->status_dil : null;
+        $isActive = $exists && strtoupper($statusDil) === 'AKTIF';
+
+        $message = '';
+        if ($exists) {
+            $message = $isActive ? 'ID Pelanggan ditemukan (Status: AKTIF).' : 'ID Pelanggan ditemukan (Status: NON AKTIF).';
+        } else {
+            $message = 'ID Pelanggan tidak ditemukan di Master Data.';
+        }
+
+        return response()->json([
+            'exists' => $exists,
+            'status_dil' => $statusDil, 
+            'is_active' => $isActive, 
+            'message' => $message
+        ]);
+    }
+
+    private function getHierarchyFilterForMaster($user): ?array
+    {
+        if ($user->hasRole('admin')) return null;
+
+        $userHierarchyCode = $user->hierarchy_level_code;
+        if (!$userHierarchyCode) return null; // Atau return ['column' => 'id', 'code' => -1]; jika ingin lebih strict
+
+        $level = HierarchyLevel::where('code', $userHierarchyCode)->with('parent.parent')->first();
+        if (!$level) return null; // Atau return ['column' => 'id', 'code' => -1];
+
+        // Sesuaikan nama kolom dengan tabel master_data_pelanggan
+        if ($level->parent_code === null) {
+            return ['column' => 'unitupi', 'code' => $userHierarchyCode];
+        } elseif ($level->parent && $level->parent->parent_code === null) {
+            return ['column' => 'unitap', 'code' => $userHierarchyCode];
+        }
+        return ['column' => 'unitup', 'code' => $userHierarchyCode];
+    }
 }

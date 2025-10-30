@@ -118,6 +118,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::resource('analisis', SmartTargetController::class)->except(['show']);
         });
 
+        Route::get('master-pelanggan/check/{idpel}', [App\Http\Controllers\Admin\MasterDataController::class, 'checkIdpelExistsAjax'])->name('master-pelanggan.check');
         Route::resource('mapping', MappingKddkController::class);
         Route::get('/mapping-coordinates', [MappingKddkController::class, 'getMapCoordinates'])->name('mapping-kddk.coordinates');
         Route::post('mapping-kddk/{id}/invalidate', [MappingKddkController::class, 'invalidate'])->name('mapping-kddk.invalidate');

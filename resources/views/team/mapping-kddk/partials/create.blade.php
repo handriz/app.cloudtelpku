@@ -16,10 +16,19 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div class="space-y-4">
-                <div>
-                    <label for="idpel_create" class="block text-sm font-medium text-gray-700 dark:text-gray-300">ID Pelanggan</label>
-                    <input type="text" name="idpel" id="idpel_create" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600" required>
+            <div>
+                <label for="idpel_create" class="block text-sm font-medium text-gray-700 dark:text-gray-300">ID Pelanggan</label>
+                <div class="relative mt-1">
+                    <input type="text" name="idpel" id="idpel_create" class="block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 pr-10" required maxlength="12">
+                    {{-- Tempat untuk ikon loading/status --}}
+                    <div id="idpel-status-icon" class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none hidden">
+                        <i class="fas fa-spinner fa-spin text-gray-400"></i>
+                        {{-- Kita akan ganti ikon ini via JS --}}
+                    </div>
                 </div>
+                {{-- Tempat untuk pesan status --}}
+                <p id="idpel-status-message" class="mt-1 text-xs text-gray-500 dark:text-gray-400 h-4"></p> {{-- Beri tinggi agar layout tidak lompat --}}
+            </div>
                 <div>
                     <label for="user_pendataan_create" class="block text-sm font-medium text-gray-700 dark:text-gray-300">User Pendataan</label>
                     <input type="hidden" name="user_pendataan" value="{{ Auth::user()->name }}">
@@ -109,7 +118,7 @@
         <hr class="border-gray-200 dark:border-gray-700">
         <div class="flex justify-end space-x-2">
             <button type="button" data-modal-close class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Batal</button>
-            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Simpan Data</button>
+            <button type="submit" id="create-mapping-submit-button" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700" disabled>Simpan Data</button>
         </div>
     </div>
 </form>

@@ -1,3 +1,6 @@
+{{-- Wadah untuk notifikasi AJAX (Tambah Data, Invalidate, dll) --}}
+<div id="kddk-notification-container" class="px-6"></div>
+
 {{-- Kontainer utama yang menyusun semua bagian secara vertikal --}}
 <div class="space-y-6">
 
