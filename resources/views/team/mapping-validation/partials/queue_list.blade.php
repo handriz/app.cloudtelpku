@@ -9,22 +9,28 @@
         
         @php
             $idpel = $item->idpel;
+            $objectId = $item->objectid;
             $user = Auth::user();
             
             // Tentukan apakah user memiliki role 'admin' ATAU 'team'
             $isAuthorized = $user && ($user->hasRole('admin') || $user->hasRole('team'));
             
             if ($idpel && strlen($idpel) > 3 && !$isAuthorized) {
-                // Sembunyikan 3 digit terakhir untuk user yang TIDAK diizinkan
                 $maskedIdpel = substr($idpel, 0, -3) . '***';
             } else {
-                // Tampilkan IDPEL penuh untuk user yang diizinkan (admin/team)
                 $maskedIdpel = $idpel; 
+            }
+
+            if ($objectId && strlen((string)$objectId) > 3 && !$isAuthorized) {
+                $maskedObjectId = substr((string)$objectId, 0, -3) . '***';
+            } else {
+                $maskedObjectId = $objectId;
             }
         @endphp
         
         <p class="font-bold text-lg" title="{{ $item->idpel }}">{{ $maskedIdpel }}</p> 
         
-        <p class="text-xs text-gray-500">{{ $item->user_pendataan }} <br>ObjectId : {{ $item->objectid  }}</p>
+        <p class="text-xs text-gray-500" >Surveyor : {{ \Illuminate\Support\Str::limit($item->user_pendataan, 12) }} 
+               <br>No ObjectId : {{ $maskedObjectId  }}</p>
     </a>
 @endforeach

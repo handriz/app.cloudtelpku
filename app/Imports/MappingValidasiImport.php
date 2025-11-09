@@ -57,20 +57,28 @@ class MappingValidasiImport implements ToModel, WithHeadingRow, WithChunkReading
         $idpel = isset($row['idpel']) ? trim($row['idpel']) : null;
         $userPendataan = isset($row['user_pendataan']) ? trim($row['user_pendataan']) : null;
 
-        // 3. Validasi Koordinat
+        // 3. Validasi Koordinat (dengan penggantian koma)
+        $koordinatX_raw = str_replace(',', '.', $row['longitudex'] ?? '');
+        $koordinatY_raw = str_replace(',', '.', $row['latitudey'] ?? '');
+
         $koordinatX = $row['longitudex'] ?? null;
         $koordinatY = $row['latitudey'] ?? null;
 
         // Validasi Latitude dan Longitude (contoh sederhana)
-        if (!is_numeric($koordinatX) || $koordinatX < -180 || $koordinatX > 180) {
-            Log::warning("Invalid Longitude value '{$koordinatX}' for ObjectID {$objectId}, setting to null.");
-            $koordinatX = null;
-        }
-        if (!is_numeric($koordinatY) || $koordinatY < -90 || $koordinatY > 90) {
-            Log::warning("Invalid Latitude value '{$koordinatY}' for ObjectID {$objectId}, setting to null.");
-            $koordinatY = null;
+        $koordinatX = null;
+        if (is_numeric($koordinatX_raw) && $koordinatX_raw >= -180 && $koordinatX_raw <= 180) {
+            $koordinatX = (float) $koordinatX_raw;
+        } else {
+            Log::warning("Invalid Longitude value '{$row['longitudex']}' for ObjectID {$objectId}, setting to null.");
         }
 
+        $koordinatY = null;
+        if (is_numeric($koordinatY_raw) && $koordinatY_raw >= -90 && $koordinatY_raw <= 90) {
+            $koordinatY = (float) $koordinatY_raw;
+        } else {
+            Log::warning("Invalid Latitude value '{$row['latitudey']}' for ObjectID {$objectId}, setting to null.");
+        }
+        
         // 4. Buat instance TemporaryMapping (TANPA FOTO PATH)
         return new TemporaryMapping([
             'objectid'          => $objectId,

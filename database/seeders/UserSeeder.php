@@ -22,10 +22,10 @@ class UserSeeder extends Seeder
         
         // Buat user admin
         User::firstOrCreate(
-            ['email' => 'zalil@cloudtelpku.com'],
+            ['email' => 'zalil@appcloudte.com'],
             [
                 'name' => 'Administrator',
-                'password' =>Hash::make('password'),
+                'password' =>Hash::make('telpkudev'),
                 'role_id' => $adminRole->id, // Set role_id
                 'hierarchy_level_code' => null,
                 'is_approved' => true,
@@ -35,7 +35,7 @@ class UserSeeder extends Seeder
 
         // Buat user TL User
         User::firstOrCreate(
-            ['email' => 'TL18110@appcloudtelpku.com'],
+            ['email' => 'TL18110@appcloudte.com'],
             [
                 'name' => 'Team Leader ULP Kotim',
                 'password' => Hash::make('password'),
@@ -46,7 +46,7 @@ class UserSeeder extends Seeder
         );
 
         User::firstOrCreate(
-            ['email' => 'TL18111@appcloudtelpku.com'],
+            ['email' => 'TL18111@appcloudte.com'],
             [
                 'name' => 'Team Leader ULP Kobar',
                 'password' => Hash::make('password'),
@@ -57,7 +57,7 @@ class UserSeeder extends Seeder
         );
 
         User::firstOrCreate(
-            ['email' => 'TL18120@appcloudtelpku.com'],
+            ['email' => 'TL18120@appcloudte.com'],
             [
                 'name' => 'Team Leader ULP Simpang Tiga',
                 'password' => Hash::make('password'),
@@ -68,7 +68,7 @@ class UserSeeder extends Seeder
         );
 
         User::firstOrCreate(
-            ['email' => 'TL18130@appcloudtelpku.com'],
+            ['email' => 'TL18130@appcloudte.com'],
             [
                 'name' => 'Team Leader ULP Rumbai',
                 'password' => Hash::make('password'),
@@ -79,7 +79,7 @@ class UserSeeder extends Seeder
         );
 
         User::firstOrCreate(
-            ['email' => 'TL18140@appcloudtelpku.com'],
+            ['email' => 'TL18140@appcloudte.com'],
             [
                 'name' => 'Team Leader ULP Panam',
                 'password' => Hash::make('password'),
@@ -90,7 +90,7 @@ class UserSeeder extends Seeder
         );
 
         User::firstOrCreate(
-            ['email' => 'TL18150@appcloudtelpku.com'],
+            ['email' => 'TL18150@appcloudte.com'],
             [
                 'name' => 'Team Leader ULP Perawang',
                 'password' => Hash::make('password'),
@@ -101,7 +101,7 @@ class UserSeeder extends Seeder
         );
 
         User::firstOrCreate(
-            ['email' => 'TL18170@appcloudtelpku.com'],
+            ['email' => 'TL18170@appcloudte.com'],
             [
                 'name' => 'Team Leader ULP Siak',
                 'password' => Hash::make('password'),
@@ -112,7 +112,7 @@ class UserSeeder extends Seeder
         );
 
         User::firstOrCreate(
-            ['email' => 'TL18170@appcloudtelpku.com'],
+            ['email' => 'TL18170@appcloudte.com'],
             [
                 'name' => 'Team Leader ULP P.Kerinci',
                 'password' => Hash::make('password'),
@@ -124,7 +124,7 @@ class UserSeeder extends Seeder
 
          // Buat contoh user TL User UP3
         User::firstOrCreate(
-            ['email' => 'dalsutpku@appcloudtelpku.com'],
+            ['email' => 'dalsutpku@appcloudte.com'],
             [
                 'name' => 'Team Leader Dalsut UP3 Pekanbaru',
                 'password' => Hash::make('password'),
@@ -135,7 +135,7 @@ class UserSeeder extends Seeder
         );
 
         User::firstOrCreate(
-            ['email' => 'harmetpku@appcloudtelpku.com'],
+            ['email' => 'harmetpku@appcloudte.com'],
             [
                 'name' => 'Team Leader Harmet UP3 Pekanbaru',
                 'password' => Hash::make('password'),
@@ -147,11 +147,22 @@ class UserSeeder extends Seeder
 
         // Buat contoh user Executive
         User::firstOrCreate(
-            ['email' => 'executive@appcloudtelpku.com'],
+            ['email' => 'executive@appcloudte.com'],
             [
                 'name' => 'executive',
                 'password' => Hash::make('password'),
                 'role_id' => $executiveUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18PKU',
+                'is_approved' => true,
+            ]
+        );
+
+        User::firstOrCreate(
+            ['email' => 'validator01@appcloudte.com'],
+            [
+                'name' => 'Petugas Validasi 01',
+                'password' => Hash::make('password'),
+                'role_id' => $appUserRole->id, // Set role_id
                 'hierarchy_level_code' => '18PKU',
                 'is_approved' => true,
             ]

@@ -13,49 +13,61 @@
     </div>
     <hr class="border-gray-200 dark:border-gray-700 my-6">
 
-    {{-- Grid Kartu Ringkasan Atas --}}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    {{-- 
+      Grid Kartu Ringkasan Atas
+      [PERBAIKAN 1]: Menggunakan 'xl:grid-cols-4'
+    --}}
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        
         {{-- Card Total Pelanggan --}}
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex items-center">
-            <div class="bg-indigo-500 rounded-full p-3 mr-4">
+            <div class="bg-indigo-500 rounded-full p-3 mr-4 flex-shrink-0"> {{-- Tambah flex-shrink-0 --}}
                 <i class="fas fa-users text-white text-xl"></i>
             </div>
-            <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Pelanggan Aktif</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($totalPelanggan) }}</p>
+            {{-- [PERBAIKAN 2]: Tambahkan 'flex-1 min-w-0' --}}
+            <div class="flex-1 min-w-0">
+                {{-- [PERBAIKAN 3]: Tambahkan 'truncate' --}}
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Pelanggan Aktif</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{{ number_format($totalPelanggan) }}</p>
             </div>
         </div>
 
         {{-- Card Prabayar --}}
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex items-center">
-            <div class="bg-green-500 rounded-full p-3 mr-4">
+            <div class="bg-green-500 rounded-full p-3 mr-4 flex-shrink-0">
                 <i class="fas fa-bolt text-white text-xl"></i>
             </div>
-            <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Prabayar</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($distribusilayanan['PRABAYAR'] ?? 0) }}</p>
+            {{-- [PERBAIKAN 2]: Tambahkan 'flex-1 min-w-0' --}}
+            <div class="flex-1 min-w-0">
+                {{-- [PERBAIKAN 3]: Tambahkan 'truncate' --}}
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Prabayar</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{{ number_format($distribusilayanan['PRABAYAR'] ?? 0) }}</p>
             </div>
         </div>
 
         {{-- Card Paskabayar --}}
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex items-center">
-            <div class="bg-yellow-500 rounded-full p-3 mr-4">
+            <div class="bg-yellow-500 rounded-full p-3 mr-4 flex-shrink-0">
                 <i class="fas fa-file-invoice-dollar text-white text-xl"></i>
             </div>
-            <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Paskabayar</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($distribusilayanan['PASKABAYAR'] ?? 0) }}</p>
+            {{-- [PERBAIKAN 2]: Tambahkan 'flex-1 min-w-0' --}}
+            <div class="flex-1 min-w-0">
+                {{-- [PERBAIKAN 3]: Tambahkan 'truncate' --}}
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Paskabayar</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{{ number_format($distribusilayanan['PASKABAYAR'] ?? 0) }}</p>
             </div>
         </div>
 
         {{-- Card Bulan Rekap Terakhir --}}
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex items-center">
-            <div class="bg-red-500 rounded-full p-3 mr-4">
+            <div class="bg-red-500 rounded-full p-3 mr-4 flex-shrink-0">
                 <i class="fas fa-calendar-alt text-white text-xl"></i>
             </div>
-            <div>
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Bulan Rekap Terakhir</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ $latestBulanRekap ? \Carbon\Carbon::createFromFormat('Ym', $latestBulanRekap)->format('F Y') : 'N/A' }}</p>
+            {{-- [PERBAIKAN 2]: Tambahkan 'flex-1 min-w-0' --}}
+            <div class="flex-1 min-w-0">
+                {{-- [PERBAIKAN 3]: Tambahkan 'truncate' --}}
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Bulan Rekap Terakhir</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{{ $latestBulanRekap ? \Carbon\Carbon::createFromFormat('Ym', $latestBulanRekap)->format('M Y') : 'N/A' }}</p>
             </div>
         </div>
     </div>
@@ -71,12 +83,9 @@
                 <table class="min-w-full text-sm text-left text-gray-700 dark:text-gray-300">
                     <thead class="text-xs text-gray-900 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-200">
                         <tr>
-                            {{-- 1. TAMBAHKAN HEADER UNTUK NOMOR URUT --}}
                             <th scope="col" class="py-2 px-6 w-16">
                                 No.
                             </th>
-
-                            {{-- Header untuk Sorting Kolom DAYA --}}
                             <th scope="col" class="py-2 px-6">
                                 @php
                                     $dayaDirection = (request('sort') == 'DAYA' && request('direction') == 'asc') ? 'desc' : 'asc';
@@ -91,8 +100,6 @@
                                     @endif
                                 </a>
                             </th>
-                            
-                            {{-- Header untuk Sorting Kolom JUMLAH --}}
                             <th scope="col" class="py-2 px-6 text-right">
                                 @php
                                     $totalDirection = (request('sort') == 'total_pelanggan' && request('direction') == 'asc') ? 'desc' : 'asc';
@@ -110,14 +117,11 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {{-- Loop menggunakan data dari Paginator --}}
                         @forelse($pelangganByDaya as $index => $data)
                             <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                {{-- 2. TAMBAHKAN DATA UNTUK NOMOR URUT --}}
                                 <td class="py-2 px-6 font-medium text-center">
                                     {{ $pelangganByDaya->firstItem() + $index }}
                                 </td>
-
                                 <td class="py-2 px-6 font-medium whitespace-nowrap">
                                     {{ number_format($data->DAYA) }} VA
                                 </td>

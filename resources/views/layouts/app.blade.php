@@ -121,5 +121,35 @@
         </div>
         
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+        {{-- ====================================================== --}}
+        {{-- MODAL GLOBAL: Konfirmasi Kustom (Hapus, Invalidate, Promote) --}}
+        {{-- ====================================================== --}}
+        <div id="custom-confirm-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
+                
+                {{-- Header Modal --}}
+                <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                    <h3 id="custom-confirm-title" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Konfirmasi Tindakan</h3>
+                </div>
+
+                {{-- Body Pesan --}}
+                <div class="p-6">
+                    <p id="custom-confirm-message" class="text-sm text-gray-700 dark:text-gray-300">
+                        Apakah Anda yakin ingin melanjutkan tindakan ini?
+                    </p>
+                </div>
+
+                {{-- Footer (Tombol) --}}
+                <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900 flex justify-end space-x-3 rounded-b-lg">
+                    <button id="custom-confirm-cancel" type="button" class="px-4 py-2 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-500">
+                        Batal
+                    </button>
+                    <button id="custom-confirm-ok" type="button" class="px-4 py-2 bg-red-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-red-700">
+                        Ya, Lanjutkan
+                    </button>
+                </div>
+            </div>
+        </div>
     </body>
 </html>

@@ -36,7 +36,8 @@
             </div>
             
             <div class="mt-4 flex items-center space-x-2">
-                <button type="submit" id="upload-button" class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700">
+                
+                <button type="submit" id="start-chunk-upload" class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700">
                     <i class="fas fa-upload mr-2"></i> Mulai Upload
                 </button>
                 <a href="{{ route('team.mapping.download-format') }}"
@@ -44,14 +45,14 @@
                     <i class="fas fa-download mr-2"></i> Download Format
                 </a>                
             </div>
-        </form>
 
-        <div id="progress-container" class="mt-4 hidden">
-            <div class="w-full bg-gray-200 rounded-full dark:bg-gray-700">
-                <div id="progress-bar" class="bg-indigo-600 text-xs font-medium text-blue-100 text-center p-0.5 leading-none rounded-full" style="width: 0%">0%</div>
+            <div id="progress-container" class="mt-4 hidden">
+                <div class="w-full bg-gray-200 rounded-full dark:bg-gray-700">
+                    <div id="progress-bar" class="bg-indigo-600 text-xs font-medium text-blue-100 text-center p-0.5 leading-none rounded-full" style="width: 0%">0%</div>
+                </div>
             </div>
-        </div>
-        <div id="status-message" class="mt-2 text-sm"></div>
+            <div id="status-message" class="mt-2 text-sm"></div>
+            </form>
         
     </div>
 </div>

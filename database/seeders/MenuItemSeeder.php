@@ -59,7 +59,7 @@ class MenuItemSeeder extends Seeder
             'name' => 'Daftar Pengguna',
             'route_name' => 'manajemen-pengguna.users.index', 
             'icon' => 'fas fa-user-friends',
-            'permission_name' => 'manage-users', 
+            'permission_name' => 'manage-user-list', 
             'parent_id' => $manajemenPengguna->id,
             'order' => 21,
             'is_active' => true,
@@ -68,7 +68,7 @@ class MenuItemSeeder extends Seeder
             'name' => 'Tambah Pengguna',
             'route_name' => 'manajemen-pengguna.users.create', 
             'icon' => 'fas fa-user-plus',
-            'permission_name' => 'manage-users', 
+            'permission_name' => 'manage-user-create', 
             'parent_id' => $manajemenPengguna->id,
             'order' => 22,
             'is_active' => true,
@@ -204,6 +204,7 @@ class MenuItemSeeder extends Seeder
                 $usersIndex->id, 
                 $usersCreate->id,
                 $manajemenData->id, 
+                $mappingvalidasi->id,
                 $dataPelangganDashboard->id,
                 $DataPelangganIndex->id,
                 $pengaturan->id, 
@@ -230,6 +231,7 @@ class MenuItemSeeder extends Seeder
 
         if ($appUserRole) {
             $appUserRole->menuItems()->attach([
+                $manajemenPengguna->id,
                 $usersIndex->id,
                 $manajemenData->id,
                 $mappingvalidasi->id,

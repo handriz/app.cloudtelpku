@@ -1,4 +1,5 @@
-<div class="pt-3 pb-0">
+<div id="kddk-notification-container" class="space-y-6">
+<div class="space-y-6">
     <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight mb-4">
         {{ __('Tambah Pengguna Baru') }}
     </h2>
@@ -20,7 +21,9 @@
     {{-- Kartu Formulir --}}
     <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
         <div class="p-6 text-gray-900 dark:text-gray-100">
-            <form id="create-user-form" method="POST" action="{{ route('manajemen-pengguna.users.store') }}">
+            <form id="create-user-form" class="ajax-form" method="POST" action="{{ route('manajemen-pengguna.users.store') }}"
+                  data-success-redirect-tab="Daftar Pengguna" 
+                  data-success-redirect-url="{{ route('manajemen-pengguna.users.index') }}">
                 @csrf
 
                 {{-- Nama --}}
@@ -33,7 +36,7 @@
                 {{-- Email --}}
                 <div class="mb-4">
                     <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Alamat Email</label>
-                    <input type="email" name="email" id="email" value="{{ old('email') }}" required
+                    <input type="email" name="email" id="email" value="{{ old('email') }}" required  autocomplete="username"
                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
                 </div>
 
@@ -89,14 +92,14 @@
                 {{-- Kata Sandi (Password) --}}
                 <div class="mb-4">
                     <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Kata Sandi</label>
-                    <input type="password" name="password" id="password" required
+                    <input type="password" name="password" id="password" required autocomplete="new-password"
                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
                 </div>
 
                 {{-- Konfirmasi Kata Sandi --}}
                 <div class="mb-4">
                     <label for="password_confirmation" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Konfirmasi Kata Sandi</label>
-                    <input type="password" name="password_confirmation" id="password_confirmation" required
+                    <input type="password" name="password_confirmation" id="password_confirmation" required autocomplete="new-password"
                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200">
                 </div>
 
@@ -110,97 +113,13 @@
                 {{-- Tombol Submit dan Kembali --}}
                 <div class="flex items-center justify-end mt-6">
                     <a href="{{ route('manajemen-pengguna.users.index') }}" class="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 mr-4">Batal</a>
-                    <button type="submit" id="save-user-button" class="inline-flex items-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:bg-gray-700 dark:focus:bg-white active:bg-gray-900 dark:active:bg-gray-300 disabled:opacity-25 transition ease-in-out duration-150">
-                        Simpan Pengguna
+                    <button type="submit" 
+                            id="save-user-button" 
+                            class="inline-flex items-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:bg-gray-700 dark:focus:bg-white active:bg-gray-900 dark:active:bg-gray-300 disabled:opacity-25 transition ease-in-out duration-150">
+                        Simpan Data
                     </button>
                 </div>
             </form>
         </div>
     </div>
 </div>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('create-user-form');
-        const ajaxErrors = document.getElementById('ajax-errors');
-        const errorList = document.getElementById('error-list');
-        const ajaxSuccess = document.getElementById('ajax-success');
-        const successMessage = document.getElementById('success-message');
-        const saveButton = document.getElementById('save-user-button');
-
-        // Panggil fungsi `updateScrollButtons` dari `app.blade.php` jika ada
-        if (typeof updateScrollButtons === 'function') {
-            updateScrollButtons();
-        }
-
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-
-            ajaxErrors.classList.add('hidden');
-            ajaxSuccess.classList.add('hidden');
-            errorList.innerHTML = '';
-            
-            saveButton.disabled = true;
-
-            const formData = new FormData(form);
-            const actionUrl = form.getAttribute('action');
-
-            fetch(actionUrl, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(data => {
-                        throw data;
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                ajaxSuccess.classList.remove('hidden');
-                successMessage.textContent = data.success;
-                form.reset();
-                saveButton.disabled = false;
-                
-                // KUNCI PERBAIKAN: Programmatically click the "Daftar Pengguna" tab
-                const userListTabLink = document.getElementById('tabContent');
-                if (tabContent) {
-                    fetch('/manajemen-pengguna/users?is_ajax=1')
-                    .then(resp => resp.text())
-                    .then(html => {
-                         tabContent.innerHTML = html;
-                      });
-                }
-            })
-            .catch(error => {
-                if (error.errors) {
-                    for (const key in error.errors) {
-                        if (error.errors.hasOwnProperty(key)) {
-                            error.errors[key].forEach(err => {
-                                const li = document.createElement('li');
-                                li.textContent = err;
-                                errorList.appendChild(li);
-                            });
-                        }
-                    }
-                } else if (error.message) {
-                    const li = document.createElement('li');
-                    li.textContent = error.message;
-                    errorList.appendChild(li);
-                } else {
-                    const li = document.createElement('li');
-                    li.textContent = 'Terjadi kesalahan saat menyimpan data.';
-                    errorList.appendChild(li);
-                }
-                ajaxErrors.classList.remove('hidden');
-                saveButton.disabled = false;
-            });
-        });
-    });
-</script>

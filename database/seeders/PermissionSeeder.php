@@ -31,16 +31,26 @@ class PermissionSeeder extends Seeder
             $permissions = [
             // Dashboard
             ['name' => 'access-admin-dashboard', 'description' => 'Acces dashboard Admin '],
-            ['name' => 'access-tl_user-dashboard', 'description' => 'Acces dashboard TL User '],
-            ['name' => 'access-app_user-dashboard', 'description' => 'Acces dashboard App User '],
+            ['name' => 'access-team-dashboard', 'description' => 'Acces dashboard TL User '],
+            ['name' => 'access-appuser-dashboard', 'description' => 'Acces dashboard App User '],
             ['name' => 'access-executive-dashboard', 'description' => 'Acces dashboard Eksekutif '],
 
             // Manajemen Pengguna
-            ['name' => 'manage-users', 'description' => 'Mengelola modul pengguna'],
-            ['name' => 'view-user-list', 'description' => 'Melihat daftar pengguna'],
-            ['name' => 'create-user', 'description' => 'Membuat pengguna baru'],
-            ['name' => 'edit-user', 'description' => 'Mengedit pengguna'],
-            ['name' => 'delete-user', 'description' => 'Menghapus pengguna'],
+            ['name' => 'manage-users', 'description' => 'Modul pengguna aplikasi'],
+            ['name' => 'manage-user-list', 'description' => 'Melihat daftar pengguna aplikasi'],
+            ['name' => 'manage-user-create', 'description' => 'Menambah pengguna aplikasi'],
+            ['name' => 'manage-user-edit', 'description' => 'Mengedit pengguna aplikasi'],
+            ['name' => 'manage-user-delete', 'description' => 'Menghapus pengguna aplikasi'],
+
+            // Manajemen Bank Data TE
+            ['name' => 'view-dashboard-master-data', 'description' => 'Melihat dashboard rekapan Master Data'],
+            ['name' => 'manage-data-bank', 'description' => 'Akses Modul Bank Data TE'],
+            ['name' => 'view-master-data', 'description' => 'Melihat Data Pelanggan'],
+            ['name' => 'view-queue-monitor', 'description' => 'Monitoring Antrian Upload'],
+            ['name' => 'upload-master-data', 'description' => 'Mengupload Master Data  (csv)'],
+            ['name' => 'upload-mapping-data', 'description' => 'Mengupload Data Mapping  (csv)'],
+            ['name' => 'edit-master-data', 'description' => 'Mengedit satu data Master Data Pelanggan'],
+            ['name' => 'delete-master-data', 'description' => 'Menghapus data Master Data Pelanggan'],
 
             // Manajemen Menu
             ['name' => 'manage-menus', 'description' => 'Mengelola modul menu'],
@@ -60,16 +70,6 @@ class PermissionSeeder extends Seeder
             ['name' => 'create-hierarchy-level', 'description' => 'Membuat level hirarki baru'],
             ['name' => 'edit-hierarchy-level', 'description' => 'Mengedit level hirarki'],
             ['name' => 'delete-hierarchy-level', 'description' => 'Menghapus level hirarki'],
-
-            // Manajemen Bank Data
-            ['name' => 'view-dashboard-master-data', 'description' => 'Melihat dashboard rekapan Master Data'],
-            ['name' => 'manage-data-bank', 'description' => 'Mengelola modul Bank Data'],
-            ['name' => 'view-master-data', 'description' => 'Melihat Data Pelanggan'],
-            ['name' => 'view-queue-monitor', 'description' => 'Monitoring Antrian Upload'],
-            ['name' => 'upload-master-data', 'description' => 'Mengupload Master Data  (csv)'],
-            ['name' => 'upload-mapping-data', 'description' => 'Mengupload Data Mapping  (csv)'],
-            ['name' => 'edit-master-data', 'description' => 'Mengedit satu data Master Data Pelanggan'],
-            ['name' => 'delete-master-data', 'description' => 'Menghapus data Master Data Pelanggan'],
             
             // Manajemen Data
             ['name' => 'access-data-bank', 'description' => 'Mengelola modul Bank Data'],
@@ -108,7 +108,7 @@ class PermissionSeeder extends Seeder
 
         // --- Izin untuk App User ---
         $tlUserPermissions = Permission::whereIn('name', [
-            'access-tl_user-dashboard',
+            'access-team-dashboard',
             'manage-users',
             'view-user-list',
             'create-user',
@@ -123,7 +123,11 @@ class PermissionSeeder extends Seeder
 
         // --- Izin untuk App User ---
         $appUserPermissions = Permission::whereIn('name', [
-            'access-app_user-dashboard'
+            'access-appuser-dashboard',
+            'manage-users',
+            'view-user-list',
+            'manage-data-bank',
+            'mapping-validasi'
         ])->pluck('id');
         $appUserRole->permissions()->sync($appUserPermissions);
 

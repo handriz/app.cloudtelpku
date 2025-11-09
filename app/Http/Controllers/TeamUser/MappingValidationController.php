@@ -17,11 +17,20 @@ use Carbon\Carbon;
 class MappingValidationController extends Controller
 {
     // Konstanta waktu timeout lock (dalam menit)
-    const LOCK_TIMEOUT_MINUTES = 15;
+    const LOCK_TIMEOUT_MINUTES = 10;
 
     /**
      * Menampilkan halaman validasi.
      * Prioritaskan item yang sedang di-lock user, lalu ambil item acak lainnya.
+     */
+    /**
+     * Menampilkan halaman validasi.
+     * Prioritaskan item yang sedang di-lock user, lalu ambil item acak lainnya.
+     *
+     * VERSI OPTIMASI: 
+     * - Menghilangkan inRandomOrder()
+     * - Menerapkan antrian 2-Tier (Fresh > Rejected)
+     * - Secara eksplisit membaca status 'pending'
      */
     public function index(Request $request)
     {
@@ -34,63 +43,100 @@ class MappingValidationController extends Controller
                             ->where('locked_at', '>=', $lockExpirationTime)
                             ->first();
 
-        // 2. Query dasar untuk item yang tersedia (unlocked atau expired)
+        // 2. Query dasar untuk SEMUA item yang BISA Divalidasi (belum 'verified')
         $hierarchyFilter = $this->getHierarchyFilterForJoin(Auth::user());
         $baseAvailableQuery = TemporaryMapping::where(function ($query) use ($lockExpirationTime) {
-                $query->whereNull('locked_by')
-                      ->orWhere('locked_at', '<', $lockExpirationTime);
-                 })
-
-                    ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
-                        return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
-                            ->select('temporary_mappings.*')
-                            ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
-                       
+            
+            // Filter 1: Kriteria Lock (Tidak terkunci ATAU expired)
+            $query->where(function($q) use ($lockExpirationTime) {
+                $q->whereNull('locked_by')
+                  ->orWhere('locked_at', '<', $lockExpirationTime);
+            });
+            
+            // Filter 2: Kriteria Status (BUKAN 'verified')
+            $query->where(function($q) {
+                $q->whereNull('ket_validasi') // Item baru (NULL)
+                  ->orWhere('ket_validasi', 'NOT LIKE', 'verified%'); // Item yg belum di-approve
             });
 
-        // 3. Ambil item acak lainnya (max 10), exclude item yg di-lock user ini
-        $otherAvailableItems = (clone $baseAvailableQuery) // Clone query dasar
+        })
+        ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
+            return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
+                ->select('temporary_mappings.*')
+                ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+        });
+
+        // 3. Ambil item acak lainnya (max 10), prioritaskan item BARU
+        
+        // --- TIER 1: Ambil item BARU (Fresh Items) ---
+        $freshItemsQuery = (clone $baseAvailableQuery)
             ->when($userLockedItem, function ($query) use ($userLockedItem) {
-                // Jangan ambil item yang sedang di-lock user ini dari daftar acak
                 $query->where('temporary_mappings.id', '!=', $userLockedItem->id);
             })
             ->when($justRejectedId, function ($query) use ($justRejectedId) {
                 $query->where('temporary_mappings.id', '!=', $justRejectedId);
             })
-            ->inRandomOrder()
-            ->take(6)
-            ->get(); // Ambil sebagai collection
+            // --- INI PERBAIKANNYA ---
+            // Secara eksplisit cari status: NULL, pending, atau recalled
+            ->where(function ($query) {
+                $query->whereNull('temporary_mappings.ket_validasi')
+                      ->orWhere('temporary_mappings.ket_validasi', 'pending')
+                      ->orWhere('temporary_mappings.ket_validasi', 'LIKE', 'recalled_%');
+            });
+
+        // Ambil 6 item baru, acak dari 200 tertua
+        $otherAvailableItems = (clone $freshItemsQuery)
+            ->orderBy('temporary_mappings.created_at', 'asc')
+            ->take(200)
+            ->get()
+            ->shuffle()
+            ->take(6); // Ambil 6 item
+
+        // Cek berapa slot lagi yang perlu diisi
+        $neededMore = 10 - ($userLockedItem ? 1 : 0) - $otherAvailableItems->count();
+        $neededMore = max(0, $neededMore); // Pastikan tidak negatif
+
+        // --- TIER 2: Jika slot masih ada, ambil item REJECTED ---
+        if ($neededMore > 0) {
+            $rejectedItemsQuery = (clone $baseAvailableQuery)
+                ->when($userLockedItem, function ($query) use ($userLockedItem) {
+                    $query->where('temporary_mappings.id', '!=', $userLockedItem->id);
+                })
+                ->when($justRejectedId, function ($query) use ($justRejectedId) {
+                    $query->where('temporary_mappings.id', '!=', $justRejectedId);
+                })
+                // Filter hanya item yang pernah di-reject
+                ->where('temporary_mappings.ket_validasi', 'LIKE', 'rejected%');
+            
+            $rejectedItems = (clone $rejectedItemsQuery)
+                ->orderBy('temporary_mappings.created_at', 'asc') // Ambil item rejected tertua
+                ->take(200)
+                ->get()
+                ->shuffle()
+                ->take($neededMore); // Ambil sisanya
+
+            // Gabungkan item baru dengan item rejected
+            $otherAvailableItems = $otherAvailableItems->merge($rejectedItems);
+        }
 
         // 4. Gabungkan: item yg di-lock user (jika ada) + item acak lainnya
         $availableItems = collect();
         if ($userLockedItem) {
             $availableItems->push($userLockedItem); // Tambahkan item user di awal
         }
-        // Tambahkan item lain hingga maksimal 10
-        $needed = 10 - $availableItems->count();
-        if ($needed > 0) {
-            $availableItems = $availableItems->merge($otherAvailableItems->take($needed));
-        }
+        $availableItems = $availableItems->merge($otherAvailableItems);
 
         // 5. Siapkan data untuk view
-        // Hitung total yg BISA divalidasi (termasuk yg di-lock user ini jika ada)
         $totalAvailable = (clone $baseAvailableQuery)->count() + ($userLockedItem ? 1 : 0);
-
-        // Item yg akan ditampilkan detailnya pertama kali (prioritas yg di-lock user)
         $currentItem = $userLockedItem ?: $availableItems->first();
-        // Siapkan detailnya jika ada item yang akan ditampilkan
         $details = $currentItem ? $this->prepareItemDetails($currentItem) : null;
-
         $viewData = compact('availableItems', 'totalAvailable', 'currentItem', 'details');
 
         if ($request->has('is_ajax_list')) {
-            // HANYA UNTUK REFRESH ANTRIAN
             return view('team.mapping-validation.partials.queue_list', compact('availableItems'));
         } elseif ($request->has('is_ajax')) {
-            // UNTUK LOAD KONTEN TAB OLEH tab-manager.js
             return view('team.mapping-validation.partials.index_content', $viewData);
         } else {
-            // UNTUK LOAD HALAMAN PENUH (BROWSER LANGSUNG)
             return view('team.mapping-validation.index', $viewData);
         }
     }
@@ -198,7 +244,10 @@ class MappingValidationController extends Controller
             'foto_bangunan_url' => $fotoBangunanUrl,
             'full_meter_number' => $item->nokwhmeter ?? null, // Kunci jawaban
             'status_validasi'   => $item->ket_validasi,
-            'rejection_history' => $rejectionHistory
+            'rejection_history' => $rejectionHistory,
+            'mcb'               => $item->mcb,
+            'type_pbts'         => $item->type_pbts,
+            'merkkwhmeter'      => $item->merkkwhmeter,
         ];
     }
 
@@ -218,6 +267,9 @@ class MappingValidationController extends Controller
                         ->where('locked_by', Auth::id())
                         ->lockForUpdate()
                         ->firstOrFail(); // Gagal jika ID salah atau di-lock user lain
+            $tempData->mcb = $request->input('eval_mcb');
+            $tempData->type_pbts = $request->input('eval_type_pbts');
+            $tempData->merkkwhmeter = $request->input('eval_merkkwhmeter');
 
             $idpel = $tempData->idpel;
             $objectid = $tempData->objectid;
@@ -227,6 +279,7 @@ class MappingValidationController extends Controller
 
             $validatedData['ket_validasi'] = 'verified';
             $validatedData['enabled'] = false;
+            $validatedData['user_validasi']    = Auth::user()->id;
 
             // 2. Pindahkan foto dari 'unverified' ke 'verified'
             $newPhotoPaths = [];
@@ -288,7 +341,7 @@ class MappingValidationController extends Controller
                     // Jika antrian habis
                     return response()->json([
                         'action_type' => 'validate',
-                        'status_message' => 'Data' . $idpel . ' berhasil divalidasi. Tidak ada data lagi untuk divalidasi saat ini.',
+                        'status_message' => 'Idpel ' . $idpel . ' berhasil divalidasi. Tidak ada data lagi untuk divalidasi saat ini.',
                         'queue_empty' => true
                         ]);
                     }
@@ -337,15 +390,16 @@ class MappingValidationController extends Controller
             if ($currentStatus && preg_match('/^rejected_(\d+)/', $currentStatus, $matches)) {
                 // Format baru: 'rejected_1', 'rejected_2'
                 $rejectCount = (int) $matches[1];
-            } elseif ($currentStatus && preg_match('/^rejected sebanyak (\d+) kali/', $currentStatus, $matches)) {
-                // Format lama yang salah: 'rejected sebanyak 1 kali'
+            } elseif ($currentStatus && preg_match('/^Rejected sebanyak (\d+) kali/', $currentStatus, $matches)) {
+                // Format lama yang salah: 'Rejected sebanyak 1 kali'
                 $rejectCount = (int) $matches[1];
             }
             
-            $newStatus = 'Rejected sebanyak' . ($rejectCount + 1) . 'kali';
+            // --- PERBAIKAN BUG DI SINI ---
+            // Gunakan format yang konsisten (rejected_X)
+            $newStatus = 'rejected_' . ($rejectCount + 1);
 
             // Update status, simpan alasan (jika ada), dan reset lock
-
             $validationData = $request->input('validation_data');
             $validationNotes = $request->input('validation_notes');
 
@@ -369,25 +423,29 @@ class MappingValidationController extends Controller
                  if ($nextItem) {
                     $response = $this->lockAndGetDetails($request, $nextItem->id);
                     $data = $response->getData(true);
-                    $data['validation_status'] = 'reject';
+                    
+                    // --- PERBAIKAN BUG DI SINI ---
+                    // Ganti 'validation_status' menjadi 'action_type' agar konsisten
+                    $data['action_type'] = 'reject'; 
                     $data['status_message'] = 'Data Mapping Idpel ' . $idpel . ' berhasil ditolak. Item berikutnya telah dimuat.';
                     return response()->json($data);
 
                 } else {
                     return response()->json([
-                    'validation_status' => 'reject', // Tambahkan status ini
+                    'action_type' => 'reject', // Konsisten
                     'status_message' => 'Data berhasil ditolak. Untuk saat ini tidak ada data lagi untuk divalidasi.',
                     'queue_empty' => true
                  ]);
                 }
             }
-            return redirect()->route('team.mapping-validation.index')->with('success', 'Data IDPEL ' . $idpel . ' berhasil ditolak.');
+            return redirect()->route('team.mapping_validation.index')->with('success', 'Data IDPEL ' . $idpel . ' berhasil ditolak.');
+        
         } catch (\Exception $e) {
             DB::rollBack();
              if ($request->expectsJson()) {
                  return response()->json(['error' => 'Gagal menolak data: ' . $e->getMessage()], 500);
              }
-            return redirect()->route('team.mapping-validation.index')->with('error', 'Gagal menolak data: ' . $e->getMessage());
+            return redirect()->route('team.mapping_validation.index')->with('error', 'Gagal menolak data: ' . $e->getMessage());
         }
     }
 
@@ -396,19 +454,47 @@ class MappingValidationController extends Controller
          $lockExpirationTime = Carbon::now()->subMinutes(self::LOCK_TIMEOUT_MINUTES);
          $hierarchyFilter = $this->getHierarchyFilterForJoin(Auth::user());
          
-         // Cari item acak yang tersedia (bukan yg sedang di-lock user lain)
-         $query= TemporaryMapping::where(function ($query) use ($lockExpirationTime, $userId) {
-                $query->whereNull('locked_by')
-                      ->orWhere('locked_at', '<', $lockExpirationTime);
+         // Query dasar untuk item yang tersedia (bukan 'verified')
+         $query = TemporaryMapping::where(function ($query) use ($lockExpirationTime) {
+            
+            // Filter 1: Kriteria Lock
+            $query->where(function($q) use ($lockExpirationTime) {
+                $q->whereNull('locked_by')
+                  ->orWhere('locked_at', '<', $lockExpirationTime);
+            });
+            
+            // Filter 2: Kriteria Status
+            $query->where(function($q) {
+                $q->whereNull('ket_validasi')
+                  ->orWhere('ket_validasi', 'NOT LIKE', 'verified%');
+            });
+         })
+         ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
+             return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
+                 ->select('temporary_mappings.*')
+                 ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+          });
+
+         // --- TIER 1: Prioritaskan item BARU (Fresh) ---
+         $freshItem = (clone $query)
+            // --- INI PERBAIKANNYA ---
+            ->where(function ($q) {
+                $q->whereNull('temporary_mappings.ket_validasi')
+                  ->orWhere('temporary_mappings.ket_validasi', 'pending')
+                  ->orWhere('temporary_mappings.ket_validasi', 'LIKE', 'recalled_%');
             })
+            ->orderBy('temporary_mappings.created_at', 'asc')
+            ->first();
 
-            ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
-                return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
-                    ->select('temporary_mappings.*')
-                    ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
-             });
+        if ($freshItem) {
+            return $freshItem; // Kembalikan item baru jika ada
+        }
 
-             return $query->inRandomOrder()->first();
+        // --- TIER 2: Jika item baru habis, baru ambil item REJECTED ---
+        return (clone $query)
+            ->where('temporary_mappings.ket_validasi', 'LIKE', 'rejected%')
+            ->orderBy('temporary_mappings.created_at', 'asc') // Ambil item rejected tertua
+            ->first();
     }
 
     private function getHierarchyFilterForJoin($user): ?array
@@ -440,12 +526,12 @@ class MappingValidationController extends Controller
         // Definisikan terjemahan untuk kode alasan
         $petaReasons = [
             'posisi_bangunan' => 'Posisi titik tagging tidak berada di bangunan',
-            'luar_wilayah' => 'Titik koordinat tidak valid atau berada diluar wilayah ULP / UP3',
+            'luar_wilayah' => 'Titik tagging berada diluar wilayah ULP / UP3 Pekanbaru',
         ];
         $persilReasons = [
-            'bukan_persil' => 'Bukan Foto Persil / Bangunan',
-            'diragukan' => 'Foto App Tidak Ada',
-            'tidak_valid' => 'Foto Diragukan dari kegiatan lapangan',
+            'bukan_persil' => 'Bukan foto persil / bangunan',
+            'diragukan' => 'Foto App tidak ada pada persil',
+            'tidak_valid' => 'Foto diragukan dari kegiatan lapangan',
         ];
 
         // 1. Cek Peta
@@ -481,6 +567,27 @@ class MappingValidationController extends Controller
             $history[] = [
                 'label' => 'Input No. Meter (Saat Ditolak)',
                 'value' => htmlspecialchars($data['eval_meter_input']) // Keamanan
+            ];
+        }
+
+        if (!empty($data['eval_mcb'])) {
+            $history[] = [
+                'label' => 'Input MCB (Saat Ditolak)',
+                'value' => htmlspecialchars($data['eval_mcb'])
+            ];
+        }
+
+        if (!empty($data['eval_type_pbts'])) {
+            $history[] = [
+                'label' => 'Input Tipe PB/TS (Saat Ditolak)',
+                'value' => htmlspecialchars($data['eval_type_pbts'])
+            ];
+        }
+
+        if (!empty($data['eval_merkkwhmeter'])) {
+            $history[] = [
+                'label' => 'Input Merk KWH (Saat Ditolak)',
+                'value' => htmlspecialchars($data['eval_merkkwhmeter'])
             ];
         }
 
@@ -577,16 +684,17 @@ class MappingValidationController extends Controller
         return view('team.mapping-validation.partials.upload_photos_form');
     }
 
-        public function store(Request $request)
+    public function store(Request $request)
     {
         // 1. Validasi Data (user_pendataan tidak perlu divalidasi dari input)
         $validator = Validator::make($request->all(), [
-            'idpel'         => 'required|string|max:12',
+            'idpel'         => 'required|numeric|regex:/^[0-9]+$/',
             'foto_kwh'      => 'required|string',
             'foto_bangunan' => 'required|string',
             'ket_survey'    => 'required|string',
-            'latitudey'     => ['required', 'numeric', 'between:-90,90'],
-            'longitudex'    => ['required', 'numeric', 'between:-180,180'],
+            //Perkiraan Batas Koordinat Provinsi Riau:
+            'latitudey'  => ['required', 'numeric', 'between:-1.5,1.8'],
+            'longitudex' => ['required', 'numeric', 'between:100.0,104.5'],
             ], [
             // Pesan error kustom yang lebih ramah pengguna
             'latitudey.numeric' => 'Latitude harus berupa angka.',
@@ -596,78 +704,107 @@ class MappingValidationController extends Controller
         ]);
 
         if ($validator->fails()) {
+            if ($request->filled('foto_kwh')) Storage::disk('local')->delete('temp_photos/' . basename($request->input('foto_kwh')));
+            if ($request->filled('foto_bangunan')) Storage::disk('local')->delete('temp_photos/' . basename($request->input('foto_bangunan')));
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
         $validatedData = $validator->validated();
-
-        // 2. Tambahkan data otomatis (user dan objectid baru)
         $validatedData['user_pendataan'] = Auth::user()->name;
-
-        $lastTempId = TemporaryMapping::max('objectid');
-        $lastKddkId = MappingKddk::max('objectid');
-
-        $trueLastObjectId = max($lastTempId, $lastKddkId);
-        $newObjectId = ($trueLastObjectId !== null ? $trueLastObjectId : 0) + 1;
-
-        $validatedData['objectid'] = $newObjectId;
         $idpel = $validatedData['idpel'];
 
         $finalPaths = [];
+        $tempFilesToDelete = [];
+        $newObjectId = null; // Inisialisasi
 
-        // 3. Pindahkan file dari disk 'local' (temp) ke disk 'public' (unverified)
-        foreach (['foto_kwh', 'foto_bangunan'] as $photoType) {
-            $tempFilename = $validatedData[$photoType];
-            $tempPath = 'temp_photos/' . $tempFilename;
+        // Mulai Transaksi DB
+        DB::beginTransaction();
+        try {
+            
+            // --- INI LOGIKA BARU YANG LEBIH KUAT ---
+            // 2. Minta ID unik baru dari database
+            // Kita membuat entri dummy di tabel sequence...
+            DB::table('objectid_sequence')->insert(['created_at' => now()]);
+            // ...dan langsung ambil ID auto-increment yang baru saja dibuat
+            $newObjectId = DB::getPdo()->lastInsertId();
+            // $newObjectId sekarang DIJAMIN unik
+            // --- AKHIR LOGIKA BARU ---
 
-            // 1. Cek apakah file sementara ada di disk 'local'
-            if (Storage::exists($tempPath)) { 
+            $validatedData['objectid'] = $newObjectId;
 
-                $extension = pathinfo($tempFilename, PATHINFO_EXTENSION);
-                // 2. Tentukan nama dan path file baru di disk 'public'
-                if (empty($extension)) {
-                    if (isset($finalPaths['foto_kwh'])) {
-                        Storage::disk('public')->delete($finalPaths['foto_kwh']);
+            // 3. Pindahkan file (logika ini tetap sama)
+            foreach (['foto_kwh', 'foto_bangunan'] as $photoType) {
+                $tempFilename = $validatedData[$photoType]; 
+                $tempPathRelative = 'temp_photos/' . basename($tempFilename);
+                $tempFilesToDelete[] = $tempPathRelative; 
+
+                if (Storage::disk('local')->exists($tempPathRelative)) {
+                    $extension = pathinfo($tempFilename, PATHINFO_EXTENSION);
+                    if (empty($extension) || !in_array(strtolower($extension), ['jpg', 'jpeg', 'png'])) {
+                         throw new \Exception("Ekstensi file '{$tempFilename}' tidak valid.");
                     }
-                    $errorMsg = "File sementara untuk $photoType tidak memiliki ekstensi. Harap upload ulang.";
-                    Log::warning($errorMsg . " (Temp path: $tempPath, User: " . Auth::id() . ")");
-                    return response()->json(['errors' => [$photoType => [$errorMsg]]], 422);
-                }
 
-                $newFilename = $newObjectId . '_' . $idpel . '_' . ($photoType === 'foto_kwh' ? 'foto_app' : 'foto_persil') . '.' . pathinfo($tempFilename, PATHINFO_EXTENSION);
-                $finalRelativePath = "mapping_photos/unverified/{$idpel}/{$newFilename}";
-
-                // 3. Baca file dari 'local' dan tulis ke 'public'
-                Storage::disk('public')->put($finalRelativePath, Storage::disk('local')->get($tempPath));
+                    $newFilename = $newObjectId . '_' . $idpel . '_' . ($photoType === 'foto_kwh' ? 'foto_app' : 'foto_persil') . '.' . $extension;
+                    $finalRelativePath = "mapping_photos/unverified/{$idpel}/{$newFilename}";
+                    
+                    $fileContent = Storage::disk('local')->get($tempPathRelative);
+                    if ($fileContent === false) throw new \Exception("Gagal membaca file sementara: $tempPathRelative");
+                    
+                    if (!Storage::disk('public')->put($finalRelativePath, $fileContent)) throw new \Exception("Gagal menyimpan file: $finalRelativePath");
+                    
+                    $finalPaths[$photoType] = $finalRelativePath;
                 
-                // 4. Hapus file asli dari 'local' setelah berhasil disalin
-                Storage::disk('local')->delete($tempPath);
-
-                // 5. Simpan path BARU (relatif terhadap disk 'public') ke database
-                $finalPaths[$photoType] = $finalRelativePath;
-            } else {
-                // File sementara tidak ditemukan di disk 'local'
-                if (isset($finalPaths['foto_kwh'])) {
-                    Storage::disk('public')->delete($finalPaths['foto_kwh']);
+                } else {
+                     throw new \Exception("File sementara '{$tempFilename}' tidak ditemukan.");
                 }
-
-                $errorField = $photoType;
-                $errorMsg = "File sementara untuk $photoType tidak ditemukan di server. Harap upload ulang foto.";
-                Log::warning($errorMsg . " (Temp path: $tempPath, User: " . Auth::id() . ")");
-                return response()->json(['errors' => [$errorField => [$errorMsg]]], 422);
             }
+            
+            // 4. Buat record di TemporaryMapping
+            unset($validatedData['foto_kwh'], $validatedData['foto_bangunan']);
+            $finalData = array_merge($validatedData, $finalPaths);
+            TemporaryMapping::create($finalData);
+
+            // 5. Commit DB
+            DB::commit();
+
+            // 6. Hapus file temp HANYA JIKA commit berhasil
+            foreach($tempFilesToDelete as $tempPath) {
+                if (Storage::disk('local')->exists($tempPath)) {
+                    Storage::disk('local')->delete($tempPath);
+                }
+            }
+            
+            return response()->json(['message' => 'Data mapping berhasil ditambahkan!']);
+
+        } catch (\Exception $e) {
+            // 7. Rollback jika gagal
+            DB::rollBack();
+
+            // Rollback pemindahan file
+            if (isset($finalPaths['foto_kwh'])) Storage::disk('public')->delete($finalPaths['foto_kwh']);
+            if (isset($finalPaths['foto_bangunan'])) Storage::disk('public')->delete($finalPaths['foto_bangunan']);
+
+            Log::error("Gagal store mapping KDDK (Controller): " . $e->getMessage());
+            return response()->json(['errors' => ['server' => [substr($e->getMessage(), 0, 200)]]], 422);
         }
-
-        $finalData = array_merge($validatedData, $finalPaths);
-        TemporaryMapping::create($finalData);
-
-        return response()->json(['message' => 'Data mapping berhasil ditambahkan!']);
     }
     
     public function uploadBatchPhotos(Request $request)
     {
         $request->validate([
-            'photos.*' => 'required|image|mimes:jpg,jpeg,png|max:2048' // Validasi setiap file foto
+            'photos.*' => [
+                'required',
+                'image',
+                'mimes:jpg,jpeg,png',
+                'min:100', // Ukuran minimum dalam Kilobytes (100KB)
+                'max:380'  // Ukuran maksimum dalam Kilobytes (300KB)
+            ]
+        ], [
+            // Pesan error kustom agar lebih jelas
+            'photos.*.min' => 'Ukuran file :attribute terlalu kecil (minimal 120KB).',
+            'photos.*.max' => 'Ukuran file :attribute terlalu besar (maksimal 350KB).',
+            'photos.*.mimes' => 'File :attribute harus berformat jpg, jpeg, atau png.',
+            'photos.*.image' => 'File :attribute harus berupa gambar.',
         ]);
 
         $uploadedCount = 0;

@@ -1,10 +1,12 @@
-<form id="create-mapping-form" action="{{ route('team.mapping.store') }}" method="POST" enctype="multipart/form-data" autocomplete="off"  data-upload-photo-url="{{ route('team.mapping.upload-photo') }}">
+<form id="create-mapping-form" action="{{ route('team.mapping.store') }}" method="POST" enctype="multipart/form-data" autocomplete="off"  data-upload-photo-url="{{ route('team.mapping.upload-photo') }}"
+        data-success-redirect-tab="Validasi Pendataan" 
+        data-success-redirect-url="{{ route('team.mapping_validation.index') }}">
     @csrf
     <div class="p-6 space-y-4">
         {{-- Header, Body, dan Footer digabung dalam satu div --}}
         <div class="flex justify-between items-center">
             <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200">
-                Tambah Data Mapping Pelanggan
+                Tambah Data Pemetaan Pelanggan
             </h2>
             <button type="button" data-modal-close class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                  <i class="fas fa-times fa-lg"></i>
@@ -53,12 +55,12 @@
                 <div class="border-b border-gray-200 dark:border-gray-700">
                     <nav class="flex -mb-px space-x-4" aria-label="Tabs">
                         {{-- Tombol Tab Peta Satelit (Default Aktif) --}}
-                        <button type_button id="tab-btn-map" 
+                        <button type="button" id="tab-btn-map"
                            class="tab-preview-button whitespace-nowrap py-2 px-3 border-b-2 font-medium text-sm border-indigo-500 text-indigo-600 dark:text-indigo-400">
                            Peta Satelit
                         </button>
                         {{-- Tombol Tab Street View --}}
-                        <button type_button id="tab-btn-streetview" 
+                        <button type="button" id="tab-btn-streetview"
                            class="tab-preview-button whitespace-nowrap py-2 px-3 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300">
                            Street View
                         </button>
@@ -84,7 +86,7 @@
                         </iframe>
                         {{-- Placeholder jika Lat/Lon kosong --}}
                         <div id="create-street-view-placeholder" class="flex items-center justify-center w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg">
-                            <p class="text-gray-500 dark:text-gray-400">Masukkan Lat/Lon untuk melihat</p>
+                            <p class="text-gray-500 dark:text-gray-400">masukkan Latitude (Y)/Longitude (X) untuk melihat</p>
                         </div>
                     </div>
                 </div>
@@ -118,7 +120,7 @@
         <hr class="border-gray-200 dark:border-gray-700">
         <div class="flex justify-end space-x-2">
             <button type="button" data-modal-close class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Batal</button>
-            <button type="submit" id="create-mapping-submit-button" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700" disabled>Simpan Data</button>
+            <button type="submit" id="create-mapping-submit-button" data-modal-submit-button class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700" disabled>Simpan Data</button>
         </div>
     </div>
 </form>

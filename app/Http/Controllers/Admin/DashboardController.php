@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Gate;
 
 class DashboardController extends Controller
 {
-        public function index(Request $request)
+    public function index(Request $request)
     {
         $user = Auth::user();
 

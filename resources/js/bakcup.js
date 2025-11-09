@@ -1,32 +1,30 @@
 /*
 ===================================================================
-  TAB MANAGER V2 (Refactored)
-  
-  Struktur file ini telah di-refactor ke dalam modul-modul
-  untuk mempermudah pemeliharaan.
+  TAB MANAGER V2 (Refactored & Fixed)
   
   - App.State: Variabel global
-  - App.Icons: Ikon Leaflet
-  - App.Utils: Fungsi helper (notifikasi, modal konfirmasi)
+  - App.Icons: Ikon Leaflet (dengan path import Vite & ukuran kustom)
+  - App.Utils: Fungsi helper (notifikasi kustom, modal konfirmasi)
   - App.Tabs: Logika manajemen Tab (load, create, activate)
   - App.Modal: Logika modal (open, close, image zoom)
-  - App.Kddk: Logika spesifik Tab Mapping KDDK
-  - App.Validation: Logika spesifik Tab Validasi
-  - App.FormCreate: Logika spesifik Modal "Tambah Data"
+  - App.Kddk: Logika spesifik Tab Mapping KDDK (peta, klik baris, modal)
+  - App.Validation: Logika spesifik Tab Validasi (antrian, lock, UI)
+  - App.FormCreate: Logika spesifik Modal "Tambah Data" (peta, live check)
   - App.Listeners: Inisialisasi dan event listener global
 ===================================================================
 */
 
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
 import homeblueIconUrl from '../images/home-icon-blue.png';
 import homeredIconUrl from '../images/home-icon-red.png';
 
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
 // ===================================================================
-// ===== 1. GLOBAL STATE & ICONS =====
+// ===== 2. GLOBAL STATE & ICONS =====
 // ===================================================================
 
-window.App = {}; 
-const App = window.App;
+const App = {};
 
 App.State = {
     mappingFeatureGroup: null,
@@ -34,102 +32,95 @@ App.State = {
     validationMapInstance: null,
     validationMarker: null,
     currentValidationId: null,
-    currentValidationDetails: null, 
-    mapInstance: null, 
+    currentValidationDetails: null, // Menggantikan window.currentValidationDetails
+    mapInstance: null, // Menggantikan window.mapInstance
     searchDebounceTimer: null
 };
 
 App.Icons = {
     red: new L.Icon({
-        // iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
         iconUrl: homeredIconUrl,
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        // [FIX] Ukuran 40x40, anchor di bawah tengah
+        iconSize: [40, 40], 
+        iconAnchor: [20, 40], 
+        popupAnchor: [1, -38], 
+        shadowSize: [41, 41]
     }),
-    blue: new L.Icon({
-        // iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+    // [FIX] Mengganti nama 'blue' menjadi 'building' (ikon biru Anda)
+    building: new L.Icon({ 
         iconUrl: homeblueIconUrl,
         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-        // iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        // [FIX] Ukuran 40x40, anchor di bawah tengah
+        iconSize: [40, 40], 
+        iconAnchor: [20, 40], 
+        popupAnchor: [1, -38], 
+        shadowSize: [41, 41]
     })
 };
 
 // ===================================================================
-// ===== 2. CORE UTILITIES (Notifikasi, Modal, Helper) =====
+// ===== 3. CORE UTILITIES (Notifikasi, Modal, Helper) =====
 // ===================================================================
 
 App.Utils = (() => {
     
-    function displayNotification(type, message, tabName = null) { // <-- 1. Menerima tabName
+    /**
+     * Menampilkan notifikasi kustom di dalam wadah tab.
+     * [FIX] Sekarang menerima tabName agar tidak salah target saat refresh.
+     */
+    function displayNotification(type, message, tabName = null) {
         let container = null;
         let targetTabContent = null;
-        targetTabContent = document.querySelector('.tab-content:not(.hidden)');
 
-        console.log('LANGKAH 3.1: Mencari targetTabContent.', targetTabContent);
-
-        if (targetTabContent) {
-            // 4. Cari wadah di dalam tab yang ditargetkan
-            container = targetTabContent.querySelector('#interactive-validation-container');
-            if (!container) {
-                container = targetTabContent.querySelector('#kddk-notification-container'); // <-- Ini akan ditemukan
-            }
-
-            console.log('LANGKAH 3.2: Mencari container notifikasi.', container);
+        if (tabName) {
+            targetTabContent = document.getElementById(`${tabName}-content`);
+        } else {
+            targetTabContent = document.querySelector('.tab-content:not(.hidden)');
         }
 
-        // 5. Jika masih tidak ketemu (fallback), gunakan alert
+        if (targetTabContent) {
+            container = targetTabContent.querySelector('#interactive-validation-container') || 
+                        targetTabContent.querySelector('#kddk-notification-container');
+        }
+
         if (!container) {
             console.warn("displayNotification: Tidak ada container di tab aktif/target. Fallback ke alert.");
             alert(message);
             return;
         }
 
-        // 6. Hapus notifikasi sebelumnya (Success atau Error)
         container.querySelectorAll('.bg-green-100, .bg-red-100').forEach(el => el.remove());
 
-        // 7. Tentukan style
-        let alertClass = type ;
-        let strongText = type ;
-
+        let alertClass = type, strongText = type;
         if (type === 'success' || type === 'validate') { 
-            alertClass = 'bg-green-100 border-green-400 text-green-700';
-            strongText = 'Berhasil!';
+            alertClass = 'bg-green-100 border-green-400 text-green-700'; strongText = 'Berhasil!';
         } else if (type === 'reject') { 
-            alertClass = 'bg-red-100 border-red-400 text-red-700';
-            strongText = 'Penolakan Berhasil!'; 
+            alertClass = 'bg-red-100 border-red-400 text-red-700'; strongText = 'Penolakan Berhasil!'; 
         } else { 
-            alertClass = 'bg-red-100 border-red-400 text-red-700';
-            strongText = 'Error!';
+            alertClass = 'bg-red-100 border-red-400 text-red-700'; strongText = 'Error!';
         }            
         
-        // 8. Buat HTML Notifikasi
         const notificationHtml = `
-                <div id="action-notification-alert" class="mt-4 ${alertClass} border px-4 py-3 rounded relative" role="alert" style="margin-top: 0.5rem !important;">
-                    <strong class="font-bold">${strongText}</strong>
-                    <span class="block sm:inline"> ${message}</span>
-
-                    <button type="button" class="absolute top-0 right-0 p-4 text-xl" data-dismiss="alert" aria-label="Close">
-                        <span aria-hidden="true">×</span>
-                    </button>
-                </div>
-            `;
-        
-        // 9. Sisipkan notifikasi
+            <div id="action-notification-alert" class="mt-4 ${alertClass} border px-4 py-3 rounded relative" role="alert" style="margin-top: 0.5rem !important;">
+                <strong class="font-bold">${strongText}</strong>
+                <span class="block sm:inline"> ${message}</span>
+                <button type="button" class="absolute top-0 right-0 p-4 text-xl" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">×</span>
+                </button>
+            </div>
+        `;
         container.insertAdjacentHTML('afterbegin', notificationHtml); 
 
         const newAlert = container.querySelector('#action-notification-alert');
-
-        // 10. Logika Auto-hide
         if (newAlert) {
             newAlert.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
             const autoHideTimer = setTimeout(() => {
                 if (newAlert) {
                     newAlert.style.opacity = 0; 
                     setTimeout(() => newAlert.remove(), 500);
                 }
-            }, 15000); // Waktu 15 detik
+            }, 15000);
 
             const closeButton = newAlert.querySelector('[data-dismiss="alert"]');
             if (closeButton) {
@@ -141,6 +132,9 @@ App.Utils = (() => {
         }
     }
 
+    /**
+     * Menampilkan modal konfirmasi kustom (dari app.blade.php).
+     */
     function showCustomConfirm(title, message, onConfirm) {
         const modal = document.getElementById('custom-confirm-modal');
         const titleEl = document.getElementById('custom-confirm-title');
@@ -150,7 +144,7 @@ App.Utils = (() => {
         const overlay = modal;
 
         if (!modal || !titleEl || !messageEl || !okButton || !cancelButton) {
-            console.error('Elemen modal konfirmasi kustom tidak ditemukan!');
+            console.error('Elemen modal konfirmasi kustom tidak ditemukan! (Pastikan ada di app.blade.php)');
             if (confirm(message)) onConfirm();
             return;
         }
@@ -181,12 +175,16 @@ App.Utils = (() => {
         overlay.addEventListener('click', handleOverlayClick);
     }
 
+    /**
+     * Mendapatkan nama tab yang sedang aktif.
+     * [FIX] Mencari #tabs-header setiap kali dipanggil.
+     */
     function getActiveTabName() {
         const tabsHeader = document.getElementById('tabs-header');
         if (!tabsHeader) {
-            console.error("getActiveTabName: Tidak dapat menemukan #tabs-header.");
-            return null;
-         }
+           console.error("getActiveTabName: Tidak dapat menemukan #tabs-header.");
+           return null;
+        }
         const activeTab = tabsHeader.querySelector('.tab-button.active');
         return activeTab ? activeTab.dataset.tabName : null; 
     }
@@ -199,7 +197,7 @@ App.Utils = (() => {
 })();
 
 // ===================================================================
-// ===== 3. TAB MANAGEMENT =====
+// ===== 4. TAB MANAGEMENT =====
 // ===================================================================
 
 App.Tabs = (() => {
@@ -220,23 +218,20 @@ App.Tabs = (() => {
         scrollRightBtn.classList.toggle('hidden', !shouldShow);
     }
 
+    /**
+     * Memuat konten tab via AJAX.
+     * [FIX] Menerima callback untuk notifikasi.
+     * [FIX] Tidak lagi membungkus HTML dengan div ekstra.
+     * [FIX] Memanggil App.Validation.init (bukan .initializeValidationTab).
+     */
     function loadTabContent(tabName, url, callback = null) {
         const tabContent = document.getElementById(`${tabName}-content`);
         if (!tabContent) return;
 
-        // Jika sudah punya konten (pernah dimuat), tidak perlu fetch ulang
-        if (tabContent.dataset.loaded === "true") {
-            console.log(`[TAB MANAGER] ${tabName} sudah dimuat sebelumnya, lewati reload.`);
-            if (callback && typeof callback === 'function') callback();
-            return;
-        }
-
-        // Bersihkan isi tab dan tampilkan spinner loading
         if (App.State.mapInstance) {
-            try { App.State.mapInstance.remove(); } catch(e) { console.warn("Gagal remove map lama saat loadContent:", e); }
+            App.State.mapInstance.remove();
             App.State.mapInstance = null;
         }
-
         tabContent.innerHTML = `<div class="flex justify-center items-center p-10"><i class="fas fa-spinner fa-spin fa-3x text-gray-400"></i></div>`;
         
         let fetchUrl = new URL(url, window.location.origin);
@@ -248,47 +243,37 @@ App.Tabs = (() => {
             return response.text();
         })
         .then(html => {
+            // [FIX] Langsung inject HTML, jangan dibungkus div baru
             tabContent.innerHTML = html;
-            tabContent.dataset.loaded = "true";
              
-            // 4. Inisialisasi Ulang Semua Script...
-            setTimeout(() => { 
-                
-                // Cek dan atur tampilan tombol clear search
+           setTimeout(() => {
                 const searchInput = tabContent.querySelector('form[id*="-search-form"] input[name="search"]');
                 if (searchInput && searchInput.value.length > 0) {
                     const clearButton = tabContent.querySelector('#clear-search-button');
                     if (clearButton) clearButton.classList.remove('hidden');
                 }
     
-                // Inisialisasi Peta (KDDK Mapping)
                 const mapContainer = tabContent.querySelector('#map');
-                const isMapTab = mapContainer && tabName.includes('Mapping');
-                const isValidationTab = tabContent.querySelector('#interactive-validation-container');
-                
-                if (isMapTab) {
+                if (mapContainer) {
                     App.Kddk.initializeMap(mapContainer, callback);
-
-                    setTimeout(() => {
-                        if (App.State.mapInstance) {
-                            App.State.mapInstance.invalidateSize({ pan: false });
-                            console.log('DEBUG: InvalidateSize dipanggil setelah loadContent.');
-                            }
-                    }, 200);
+                } else {
+                    // Jika TIDAK ADA PETA, panggil callback di sini
+                    if (callback && typeof callback === 'function') {
+                        callback();
+                    }
                 }
 
-                if (isValidationTab) {
-                    App.Validation.init(tabContent.querySelector('#interactive-validation-container'));
-                }
-
-                if (!isMapTab && callback && typeof callback === 'function') {
-                    callback();
+                const validationContainer = tabContent.querySelector('#interactive-validation-container');
+                if (validationContainer) {
+                    App.Validation.init(validationContainer); // [FIX] Memanggil .init
                 }
                 
-                // Update Scroll Tabs
-                App.Tabs.updateScrollButtons();
+                updateScrollButtons();
                 
-            }, 5); // Jeda 5ms
+                const cleanUrl = new URL(url, window.location.origin);
+                cleanUrl.searchParams.delete('is_ajax');
+                history.pushState({ tab: tabName }, '', cleanUrl.toString());
+            }, 5);
         })
         .catch(error => {
             tabContent.innerHTML = `<div class="p-4 text-red-500">Gagal memuat konten.</div>`;
@@ -309,28 +294,17 @@ App.Tabs = (() => {
         }
         if (activeTabContent) {
             activeTabContent.classList.remove('hidden');
-
             const mapContainer = activeTabContent.querySelector('#map');
-            const isKddkMap = mapContainer && tabName.includes('Mapping');
-
-            if (isKddkMap && !App.State.mapInstance) {
-                App.Kddk.initializeMap(mapContainer);
-
-                setTimeout(() => {
-                    if (App.State.mapInstance) {
-                       App.State.mapInstance.invalidateSize({ pan: false });
-                        console.log('DEBUG: InvalidateSize dipanggil setelah activateTab.');
-                    }
-                }, 150);
+            if (mapContainer) {
+                // Beri jeda agar transisi tab selesai sebelum render peta
+                setTimeout(() => App.Kddk.initializeMap(mapContainer), 150);
             }
         }
         
         if (pushHistory) {
             const newUrl = new URL(url, window.location.origin);
             newUrl.searchParams.delete('is_ajax');
-            setTimeout(() => {
-                history.replaceState({ tab: tabName }, '', newUrl.toString());
-            }, 0);
+            history.replaceState({ tab: tabName }, '', newUrl.toString());
         }
         updateScrollButtons();
     }
@@ -338,13 +312,6 @@ App.Tabs = (() => {
     function createTab(tabName, url, isClosable = true, pushHistory = true) {
         if (tabName === 'Dashboard') isClosable = false;
         
-        // Cek jika tab sudah ada, hanya aktifkan
-        const existingTabButton = tabsHeader.querySelector(`[data-tab-name="${tabName}"]`);
-        if (existingTabButton) {
-            activateTab(tabName, url, pushHistory);
-            return;
-        }
-
         const tabButton = document.createElement('a');
         tabButton.href = url;
         tabButton.dataset.url = url;
@@ -370,11 +337,10 @@ App.Tabs = (() => {
         const tabContent = document.createElement('div');
         tabContent.id = `${tabName}-content`;
         tabContent.className = 'tab-content hidden';
-        tabContent.dataset.loaded = "false";
         tabsHeader.appendChild(tabButton);
         tabsContent.appendChild(tabContent);
 
-        loadTabContent(tabName, url);
+        loadTabContent(tabName, url); 
         activateTab(tabName, url, pushHistory);
     }
 
@@ -412,6 +378,7 @@ App.Tabs = (() => {
         let activeTabName = 'Dashboard';
         let activeUrl = dashboardUrl;
         
+        // Cek jika URL saat ini bukan dashboard, coba buka tab yang sesuai
         if (currentPath !== dashboardPath && currentPath !== '/') {
             const sidebarLink = document.querySelector(`a[href*="${currentPath}"]`);
             if (sidebarLink && sidebarLink.dataset.tabLink) {
@@ -439,16 +406,11 @@ App.Tabs = (() => {
 })();
 
 // ===================================================================
-// ===== 4. MODAL MANAGEMENT =====
+// ===== 5. MODAL MANAGEMENT =====
 // ===================================================================
 
 App.Modal = (() => {
     let mainModal, modalContent, imageModal, imageModalImg, imageModalClose, imageModalOverlay, modalMeterInputContainer, modalMeterInput;
-    let isPanning = false;
-    let scale = 1;
-    let translateX = 0;
-    let translateY = 0;
-    let startX, startY;
 
     function init(elements) {
         mainModal = elements.mainModal;
@@ -460,18 +422,16 @@ App.Modal = (() => {
         modalMeterInputContainer = elements.modalMeterInputContainer;
         modalMeterInput = elements.modalMeterInput;
 
-        // Pasang listener tutup modal gambar
+        // Pasang listener tutup modal gambar (jika ada)
         if (imageModal) {
             imageModalClose.addEventListener('click', closeImageModal);
             imageModalOverlay.addEventListener('click', closeImageModal);
-            imageModalImg.addEventListener('wheel', handleWheelZoom, { passive: false });
-            imageModalImg.addEventListener('mousedown', handlePanStart);
-            imageModal.addEventListener('mousemove', handlePanMove);
-            imageModal.addEventListener('mouseup', handlePanEnd);
-            imageModal.addEventListener('mouseleave', handlePanEnd);
         }
     }
 
+    /**
+     * Membuka modal utama dan memuat konten dari URL via AJAX
+     */
     function open(url) {
         if (!mainModal || !modalContent) return;
         modalContent.innerHTML = '<div class="text-center p-8"><i class="fas fa-spinner fa-spin fa-2x text-gray-400"></i></div>';
@@ -484,10 +444,10 @@ App.Modal = (() => {
             .then(response => response.text())
             .then(html => {
                 modalContent.innerHTML = html;
-                const formInModal = modalContent.querySelector('form');
-
-                // Inisialisasi script spesifik modal
+                
+                // Beri jeda singkat agar DOM siap
                 setTimeout(function() {
+                    // Inisialisasi script spesifik modal
                     const previewMapContainer = modalContent.querySelector('#preview-map');
                     if (previewMapContainer) {
                         App.FormCreate.initializePreviewMap(modalContent);
@@ -502,21 +462,20 @@ App.Modal = (() => {
                     }
                     const uploadFormCheck = modalContent.querySelector('#upload-form');
                     if (uploadFormCheck) {
-                        initializeUploadFormChecks(modalContent);
-                        initializeUploadLogic(uploadFormCheck);
+                        initializeUploadFormChecks(modalContent); // Panggil pengecek tombol upload
                     }
+                    
+                    // Panggil initializer (dari file JS terpisah)
                     if (window.UploadInitializers && typeof window.UploadInitializers.initializeUploadForm === 'function') {
                         if (modalContent.querySelector('#upload-form')) {
                             window.UploadInitializers.initializeUploadForm();
                         }   
                     }
-                    
                     if (window.UploadInitializers && typeof window.UploadInitializers.initializeBatchPhotoUploadForm === 'function') {
                         if (modalContent.querySelector('#batch-photo-upload-form')) { 
                             window.UploadInitializers.initializeBatchPhotoUploadForm();
                         }
                     }
-                    // ... (Inisialisasi form upload chunk/foto bisa ditambahkan di sini juga) ...
                 }, 150);
             })
             .catch(error => {
@@ -525,16 +484,23 @@ App.Modal = (() => {
             });
     }
 
+    /**
+     * Menutup modal utama
+     */
     function close() {
         if (!mainModal) return;
         mainModal.classList.add('hidden');
         modalContent.innerHTML = '';
     }
 
+    /**
+     * Menampilkan modal zoom gambar
+     */
     function showImage(imgElement, zoomType) {
         if (imgElement && imgElement.src) {
             imageModalImg.src = imgElement.src;
 
+            // Logika untuk menyalin inputan No. Meter ke modal
             if (zoomType === 'kwh' && modalMeterInputContainer) {
                 const mainMeterInput = imgElement.closest('#validation-content')?.querySelector('#eval_meter_input');
                 modalMeterInput.value = mainMeterInput ? mainMeterInput.value : ''; 
@@ -543,12 +509,13 @@ App.Modal = (() => {
             } else if (modalMeterInputContainer) {
                 modalMeterInputContainer.classList.add('hidden');
             }
-            resetZoomState();
-            applyTransform();
             imageModal.classList.remove('hidden');
         }
     }
 
+    /**
+     * Menutup modal zoom gambar dan menyalin kembali inputan No. Meter
+     */
     function closeImageModal() {
         if (modalMeterInputContainer && !modalMeterInputContainer.classList.contains('hidden')) {
             const modalValue = modalMeterInput.value;
@@ -564,26 +531,26 @@ App.Modal = (() => {
         }
         imageModal.classList.add('hidden');
         imageModalImg.src = ''; 
-        resetZoomState();
-        applyTransform();
     }
-
+    
+    /**
+     * Mengaktifkan tombol 'Mulai Upload' HANYA jika file sudah dipilih.
+     * (Dipanggil oleh App.Modal.open)
+     */
     function initializeUploadFormChecks(modalContent) {
         const uploadForm = modalContent.querySelector('#upload-form');
         if (!uploadForm) return;
 
         const fileInput = uploadForm.querySelector('#file-input');
         const fileNameDisplay = uploadForm.querySelector('#file-name');
-        const uploadButton = uploadForm.querySelector('#start-chunk-upload');
+        const uploadButton = uploadForm.querySelector('#upload-button');
 
         if (!fileInput || !fileNameDisplay || !uploadButton) {
             console.warn("Upload form checks skipped: missing elements.");
             return;
         }
 
-        // Fungsi untuk mengaktifkan/menonaktifkan tombol
         const checkFileStatus = () => {
-            // Kita asumsikan #file-name akan diisi teks JIKA file ada
             if (fileNameDisplay.textContent.trim().length > 0) {
                 uploadButton.disabled = false;
                 uploadButton.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -593,115 +560,18 @@ App.Modal = (() => {
             }
         };
 
-        // Kita gunakan MutationObserver untuk mendeteksi perubahan teks di #file-name
+        // MutationObserver mendeteksi perubahan teks di #file-name (dibuat oleh script upload)
         const observer = new MutationObserver(checkFileStatus);
-        
-        // Mulai mengamati #file-name untuk perubahan (termasuk teks)
-        observer.observe(fileNameDisplay, { 
-            childList: true, 
-            subtree: true, 
-            characterData: true 
-        });
+        observer.observe(fileNameDisplay, { childList: true, subtree: true, characterData: true });
 
-        // Cek juga jika user membatalkan (mengosongkan) input file
         fileInput.addEventListener('change', () => {
             if (fileInput.files.length === 0) {
-                // Paksa update UI jika input file dibersihkan
                 fileNameDisplay.textContent = ''; 
             }
         });
-
-        // Cek status awal
-        checkFileStatus();
+        checkFileStatus(); // Cek status awal
     }
 
-    function initializeUploadLogic(uploadForm) {
-        const startButton = uploadForm.querySelector('#start-chunk-upload');
-        
-        if (!startButton) {
-            console.error('Upload Logic: Tombol #start-chunk-upload tidak ditemukan.');
-            return;
-        }
-        
-        startButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            console.log("Tombol Mulai Upload Ditekan. Memicu Logika Chunk Upload...");
-            
-            // --- INI ADALAH TITIK DI MANA ANDA HARUS MEMANGGIL LOGIKA INTI UPLOAD ANDA ---
-            
-            if (window.UploadInitializers && typeof window.UploadInitializers.startChunkUpload === 'function') {
-                window.UploadInitializers.startChunkUpload(uploadForm);
-            } else {
-                alert("Logika Chunk Upload tidak ditemukan. Pastikan Anda telah mendefinisikan 'startChunkUpload'.");
-            }
-        });
-    }
-
-    function resetZoomState() {
-        scale = 1;
-        translateX = 0;
-        translateY = 0;
-        isPanning = false;
-    }
-
-    function applyTransform() {
-        if (imageModalImg) {
-            // Kita atur transform-origin ke tengah agar zoom lebih baik
-            imageModalImg.style.transformOrigin = '50% 50%';
-            imageModalImg.style.transition = 'transform 0.1s ease-out'; // Transisi halus
-            imageModalImg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
-            // Ubah kursor untuk menandakan bisa di-pan
-            imageModalImg.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
-        }
-    }
-    function handleWheelZoom(e) {
-        e.preventDefault(); // Hentikan scroll halaman
-        const scaleAmount = 0.1; // Seberapa cepat zoom
-        
-        // Tentukan zoom-in (scroll ke atas) atau zoom-out (scroll ke bawah)
-        const newScale = e.deltaY < 0 ? scale + scaleAmount : scale - scaleAmount;
-        
-        // Batasi zoom (minimal 1x, maksimal 5x)
-        scale = Math.min(Math.max(1, newScale), 5);
-        
-        // Jika zoom kembali ke 1x, reset posisi pan
-        if (scale === 1) {
-            translateX = 0;
-            translateY = 0;
-        }
-        
-        applyTransform();
-    }
-
-    function handlePanStart(e) {
-        if (scale === 1) return; // Jangan geser jika tidak di-zoom
-        e.preventDefault();
-        isPanning = true;
-        // Catat posisi awal klik relatif terhadap posisi geser saat ini
-        startX = e.clientX - translateX;
-        startY = e.clientY - translateY;
-        imageModalImg.style.cursor = 'grabbing'; // Kursor "menggenggam"
-        imageModalImg.style.transition = 'none'; // Matikan transisi saat menggeser
-    }
-
-    function handlePanMove(e) {
-        if (!isPanning) return;
-        e.preventDefault();
-        // Hitung posisi baru
-        translateX = e.clientX - startX;
-        translateY = e.clientY - startY;
-        applyTransform();
-    }
-
-    function handlePanEnd(e) {
-        isPanning = false;
-        if (scale > 1) {
-            imageModalImg.style.cursor = 'grab'; // Kembalikan kursor ke "grab"
-        }
-        // Aktifkan kembali transisi
-        imageModalImg.style.transition = 'transform 0.1s ease-out';
-    }
-    
     return {
         init,
         open,
@@ -712,152 +582,111 @@ App.Modal = (() => {
 })();
 
 // ===================================================================
-// ===== 5. KDDK MAPPING TAB LOGIC =====
+// ===== 6. KDDK MAPPING TAB LOGIC =====
 // ===================================================================
 
 App.Kddk = (() => {
 
+    /**
+     * Inisialisasi peta Leaflet untuk tab KDDK.
+     */
     function initializeMap(mapContainer, callback = null) {
-        // Pengecekan Kritis
-        if (typeof L === 'undefined') {
-            console.error('CRITICAL ERROR: Library Leaflet (L) tidak termuat. Peta tidak dapat dibuat.');
-            return;
-        }
-        if (!mapContainer) {
-            console.error('CRITICAL ERROR: Kontainer peta (#map) tidak ditemukan.');
-            return;
-        }
+        if (!mapContainer) return;
 
-        // 1. Hapus instance peta lama (Penting!)
         if (App.State.mapInstance) {
-            try { App.State.mapInstance.remove(); } catch (e) { console.warn('Gagal menghapus instance peta lama:', e); }
+            App.State.mapInstance.remove();
             App.State.mapInstance = null;
         }
 
-        // 2. Buat instance peta baru
-        let map;
-        try {
-            map = L.map(mapContainer).setView([0.5071, 101.4478], 12); 
-            App.State.mapInstance = map;
+        const map = L.map(mapContainer).setView([0.5071, 101.4478], 12);
+        App.State.mapInstance = map;
 
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                attribution: 'Tiles © Esri'
-            }).addTo(map);
-
-            // 3. Panggil invalidateSize SEGERA setelah inisialisasi map (Fix AJAX)
-            map.invalidateSize({ pan: false }); 
-
-        } catch (e) {
-            console.error('CRITICAL ERROR: Gagal membuat instance peta Leaflet:', e);
-            return;
-        }
-    
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri'
+        }).addTo(map);
+       
         const activeTabContent = mapContainer.closest('.tab-content');
-        const searchInput = activeTabContent ? activeTabContent.querySelector('#mapping-search-form input[name="search"]') : null;
+        const searchInput = activeTabContent.querySelector('#mapping-search-form input[name="search"]');
         const searchValue = searchInput ? searchInput.value : '';
 
+        // Bersihkan marker lama
         if (App.State.mappingFeatureGroup) App.State.mappingFeatureGroup.clearLayers();
         if (App.State.mappingClickedMarker) {
             App.State.mappingClickedMarker.remove();
             App.State.mappingClickedMarker = null;
         }
 
-        // FETCH DATA untuk marker peta
-        let coordinatesUrl = new URL('/team/mapping-coordinates', window.location.origin);        
-        if (searchValue) {
-            coordinatesUrl.searchParams.set('search', searchValue);
+        if (!searchValue) {
+            console.log("initializeMap: Tidak ada search value, peta akan kosong.");
+            if (callback) callback();
+            return;
         }
-        
-        console.log('DEBUG: Panggilan Fetch dimulai ke:', coordinatesUrl.toString());
 
+        let coordinatesUrl = new URL('/team/mapping-coordinates', window.location.origin);
+        coordinatesUrl.searchParams.set('search', searchValue);
+        
         fetch(coordinatesUrl.toString())
-            .then(response => {
-                if (!response.ok) {
-                    console.error('Fetch error:', response.status, response.statusText);
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
                 App.State.mappingFeatureGroup = L.featureGroup();
                 let markerToOpen = null;
-                let validCoordinatesFound = 0;
 
-                // Gabungkan semua data yang perlu diproses: all, searched, nearby
-                const allPoints = [
-                    ...(data.all || []),
-                    ...(data.searched || []),
-                    ...(data.nearby || [])
-                ];
+                // Tampilkan semua (jika controller mengirim 'all')
+                if (data.all && data.all.length > 0) {
+                    data.all.forEach(point => {
+                        const marker = L.marker([point.latitudey, point.longitudex], { icon: App.Icons.building }); // Ikon biru
+                        marker.bindPopup(`<b>Idpel:</b> ${point.idpel}`);
+                        App.State.mappingFeatureGroup.addLayer(marker); 
+                    });
+                }
 
-                allPoints.forEach(point => {
-                    const lat = parseFloat(point.latitudey);
-                    const lon = parseFloat(point.longitudex);
+                // Tampilkan hasil pencarian (merah)
+                if (data.searched && data.searched.length > 0) {
+                    data.searched.forEach(point => {
+                        const marker = L.marker([point.latitudey, point.longitudex], { icon: App.Icons.red });
+                        marker.bindPopup(`<b>Idpel (dicari):</b> ${point.idpel}`);
+                        App.State.mappingFeatureGroup.addLayer(marker); 
+                        if (!markerToOpen) markerToOpen = marker;
+                    });
+                }
 
-                    // VALIDASI KRITIS: Lewati koordinat yang tidak valid/nol
-                    if (isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0 || lat < -90 || lat > 90) {
-                        console.warn(`Koordinat tidak valid untuk IDPEL: ${point.idpel}.`);
-                        return;
-                    }
-                    
-                    // Tentukan ikon berdasarkan apakah itu hasil pencarian
-                    const isSearchedResult = (data.searched && data.searched.some(s => s.idpel === point.idpel));
-                    const icon = isSearchedResult ? App.Icons.red : App.Icons.blue;
-                    
-                    const marker = L.marker([lat, lon], { icon: icon });
-                    marker.bindPopup(`<b>Idpel:</b> ${point.idpel}`);
-                    App.State.mappingFeatureGroup.addLayer(marker); 
-                    
-                    // Set marker pertama sebagai marker fokus/popup
-                    if (isSearchedResult && !markerToOpen) {
-                        markerToOpen = marker;
-                    }
-                    validCoordinatesFound++;
-                });
-                
-                // FOKUS PETA OTOMATIS
-                const hasSearchResults = data.searched && data.searched.length > 0;
-                
-                if (validCoordinatesFound > 0) {
-                    App.State.mappingFeatureGroup.addTo(map);
-                    
-                    if (hasSearchResults) {
-                        // PENTING: Jika ada hasil pencarian (IDPEL), fokuskan peta ke marker tersebut
-                        try {
-                            map.fitBounds(App.State.mappingFeatureGroup.getBounds().pad(0.1));
-                            
-                            if (markerToOpen) {
-                                setTimeout(() => markerToOpen.openPopup(), 500);
-                            }
-                        } catch (fitError) {
-                            // Fallback jika fitBounds gagal (misalnya, hanya ada 1 marker)
-                            if (markerToOpen) {
-                                map.setView(markerToOpen.getLatLng(), 18);
-                                setTimeout(() => markerToOpen.openPopup(), 500);
-                            }
-                        }
-                    } else {
-                        // Jika tidak ada pencarian spesifik, tetap fitBounds ke data awal (jika ada)
-                        map.fitBounds(App.State.mappingFeatureGroup.getBounds().pad(0.1));
-                    }
-                } else {
-                    console.warn('Tidak ada koordinat valid yang ditemukan, peta disetel ke view default.');
+                // Tampilkan 'nearby' (biru)
+                if (data.nearby && data.nearby.length > 0) {
+                    data.nearby.forEach(point => {
+                        const marker = L.marker([point.latitudey, point.longitudex], { icon: App.Icons.building }); // Ikon biru
+                        marker.bindPopup(`<b>Idpel Terdekat:</b> ${point.idpel}`);
+                        App.State.mappingFeatureGroup.addLayer(marker); 
+                    });
                 }
                 
-                // Final InvalidateSize setelah data dimuat
-                App.State.mapInstance.invalidateSize({ pan: false });
-
+                // Tambah grup ke peta dan atur zoom
+                if (App.State.mappingFeatureGroup.getLayers().length > 0) {
+                    App.State.mappingFeatureGroup.addTo(map);
+                    
+                    if (searchValue && data.searched && data.searched.length === 1 && (!data.nearby || data.nearby.length === 0)) {
+                        map.setView(markerToOpen.getLatLng(), 18);
+                        markerToOpen.openPopup();
+                    } 
+                    else if (markerToOpen) {
+                        map.fitBounds(App.State.mappingFeatureGroup.getBounds().pad(0.1));
+                        setTimeout(() => markerToOpen.openPopup(), 500);
+                    }
+                    else {
+                        map.fitBounds(App.State.mappingFeatureGroup.getBounds().pad(0.1));
+                    }
+                }
+                
                 if (callback) callback();
             })
             .catch(error => {
-                console.error('ERROR FETCH: Gagal mengambil data peta. Cek Network Tab:', error);
-                if (App.State.mapInstance) {
-                    App.State.mapInstance.invalidateSize({ pan: false });
-                }
+                console.error('Error fetching map data:', error);
                 if (callback) callback();
             });
     }
 
+    /**
+     * Render ulang marker saat baris tabel diklik.
+     */
     async function renderClickedMapMarkers(idpel, objectid, lat, lon) {
         if (App.State.mappingFeatureGroup) App.State.mappingFeatureGroup.clearLayers();
         if (App.State.mappingClickedMarker) {
@@ -877,17 +706,19 @@ App.Kddk = (() => {
 
             if (data.nearby && data.nearby.length > 0) {
                 data.nearby.forEach(point => {
-                    const marker = L.marker([point.latitudey, point.longitudex], { icon: App.Icons.blue });
+                    const marker = L.marker([point.latitudey, point.longitudex], { icon: App.Icons.building }); // Ikon biru
                     marker.bindPopup(`<b>Idpel (terdekat):</b> ${point.idpel}`).openPopup();
                     App.State.mappingFeatureGroup.addLayer(marker);
                 });
             }
 
+            // Buat marker merah untuk item yang diklik
             clickedMarkerRef = L.marker([lat, lon], { 
                 icon: App.Icons.red,
                 zIndexOffset: 1000 
             });
             clickedMarkerRef.on('popupopen', function() {
+                // Mencegah klik di popup menutup baris
                 const popupElement = clickedMarkerRef.getPopup().getElement();
                 if (popupElement) {
                     const closeButton = popupElement.querySelector('.leaflet-popup-close-button');
@@ -903,6 +734,7 @@ App.Kddk = (() => {
             
             App.State.mappingClickedMarker = clickedMarkerRef; 
 
+            // Tambahkan semua marker ke peta
             if (App.State.mappingFeatureGroup.getLayers().length > 0) {
                  App.State.mappingFeatureGroup.addTo(App.State.mapInstance);
             }
@@ -918,6 +750,9 @@ App.Kddk = (() => {
         }
     }
 
+    /**
+     * Menangani semua pembaruan UI saat baris data KDDK diklik.
+     */
     function handleDataRowClick(dataRow) {
         const data = dataRow.dataset;
         const activePanel = dataRow.closest('.tab-content');
@@ -941,7 +776,6 @@ App.Kddk = (() => {
                 const lat = parseFloat(data.lat);
                 const lon = parseFloat(data.lon);
                 latLonEl.textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-                streetViewLinkEl.href = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
                 streetViewLinkEl.classList.remove('hidden');
             } else {
                 latLonEl.textContent = 'Koordinat tidak valid';
@@ -954,7 +788,8 @@ App.Kddk = (() => {
 
         // Update Judul
         if (titleSpanEl) {
-            titleSpanEl.textContent = `Detail Peta - ${data.idpel} (Object ID: ${data.objectid})`;
+            // [FIX] Menggunakan IDPEL dari data yang diklik
+            titleSpanEl.textContent = `Data Mapping Pelanggan - ${data.idpel}`;
         }
 
         // Update Stamp
@@ -1008,14 +843,6 @@ App.Kddk = (() => {
         }
         
         // Update Peta
-        if (typeof L !== 'undefined' && !App.State.mapInstance) {
-            const mapContainer = activePanel.querySelector('#map');
-            if (mapContainer) {
-                 // Panggil inisialisasi peta secara eksplisit
-                 App.Kddk.initializeMap(mapContainer);
-            }
-        }
-
         if (App.State.mapInstance && data.lat && data.lon) {
             const lat = parseFloat(data.lat);
             const lon = parseFloat(data.lon);
@@ -1035,15 +862,19 @@ App.Kddk = (() => {
         dataRow.classList.add('bg-blue-100', 'dark:bg-blue-900');
     }
 
+    /**
+     * Menangani listener untuk modal Street View (Drag, Open, Close) di tab KDDK.
+     */
     function handleStreetViewModalClick(activePanel, data) {
         const streetViewLinkEl = activePanel.querySelector('#google-street-view-link');
+        // [FIX] Cari modal relatif ke panel aktif
         const streetViewModal = activePanel.querySelector('#street-view-modal');
         const streetViewIframe = activePanel.querySelector('#street-view-iframe');
         const streetViewCloseButton = activePanel.querySelector('#street-view-close-button');
         const streetViewHeader = activePanel.querySelector('#street-view-header');
 
         if (!streetViewModal || !streetViewIframe || !streetViewCloseButton || !streetViewHeader || !streetViewLinkEl) {
-            console.error("Elemen modal Street View KDDK tidak ditemukan.");
+            // Ini normal jika modal tidak ada di HTML (misal: di tab lain)
             return;
         }
         
@@ -1052,6 +883,7 @@ App.Kddk = (() => {
             if (data.lat && data.lon && parseFloat(data.lat) !== 0 && parseFloat(data.lon) !== 0) {
                 const lat = parseFloat(data.lat);
                 const lon = parseFloat(data.lon);
+                // [FIX] URL Embed API yang benar
                 const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
                 streetViewIframe.src = streetViewUrl; 
                 streetViewModal.classList.remove('hidden');
@@ -1063,15 +895,18 @@ App.Kddk = (() => {
         const closeStreetViewModal = () => {
             streetViewModal.classList.add('hidden');
             streetViewIframe.src = ""; 
+            // Reset posisi
             streetViewModal.style.left = '';
             streetViewModal.style.top = '';
             streetViewModal.style.right = '';
         };
 
+        // Reset posisi
         streetViewModal.style.left = '';
         streetViewModal.style.top = '';
         streetViewModal.style.right = '';
 
+        // Logika Drag
         let isDragging = false, offsetX, offsetY;
         const onMouseDown = (e) => {
             if (e.target.id !== 'street-view-header' && !e.target.closest('#street-view-header')) return;
@@ -1099,17 +934,17 @@ App.Kddk = (() => {
             document.removeEventListener('mouseup', onMouseUp);
         };
         
-        // Remove existing handlers before adding new ones
+        // Hapus listener lama untuk mencegah duplikat
         streetViewLinkEl.removeEventListener('click', streetViewLinkEl.__handler);
         streetViewCloseButton.removeEventListener('click', streetViewCloseButton.__handler);
-        if (streetViewHeader.__handler) {
-            streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
-        }
+        streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
 
+        // Simpan referensi handler baru
         streetViewLinkEl.__handler = handleStreetViewClick;
         streetViewCloseButton.__handler = closeStreetViewModal;
         streetViewHeader.__handler = onMouseDown;
 
+        // Tambahkan event listener baru
         streetViewLinkEl.addEventListener('click', handleStreetViewClick);
         streetViewCloseButton.addEventListener('click', closeStreetViewModal);
         streetViewHeader.addEventListener('mousedown', onMouseDown);
@@ -1123,24 +958,27 @@ App.Kddk = (() => {
 })();
 
 // ===================================================================
-// ===== 6. VALIDATION TAB LOGIC =====
+// ===== 7. VALIDATION TAB LOGIC =====
 // ===================================================================
 
 App.Validation = (() => {
     const MIN_REJECTION_CHARS = 5;
 
+    /**
+     * Inisialisasi status awal tab Validasi.
+     * [FIX] Sekarang juga menangani data awal (initial details) dari server.
+     */
     function initializeValidationTab(container) {
         if (!container) return;
         console.log("Initializing validation tab...");
-        App.State.currentValidationId = container.dataset.currentId || null; 
+
+        App.State.currentValidationId = container.dataset.currentId || null;
+        const initialDetailsJSON = container.dataset.initialDetails; 
         App.State.currentValidationDetails = null; 
 
         const placeholder = container.querySelector('#validation-placeholder');
         const content = container.querySelector('#validation-content');
         const loading = container.querySelector('#validation-loading');
-        if(placeholder) placeholder.classList.remove('hidden');
-        if(content) content.classList.add('hidden');
-        if(loading) loading.classList.add('hidden');
 
         if (App.State.validationMapInstance) { 
             App.State.validationMapInstance.remove(); 
@@ -1148,18 +986,35 @@ App.Validation = (() => {
             App.State.validationMarker = null;
             console.log("Destroyed old validation map instance.");
         }
+
+        // [FIX] Logika untuk memuat data awal
+        if (initialDetailsJSON && initialDetailsJSON !== 'null') {
+            try {
+                const details = JSON.parse(initialDetailsJSON);
+                if (details) {
+                    App.State.currentValidationDetails = details;
+                    updateValidationUI(container, details); // Panggil UI update
+                    console.log("Validation tab initialized WITH initial data.");
+                    return; // Selesai
+                }
+            } catch (e) {
+                console.error("Gagal parse initial validation details:", e);
+            }
+        }
+
+        // Jika tidak ada data awal (default)
+        if(placeholder) placeholder.classList.remove('hidden');
+        if(content) content.classList.add('hidden');
+        if(loading) loading.classList.add('hidden');
         console.log("Validation tab initialized. Ready for item selection.");
     }
 
+    /**
+     * Mengunci item antrian dan memuat detailnya.
+     */
     async function lockAndLoadDetails(id, buttonElement) {
         let container = buttonElement.closest('#interactive-validation-container');
-        if (!container) {
-            console.warn("### Gagal via closest(). Mencoba via tab aktif...");
-            const activeTabName = App.Utils.getActiveTabName(document.getElementById('tabs-header'));
-            const activeTabContent = activeTabName ? document.getElementById(`${activeTabName}-content`) : null;
-            if (activeTabContent) container = activeTabContent.querySelector('#interactive-validation-container');
-            else console.error("### Tidak bisa menemukan elemen konten tab aktif!");
-        }
+        // ... (logika fallback container) ...
         if (!container) {
             console.error("### KRITIS: Container #interactive-validation-container tetap tidak ditemukan.");
             alert("Kesalahan internal: Tidak dapat menemukan kontainer validasi utama.");
@@ -1212,10 +1067,10 @@ App.Validation = (() => {
             }
 
             App.State.currentValidationId = data.currentItemId;
-            App.State.currentValidationDetails = data.details;
+            App.State.currentValidationDetails = data.details; // Simpan ke state global
             buttonElement.classList.add('bg-indigo-100', 'dark:bg-indigo-900');
             
-            updateValidationUI(container, data.details);
+            updateValidationUI(container, data.details); // Panggil UI update
 
         } catch (error) {
             console.error('### Error dalam lockAndLoadDetails:', error);
@@ -1228,6 +1083,9 @@ App.Validation = (() => {
         }
     }
 
+    /**
+     * Memperbarui panel UI validasi dengan data baru.
+     */
     function updateValidationUI(container, details) {
         const loading = container.querySelector('#validation-loading');
         const content = container.querySelector('#validation-content');
@@ -1248,8 +1106,8 @@ App.Validation = (() => {
         }
 
         // 1. Update Header
-        content.querySelector('#detail-idpel').textContent = details.idpel || 'IDPEL Tidak Tersedia';
-        content.querySelector('#detail-user').textContent = details.user_pendataan || 'User Tidak Diketahui';
+        content.querySelector('#detail-idpel').textContent = details.idpel || 'N/A';
+        content.querySelector('#detail-user').textContent = details.user_pendataan || 'N/A';
         content.querySelector('#detail-keterangan').textContent = details.keterangan || 'Tidak ada keterangan.';
 
         // 2. Isi Foto
@@ -1287,17 +1145,7 @@ App.Validation = (() => {
 
         // 4. Reset Form Evaluasi
         resetEvaluationForm(content); 
-        
-        // Pre-fill data baru (MCB & Tipe PBTS)
-        const mcbInput = content.querySelector('#eval_mcb');
-        const pbtsInput = content.querySelector('#eval_type_pbts');
-        const merkkwhInput = content.querySelector('#eval_merkkwhmeter');
-        if (mcbInput) mcbInput.value = details.mcb || '';
-        if (pbtsInput) pbtsInput.value = details.type_pbts || '';
-        if (merkkwhInput) merkkwhInput.value = details.merkkwhmeter || '';
-        
-        // Cek form setelah diisi
-        checkEvaluationForm(content, details);
+        checkEvaluationForm(content, details); 
 
         // 5. Riwayat Penolakan
         const historyAlert = content.querySelector('#rejection-history-alert');
@@ -1338,13 +1186,13 @@ App.Validation = (() => {
                 }
                 
                 try {
-                    if (typeof details.lat === 'number' && typeof details.lon === 'number') {
+                    if (typeof details.lat === 'number' && typeof details.lon === 'number' && details.lat !== 0) {
                         const newLatLng = [details.lat, details.lon];
                         App.State.validationMapInstance = L.map(mapContainer).setView(newLatLng, 18);
                          L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                              attribution: 'Tiles © Esri'
                          }).addTo(App.State.validationMapInstance);
-                        //  App.State.validationMarker = L.marker(newLatLng).addTo(App.State.validationMapInstance);ganti icon merah
+                         // [FIX] Menggunakan ikon merah (App.Icons.red)
                          App.State.validationMarker = L.marker(newLatLng, { icon: App.Icons.red }).addTo(App.State.validationMapInstance);
                          
                          setTimeout(() => {
@@ -1362,9 +1210,13 @@ App.Validation = (() => {
         }, 200);
     }
     
+    /**
+     * Menangani listener untuk modal Street View (Drag, Open, Close) di tab Validasi.
+     */
     function handleValidationStreetView(content, container, details) {
         const latLonEl = content.querySelector('#validation-lat-lon');
         const streetViewLinkEl = content.querySelector('#validation-street-view-link');
+        // [FIX] Cari modal relatif ke panel tab
         const validationTabPanel = container.closest('.tab-content'); 
         const streetViewModal = validationTabPanel ? validationTabPanel.querySelector('#street-view-modal') : null;
         const streetViewIframe = validationTabPanel ? validationTabPanel.querySelector('#street-view-iframe') : null;
@@ -1382,11 +1234,13 @@ App.Validation = (() => {
         }
         
         if (streetViewLinkEl && streetViewModal && streetViewIframe && streetViewHeader && streetViewCloseButton) {
+            
             const handleValidationStreetViewClick = (e) => {
                 e.preventDefault(); e.stopPropagation();
                 if (details.lat && details.lon && parseFloat(details.lat) !== 0) {
                     const lat = details.lat;
                     const lon = details.lon;
+                    // [FIX] URL Embed API yang benar
                     const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
                     streetViewIframe.src = streetViewUrl; 
                     streetViewModal.classList.remove('hidden'); 
@@ -1405,6 +1259,7 @@ App.Validation = (() => {
                 streetViewModal.style.right = '';
             };
         
+            // Logika Drag
             let isDragging = false, offsetX, offsetY;
             const onMouseDown = (e) => {
                 if (e.target.id !== 'street-view-header' && !e.target.closest('#street-view-header')) return;
@@ -1432,22 +1287,26 @@ App.Validation = (() => {
                 document.removeEventListener('mouseup', onMouseUp);
             };
 
+            // Hapus listener lama
             streetViewLinkEl.removeEventListener('click', streetViewLinkEl.__handler);
             streetViewCloseButton.removeEventListener('click', streetViewCloseButton.__handler);
-            if (streetViewHeader.__handler) {
-                 streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
-            }
+            streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
 
+            // Simpan referensi handler baru
             streetViewLinkEl.__handler = handleValidationStreetViewClick;
             streetViewCloseButton.__handler = closeValidationStreetView;
             streetViewHeader.__handler = onMouseDown;
             
+            // Pasang listener baru
             streetViewLinkEl.addEventListener('click', handleValidationStreetViewClick);
             streetViewCloseButton.addEventListener('click', closeValidationStreetView);
             streetViewHeader.addEventListener('mousedown', onMouseDown);
         }
     }
 
+    /**
+     * Memuat ulang daftar antrian di sidebar validasi.
+     */
     async function refreshValidationQueue(resetPanel = false) {
         const queueListDiv = document.getElementById('validation-queue-list');
         const container = queueListDiv?.closest('#interactive-validation-container');
@@ -1500,22 +1359,14 @@ App.Validation = (() => {
         }
     }
     
+    /**
+     * Mereset form evaluasi ke kondisi default.
+     */
     function resetEvaluationForm(panel) {
         if (!panel) return;
         panel.querySelectorAll('.eval-radio').forEach(radio => { radio.checked = false; });
-
         const meterInput = panel.querySelector('#eval_meter_input');
         if (meterInput) meterInput.value = '';
-
-        const mcbInput = panel.querySelector('#eval_mcb');
-        if (mcbInput) mcbInput.value = '';
-        
-        const pbtsInput = panel.querySelector('#eval_type_pbts');
-        if (pbtsInput) pbtsInput.value = '';
-
-        const merkkwhInput = panel.querySelector('#eval_merkkwhmeter');
-        if (merkkwhInput) merkkwhInput.value = '';
-
         const meterStatus = panel.querySelector('#eval_meter_status');
         if (meterStatus) meterStatus.textContent = '';
         
@@ -1542,6 +1393,9 @@ App.Validation = (() => {
         if (rejectButton) { rejectButton.disabled = true; rejectButton.classList.add('opacity-50', 'cursor-not-allowed'); }
     }    
 
+    /**
+     * Listener global (via 'change' dan 'input') untuk form evaluasi.
+     */
     function handleEvaluationChange(e) {
         const evalElement = e.target.closest('.eval-input, .eval-radio, #eval_rejection_reason, #eval_peta_reason, #eval_persil_reason');
         if (!evalElement) return;
@@ -1557,6 +1411,9 @@ App.Validation = (() => {
         checkEvaluationForm(panel, currentDetails);
     }
 
+    /**
+     * Logika utama untuk mengaktifkan/menonaktifkan tombol Setuju/Tolak.
+     */
     function checkEvaluationForm(panel, details) {
         if (!panel || !details) return;
 
@@ -1564,12 +1421,6 @@ App.Validation = (() => {
         const meterStatus = panel.querySelector('#eval_meter_status');
         const petaValue = panel.querySelector('input[name="eval_peta"]:checked')?.value;
         const persilValue = panel.querySelector('input[name="eval_persil"]:checked')?.value;
-        const mcbInput = panel.querySelector('#eval_mcb');
-        const pbtsInput = panel.querySelector('#eval_type_pbts');
-        const merkkwhInput = panel.querySelector('#eval_merkkwhmeter');
-        const mcbValue = mcbInput ? mcbInput.value.trim() : '';
-        const pbtsValue = pbtsInput ? pbtsInput.value.trim() : '';
-        const merkkwhValue = merkkwhInput ? merkkwhInput.value.trim() : '';
         const petaReasonContainer = panel.querySelector('#eval_peta_reason_container');
         const petaReasonSelect = panel.querySelector('#eval_peta_reason');
         const persilReasonContainer = panel.querySelector('#eval_persil_reason_container');
@@ -1582,11 +1433,11 @@ App.Validation = (() => {
 
         if (!validateButton || !rejectButton) return;
 
+        // Reset tombol
         validateButton.disabled = true;
         rejectButton.disabled = true;
         validateButton.classList.add('opacity-50', 'cursor-not-allowed');
         rejectButton.classList.add('opacity-50', 'cursor-not-allowed');
-        
         if (meterStatus) {
             meterStatus.textContent = '';
             meterStatus.classList.remove('text-green-500', 'text-red-500');
@@ -1594,11 +1445,11 @@ App.Validation = (() => {
         if (rejectionContainer) rejectionContainer.classList.add('hidden');
         if (rejectionPlaceholder) rejectionPlaceholder.classList.remove('hidden');
         
+        // Logika Meter
         const answerKey = details.full_meter_number || details.no_meter || details.meter_number || details.nomor_meter || '';
         let meterMatch = false;
         let meterNotMatch = false;
         const currentMeter = meterInput ? meterInput.value.trim() : '';
-
         if (answerKey && currentMeter.length > 0) {
             if (currentMeter === String(answerKey)) {
                 meterMatch = true;
@@ -1613,9 +1464,9 @@ App.Validation = (() => {
             }
         }
 
+        // Tampilkan/Reset Dropdown Alasan
         const petaTidakSesuai = petaValue === 'tidak';
         const persilTidakSesuai = persilValue === 'tidak';
-
         if (petaReasonContainer) {
             if (petaTidakSesuai) petaReasonContainer.classList.remove('hidden');
             else { petaReasonContainer.classList.add('hidden'); if (petaReasonSelect) petaReasonSelect.value = ''; }
@@ -1625,8 +1476,8 @@ App.Validation = (() => {
             else { persilReasonContainer.classList.add('hidden'); if (persilReasonSelect) persilReasonSelect.value = ''; }
         }
 
+        // Tampilkan/Reset Alasan Umum
         const hasAnyRejection = meterNotMatch || petaTidakSesuai || persilTidakSesuai;
-
         if (hasAnyRejection) {
             if (rejectionContainer) rejectionContainer.classList.remove('hidden');
             if (rejectionPlaceholder) rejectionPlaceholder.classList.add('hidden');
@@ -1635,18 +1486,20 @@ App.Validation = (() => {
             if (rejectionPlaceholder) rejectionPlaceholder.classList.remove('hidden');
         }
 
+        // Cek Kelengkapan Alasan
         const isPetaSelected = typeof petaValue !== 'undefined';
         const isPersilSelected = typeof persilValue !== 'undefined';
         const isPetaReasonSelected = !petaTidakSesuai || (petaTidakSesuai && petaReasonSelect && petaReasonSelect.value.trim() !== '');
         const isPersilReasonSelected = !persilTidakSesuai || (persilTidakSesuai && persilReasonSelect && persilReasonSelect.value.trim() !== '');
         const isRejectionReasonFilled = !hasAnyRejection || (rejectionReason && rejectionReason.value.trim().length >= MIN_REJECTION_CHARS);
 
-        const areNewFieldsFilled = mcbValue.length > 0 && pbtsValue.length > 0 && merkkwhValue.length > 0;
-        if (meterMatch && petaValue === 'sesuai' && persilValue === 'sesuai' && areNewFieldsFilled) {
+        // Aktifkan Tombol Setuju
+        if (meterMatch && petaValue === 'sesuai' && persilValue === 'sesuai') {
             validateButton.disabled = false;
             validateButton.classList.remove('opacity-50', 'cursor-not-allowed');
         }
 
+        // Aktifkan Tombol Tolak
         if (hasAnyRejection) {
             if (isPetaSelected && isPersilSelected && isPetaReasonSelected && isPersilReasonSelected && isRejectionReasonFilled) {
                 rejectButton.disabled = false;
@@ -1661,19 +1514,21 @@ App.Validation = (() => {
         lockAndLoadDetails,
         updateValidationUI,
         refreshValidationQueue,
-        handleEvaluationChange,
+        handleEvaluationChange, // Digunakan oleh listener global
         checkEvaluationForm,
-        resetEvaluationForm,
-        handleFormSubmit: null // Akan diisi oleh event listener 'submit' global
+        resetEvaluationForm
     };
 })();
 
 // ===================================================================
-// ===== 7. "CREATE DATA" MODAL LOGIC =====
+// ===== 8. "CREATE DATA" MODAL LOGIC =====
 // ===================================================================
 
 App.FormCreate = (() => {
 
+    /**
+     * Inisialisasi peta pratinjau dan tab Street View di modal 'Create'.
+     */
     function initializePreviewMap(modalContent) {
         const mapContainer = modalContent.querySelector('#preview-map');
         const latInput = modalContent.querySelector('#latitudey_create');
@@ -1700,10 +1555,11 @@ App.FormCreate = (() => {
             
             if (!isNaN(lat) && !isNaN(lon)) {
                 if (previewMarker) previewMarker.remove();
-                // previewMarker = L.marker([lat, lon]).addTo(previewMap); ganti icon biru
-                previewMarker = L.marker([lat, lon], { icon: App.Icons.blue }).addTo(previewMap);
+                // [FIX] Menggunakan ikon kustom 'building' (biru)
+                previewMarker = L.marker([lat, lon], { icon: App.Icons.building }).addTo(previewMap);
                 previewMap.setView([lat, lon], 17);
                 
+                // [FIX] URL Embed API yang benar
                 const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
                 streetViewIframe.src = streetViewUrl;
                 streetViewIframe.classList.remove('hidden');
@@ -1716,9 +1572,11 @@ App.FormCreate = (() => {
             }
         }
 
+        // Listener untuk update saat mengetik
         latInput.addEventListener('input', updatePreviews);
         lonInput.addEventListener('input', updatePreviews);
 
+        // Listener untuk ganti Tab
         streetViewTabButton.addEventListener('click', () => {
             streetViewTabButton.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
             streetViewTabButton.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300');
@@ -1726,9 +1584,7 @@ App.FormCreate = (() => {
             mapTabButton.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300');
             streetViewTabPanel.classList.remove('hidden');
             mapTabPanel.classList.add('hidden');
-            setTimeout(() => previewMap.invalidateSize(), 50);
         });
-
         mapTabButton.addEventListener('click', () => {
             mapTabButton.classList.add('border-indigo-500', 'text-indigo-600', 'dark:text-indigo-400');
             mapTabButton.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300', 'dark:text-gray-400', 'dark:hover:text-gray-300');
@@ -1738,9 +1594,12 @@ App.FormCreate = (() => {
             streetViewTabPanel.classList.add('hidden');
             setTimeout(() => previewMap.invalidateSize(), 50);
         });
-        updatePreviews();
+        updatePreviews(); // Panggil sekali saat inisialisasi
     }
 
+    /**
+     * Inisialisasi logika upload foto (XHR) di modal 'Create'.
+     */
     function initializePhotoUpload(modalContent) {
         modalContent.querySelectorAll('.photo-upload-input').forEach(input => {
             input.addEventListener('change', function(e) {
@@ -1753,6 +1612,7 @@ App.FormCreate = (() => {
                 const form = input.closest('form');
                 const uploadUrl = form.dataset.uploadPhotoUrl;
 
+                // Hapus file lama (jika ada)
                 const oldFilename = filenameInput.value;
                 if (oldFilename) {
                     fetch('/team/mapping-delete-photo', {
@@ -1762,12 +1622,14 @@ App.FormCreate = (() => {
                     });
                 }
 
+                // Reset UI
                 statusDiv.innerHTML = '';
                 filenameInput.value = '';
                 if(progressContainer) progressContainer.classList.add('hidden');
                 if(progressBar) progressBar.style.width = '0%';
                 if (!file) return;
                 
+                // Mulai upload
                 progressContainer.classList.remove('hidden');
                 const formData = new FormData();
                 formData.append('photo', file);
@@ -1808,6 +1670,9 @@ App.FormCreate = (() => {
         });
     }
     
+    /**
+     * Inisialisasi validasi live IDPEL di modal 'Create'.
+     */
     function initializeCreateFormValidation(formElement) {
         const idpelInput = formElement.querySelector('#idpel_create');
         const statusIconDiv = formElement.querySelector('#idpel-status-icon');
@@ -1815,7 +1680,8 @@ App.FormCreate = (() => {
         const submitButton = formElement.querySelector('#create-mapping-submit-button');
         const ketSurveyTextarea = formElement.querySelector('#ket_survey_create');
         let debounceTimer;
-        const checkUrlBase = 'master-pelanggan/check/';
+        // [FIX] URL ini harus menunjuk ke route yang benar (sesuai 'MasterDataController')
+        const checkUrlBase = '/admin/master-pelanggan/check/'; 
 
         if (!idpelInput || !statusIconDiv || !statusMessageEl || !submitButton || !ketSurveyTextarea) {
             console.error("Elemen form create tidak lengkap untuk validasi live IDPEL.");
@@ -1906,7 +1772,7 @@ App.FormCreate = (() => {
                     });
             }, 800);
         });
-        updateIdpelStatusUI(false, null, null, '');
+        updateIdpelStatusUI(false, null, null, ''); // Set status awal
     }
 
     return {
@@ -1916,163 +1782,16 @@ App.FormCreate = (() => {
     };
 })();
 
-App.Form = (() => {
-    function triggerUserSubmit(form) {
-        if (form && form.id === 'create-user-form') {
-            console.log("TRIGGER: Memanggil handleModalFormSubmit dari onclick.");
-            handleModalFormSubmit(form); 
-            handleModalFormSubmit(form);
-            return;
-        }
-        form.submit();
-    }
-
-    return {
-        triggerUserSubmit
-    };
-})();
-
 // ===================================================================
-// ===== 8. EVENT LISTENERS & INITIALIZATION =====
+// ===== 9. EVENT LISTENERS & INITIALIZATION =====
 // ===================================================================
-
-    function handleModalFormSubmit(form) {
-        const submitButton = form.querySelector('button[type="submit"]');
-        const originalButtonText = submitButton ? submitButton.innerHTML : 'Simpan';
-        
-        if(submitButton) {
-            submitButton.disabled = true;
-            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
-        }
-
-        const ajaxErrorsContainer = form.querySelector('#ajax-errors');
-        if (ajaxErrorsContainer) {
-            ajaxErrorsContainer.classList.add('hidden');
-        }
-        const errorList = form.querySelector('#error-list');
-        if (errorList) {
-            errorList.innerHTML = '';
-        }
-
-        fetch(form.action, {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'), 'Accept': 'application/json' },
-            body: new FormData(form)
-        })
-        .then(response => {
-            if (!response.ok) return response.json().then(err => { throw err; });
-            return response.json();
-        })
-        .then(data => {
-            
-            // Hapus indikator loading dan nonaktifkan tombol
-            if(submitButton) {
-                submitButton.disabled = false;
-                submitButton.innerHTML = originalButtonText;
-            }
-
-            // ================== LOGIKA PERBAIKAN GENERIK START ==================
-            if (data.success) { 
-                console.log('handleModalFormSubmit: Menerima respons sukses dari controller:', data);
-                
-                const successMessage = data.message || data.success || 'Data berhasil disimpan!';
-                
-                // 1. Cek instruksi PENGALIHAN TAB dari atribut form (data-success-redirect-tab)
-                const redirectTabName = form.dataset.successRedirectTab;
-                const redirectUrl = form.dataset.successRedirectUrl;     
-                
-                // Tutup Modal jika form berada di dalam modal
-                if (form.closest('#modal-content')) {
-                    App.Modal.close();
-                }
-                
-                if (redirectTabName && redirectUrl) {
-                    // **Aksi: NAVIGASI KE TAB TUJUAN (Jika atribut redirect ditemukan)**
-                    console.log('handleModalFormSubmit: Memicu Navigasi ke Tab:', redirectTabName);
-                    
-                    // Buat/Aktifkan tab tujuan
-                    App.Tabs.createTab(redirectTabName, redirectUrl, true, true); 
-                    
-                    // Muat Ulang konten tab tujuan dengan callback notifikasi
-                    setTimeout(() => {
-                        App.Tabs.loadTabContent(redirectTabName, redirectUrl, () => {
-                            console.log('handleModalFormSubmit: Konten tab tujuan dimuat ulang, menampilkan notifikasi.');
-                            // Tampilkan notifikasi di tab tujuan
-                            App.Utils.displayNotification('success', successMessage, redirectTabName); 
-                        });
-                    }, 50);
-
-                } else {
-                    // **Aksi: MUAT ULANG TAB AKTIF (Default untuk Edit/Update)**
-                    const activeTabButton = document.querySelector('#tabs-header .tab-button.active');
-                    if (activeTabButton) {
-                        const tabName = activeTabButton.dataset.tabName;
-                        const tabUrl = activeTabButton.dataset.url || activeTabButton.href;
-                        
-                        App.Tabs.loadTabContent(tabName, tabUrl, () => {
-                            console.log('handleModalFormSubmit: Konten tab aktif dimuat ulang, menampilkan notifikasi.');
-                            // Tampilkan notifikasi di tab yang sama
-                            App.Utils.displayNotification('success', successMessage, tabName); 
-                        });
-                    } else {
-                        console.error("handleModalFormSubmit: Tidak dapat menentukan tab untuk dimuat ulang.");
-                        App.Utils.displayNotification('success', successMessage);
-                    }
-                }
-            } else {
-                // Logika default jika respons sukses=false
-                // ... (Tampilkan notifikasi error non-validasi jika ada)
-            }
-            // ================== LOGIKA PERBAIKAN GENERIK END ====================
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            if(submitButton) {
-                submitButton.disabled = false;
-                submitButton.innerHTML = originalButtonText;
-            }
-
-            if (error.errors) {
-                let errorDiv = null;
-                
-                // [PENANGANAN ERROR UNTUK FORM AJAX]
-                if (form.id === 'create-mapping-form') errorDiv = form.querySelector('#create-mapping-errors');
-                else if (form.id === 'edit-user-form') errorDiv = form.querySelector('#edit-user-errors');
-                else if (form.id === 'create-user-form' || form.id === 'edit-user-form') errorDiv = form.querySelector('#ajax-errors'); 
-
-                if (errorDiv) {
-                    let errorList = '<ul>';
-                    for (const key in error.errors) {
-                        errorList += `<li class="text-sm">- ${error.errors[key][0]}</li>`;
-                    }
-                    errorList += '</ul>';
-                    errorDiv.innerHTML = errorList;
-                    errorDiv.classList.remove('hidden');
-                    
-                    // === FIX SINTAKS ERROR PADA PENUGASAN SCROLL (L1732, L1828, L1829) ===
-                    const modalContentEl = document.getElementById('modal-content');
-                    if (modalContentEl) {
-                        modalContentEl.scrollTop = 0;
-                    }
-                    const notificationContainerEl = document.getElementById('kddk-notification-container');
-                    if (notificationContainerEl) {
-                        notificationContainerEl.scrollTop = 0;
-                    }
-                    // =======================================================================
-                } else {
-                    alert('Validasi gagal. Cek console untuk detail.');
-                }
-            } else {
-                // Tampilkan notifikasi error global jika bukan error validasi
-                App.Utils.displayNotification('error', error.message || 'Terjadi kesalahan.');
-            }
-        });
-    }
 
 App.Listeners = (() => {
-    let __modalHandler = null;
+
+    /**
+     * Titik masuk utama. Dipanggil setelah DOM siap.
+     */
     function init() {
-        console.log('TAB MANAGER: Inisialisasi Dimulai.');
         document.addEventListener('DOMContentLoaded', () => {
             // --- Inisialisasi Variabel DOM ---
             const elements = {
@@ -2118,18 +1837,20 @@ App.Listeners = (() => {
             document.addEventListener('click', e => handleGlobalClick(e, elements));
             document.addEventListener('submit', handleGlobalSubmit);
             document.addEventListener('input', handleGlobalInput);
-            document.addEventListener('change', App.Validation.handleEvaluationChange);
+            document.addEventListener('change', App.Validation.handleEvaluationChange); // Listener khusus form validasi
 
             // --- Inisialisasi Tab Awal ---
             App.Tabs.initializeDashboardTab();
-            
         });
     }
 
+    /**
+     * Menangani SEMUA klik di dokumen.
+     * [FIX] Memperbaiki urutan prioritas (Delete SEBELUM dataRow).
+     */
     function handleGlobalClick(e, elements) {
-        // --- Urutan Prioritas Pengecekan Klik ---
-
-        // 1. Link Modal (data-modal-link)
+        
+        // Prioritas 1: Link Modal (data-modal-link)
         const modalLink = e.target.closest('[data-modal-link]');
         if (modalLink) {
             e.preventDefault();
@@ -2137,23 +1858,22 @@ App.Listeners = (() => {
             return;
         }
 
-        // 2. Tombol Hapus (data-delete-url)
-        // [PERBAIKAN] Cek ini dipindahkan ke atas, SEBELUM cek 'dataRow'
+        // Prioritas 2: Tombol Hapus (data-delete-url)
         const deleteButton = e.target.closest('[data-delete-url]');
         if (deleteButton) {
-            e.preventDefault(); // <-- Tambahkan preventDefault di sini
-            handleDeleteClick(deleteButton); // Panggil fungsi hapus
-            return; // Hentikan di sini
+            e.preventDefault(); // [FIX] Mencegah 'a' href="#"
+            handleDeleteClick(deleteButton, elements.tabsHeader);
+            return;
         }
 
-        // 3. Tombol Tutup Modal (data-modal-close)
+        // Prioritas 3: Tombol Tutup Modal (data-modal-close)
         const modalCloseButton = e.target.closest('[data-modal-close]');
         if (modalCloseButton) {
             App.Modal.close();
             return;
         }
         
-        // 4. Tombol Clear Search (clear-search-button)
+        // Prioritas 4: Tombol Clear Search (clear-search-button)
         const clearButton = e.target.closest('#clear-search-button');
         if (clearButton) {
             const searchForm = clearButton.closest('form');
@@ -2165,14 +1885,12 @@ App.Listeners = (() => {
             return;
         }
 
-        // 5. Klik Baris Tabel (data-row-clickable)
+        // Prioritas 5: Klik Baris Tabel (data-row-clickable)
         const dataRow = e.target.closest('.data-row-clickable');
         if (dataRow) {
-            // Cek ini HANYA untuk mencegah klik baris jika targetnya adalah tombol aksi
-            // (Kita sudah memindahkan 'data-delete-url' ke atas)
+            // [FIX] Cek internal untuk tombol aksi (agar tidak memicu klik baris)
             const isActionOrForm = e.target.closest('form[data-custom-handler="invalidate-action"]') ||
                                    e.target.closest('form[data-custom-handler="promote-action"]');
-            
             if (isActionOrForm) return; // Jika ini tombol aksi, jangan proses klik baris
 
             e.preventDefault();
@@ -2180,7 +1898,7 @@ App.Listeners = (() => {
             return;
         }
 
-        // 6. Tombol Zoom Gambar (image-zoom-trigger)
+        // Prioritas 6: Tombol Zoom Gambar (image-zoom-trigger)
         const imageZoomButton = e.target.closest('.image-zoom-trigger');
         if (imageZoomButton && elements.imageModal) {
             e.preventDefault();
@@ -2190,7 +1908,7 @@ App.Listeners = (() => {
             return;
         }
         
-        // 7. Tombol Antrian Validasi (validation-queue-id)
+        // Prioritas 7: Tombol Antrian Validasi (validation-queue-id)
         const validationQueueButton = e.target.closest('[data-validation-queue-id]');
         if (validationQueueButton) {
             e.preventDefault();
@@ -2199,7 +1917,7 @@ App.Listeners = (() => {
             return;
         }
         
-        // 8. Tombol Refresh Antrian (refresh-queue-list)
+        // Prioritas 8: Tombol Refresh Antrian (refresh-queue-list)
         const refreshButton = e.target.closest('#refresh-queue-list');
         if (refreshButton) {
             e.preventDefault();
@@ -2207,15 +1925,15 @@ App.Listeners = (() => {
             return;
         }
 
-        // 9. Klik Overlay Modal Utama
+        // Prioritas 9: Klik Overlay Modal Utama
         if (e.target === elements.mainModal) {
             App.Modal.close();
             return;
         }
 
-        // 10. Link Navigasi (Paginasi, Link Tab, Link Sidebar)
+        // Prioritas 10: Link Navigasi (Paginasi, Link Tab, Link Sidebar)
         const targetLink = e.target.closest('a');
-        if (!targetLink) return;
+        if (!targetLink) return; // Abaikan jika bukan link
 
         // Paginasi / Link Internal di dalam Tab
         if (targetLink.closest('#tabs-content') &&
@@ -2246,7 +1964,11 @@ App.Listeners = (() => {
         }
     }
 
-    function handleDeleteClick(deleteButton) {
+    /**
+     * Menangani aksi klik tombol Hapus.
+     * [FIX] Menggunakan callback notifikasi yang andal.
+     */
+    function handleDeleteClick(deleteButton, tabsHeader) {
         const userName = deleteButton.dataset.userName || 'item ini';
         const deleteUrl = deleteButton.dataset.deleteUrl;
 
@@ -2256,22 +1978,20 @@ App.Listeners = (() => {
 
             fetch(deleteUrl, {
                 method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                    'Accept': 'application/json',
-                },
+                headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'), 'Accept': 'application/json' },
                 body: formData
             })
             .then(response => {
-                if (response.status === 204) return { message: 'Data berhasil dihapus!' };
+                if (response.status === 204) return { message: 'Data berhasil dihapus!' }; // 204 No Content
                 if (!response.ok) return response.json().then(err => { throw err; });
                 return response.json();
             })
             .then(data => {
                 if (data.message) {
                     const successMessage = data.message;
-                    const tabNameToRefresh = App.Utils.getActiveTabName(document.getElementById('tabs-header'));
+                    const tabNameToRefresh = App.Utils.getActiveTabName(tabsHeader); // Gunakan tabsHeader dari parameter
                     const tabContent = document.getElementById(`${tabNameToRefresh}-content`);
+                    
                     if (tabContent) {
                         const searchForm = tabContent.querySelector('form[id*="-search-form"]');
                         let refreshUrl;
@@ -2282,8 +2002,10 @@ App.Listeners = (() => {
                             const tabButton = document.querySelector(`#tabs-header .tab-button[data-tab-name="${tabNameToRefresh}"]`);
                             if (tabButton) refreshUrl = tabButton.dataset.url || tabButton.href;
                         }
-                       if (refreshUrl) {
+                        
+                        if (refreshUrl) {
                             App.Tabs.loadTabContent(tabNameToRefresh, refreshUrl, () => {
+                                // [FIX] Kirim tabName ke notifikasi
                                 App.Utils.displayNotification('success', successMessage, tabNameToRefresh);
                             });
                         }
@@ -2294,62 +2016,55 @@ App.Listeners = (() => {
                 console.error('Error:', error);
                 App.Utils.displayNotification('error', error.message || 'Terjadi kesalahan saat menghapus data.');
             });
-        }
-        App.Utils.showCustomConfirm(
-            'Konfirmasi Hapus', // Judul
-            `Apakah Anda yakin ingin menghapus ${userName}? Tindakan ini tidak dapat dibatalkan.`, // Pesan
-            onConfirmAction // Aksi
-        );
+        };
+
+        App.Utils.showCustomConfirm('Konfirmasi Hapus', `Apakah Anda yakin ingin menghapus ${userName}?`, onConfirmAction);
     }
 
+    /**
+     * Router utama untuk semua event 'submit'.
+     */
     function handleGlobalSubmit(e) {
-        const formElement = e.target; // e.target adalah <form> itu sendiri
+        const searchForm = e.target.closest('form[id*="-search-form"]');
+        const validationForm = e.target.closest('#detail-form-validate, #detail-form-reject');
+        const invalidateForm = e.target.closest('form[data-custom-handler="invalidate-action"]');
+        const formInModal = e.target.closest('#modal-content form');
+        const promoteForm = e.target.closest('form[data-custom-handler="promote-action"]');
 
-        // 1. Cek Form Pencarian
-        if (formElement.id.includes('-search-form')) {
+        if (searchForm) {
             e.preventDefault();
             clearTimeout(App.State.searchDebounceTimer);
-            const params = new URLSearchParams(new FormData(formElement)).toString();
-            const url = `${formElement.action}?${params}`;
+            const params = new URLSearchParams(new FormData(searchForm)).toString();
+            const url = `${searchForm.action}?${params}`;
             App.Tabs.loadTabContent(App.Utils.getActiveTabName(document.getElementById('tabs-header')), url);
             return;
         }
-
-        // 2. Cek Form Custom Handler di dalam Tab Content (Invalidate/Promote)
-        if (formElement.hasAttribute('data-custom-handler')) {
-            if (formElement.dataset.customHandler === 'invalidate-action') {
-                e.preventDefault();
-                handleInvalidateSubmit(formElement);
-                return;
-            }
-            if (formElement.dataset.customHandler === 'promote-action') {
-                e.preventDefault();
-                handlePromoteSubmit(formElement);
-                return;
-            }
-        }
-
-        // 3. Cek Form Validasi (App.Validation)
-        if (formElement.id === 'detail-form-validate' || formElement.id === 'detail-form-reject') {
+        if (invalidateForm) {
             e.preventDefault();
-            handleValidationFormSubmit(formElement);
+            handleInvalidateSubmit(invalidateForm);
             return;
         }
-
-        // ===================================================================
-        // >>> CATCH-ALL UNTUK SEMUA FORM AJAX (Modal, Create User, Edit User) <<<
-        // ===================================================================
-        // Menangkap semua form yang di dalam Modal ATAU memiliki kelas 'ajax-form' 
-        // (Form Tambah Pengguna jatuh ke sini, karena memiliki kelas ajax-form)
-        if (formElement.closest('#modal-content') || formElement.classList.contains('ajax-form')) {
+        if (promoteForm) {
             e.preventDefault();
-            console.log('handleGlobalSubmit: Menangkap Form AJAX Umum (Modal/Non-Modal) dan diarahkan ke handler AJAX umum.');
-            handleModalFormSubmit(formElement); 
+            handlePromoteSubmit(promoteForm);
             return;
         }
-        // ===================================================================
+        if (formInModal) {
+            if (formInModal.hasAttribute('data-custom-handler')) return;
+            e.preventDefault();
+            handleModalFormSubmit(formInModal);
+            return;
+        }
+        if (validationForm) {
+            e.preventDefault();
+            handleValidationFormSubmit(validationForm);
+            return;
+        }
     }
 
+    /**
+     * Menangani submit form 'Invalidate'.
+     */
     function handleInvalidateSubmit(form) {
         const onConfirmAction = () => {
             const originalButton = form.querySelector('button[type="submit"]');
@@ -2364,14 +2079,16 @@ App.Listeners = (() => {
                 body: new FormData(form)
             })
             .then(response => {
-                const contentType = response.headers.get("content-type");
-                if (response.ok) {
-                    if (contentType && contentType.indexOf("application/json") !== -1) return response.json();
-                    return { message: 'Aksi invalidate berhasil diproses.' }; 
-                } else {
-                    if (contentType && contentType.indexOf("application/json") !== -1) return response.json().then(err => { throw err; });
-                    throw new Error('Sesi Anda mungkin telah habis. Halaman akan dimuat ulang.');
+                // [FIX] Logika parsing respons yang lebih kuat
+                if (!response.ok) {
+                    if (response.status === 419) throw new Error('Sesi telah kedaluwarsa. Halaman akan dimuat ulang.');
+                    return response.json().then(err => { 
+                        throw new Error(err.message || `Gagal: ${response.status}`);
+                    }).catch(() => {
+                        throw new Error(`Aksi Gagal. Status: ${response.status}.`);
+                    });
                 }
+                return response.json(); 
             })
             .then(data => {
                 originalButton.textContent = originalText;
@@ -2398,6 +2115,7 @@ App.Listeners = (() => {
                             let bustUrl = new URL(refreshUrl, window.location.origin);
                             bustUrl.searchParams.set('_cb', new Date().getTime()); 
                             App.Tabs.loadTabContent(tabNameToRefresh, bustUrl.toString(), () => {
+                                // [FIX] Kirim tabName ke notifikasi
                                 App.Utils.displayNotification('success', successMessage, tabNameToRefresh);
                             }); 
                         }
@@ -2409,7 +2127,7 @@ App.Listeners = (() => {
                 originalButton.disabled = false;
                 originalButton.classList.remove('opacity-50', 'cursor-not-allowed');
                 console.error('Error Invalidate:', error);
-                if (error.message.includes('Sesi Anda mungkin telah habis')) {
+                if (error.message.includes('Sesi telah kedaluwarsa')) {
                     alert(error.message);
                     window.location.reload();
                 } else {
@@ -2420,6 +2138,9 @@ App.Listeners = (() => {
         App.Utils.showCustomConfirm('Konfirmasi Invalidate', 'Anda yakin ingin mengembalikan data ini ke antrian validasi?', onConfirmAction);
     }
 
+    /**
+     * Menangani submit form 'Promote'.
+     */
     function handlePromoteSubmit(form) {
         const onConfirmAction = () => {
             const originalButton = form.querySelector('button[type="submit"]');
@@ -2433,6 +2154,7 @@ App.Listeners = (() => {
                 body: new FormData(form)
             })
             .then(response => {
+                // [FIX] Logika parsing respons yang lebih kuat
                 if (!response.ok) {
                     if (response.status === 419) throw new Error('Sesi telah kedaluwarsa. Halaman akan dimuat ulang.');
                     return response.json().then(err => { 
@@ -2465,6 +2187,7 @@ App.Listeners = (() => {
                             let bustUrl = new URL(refreshUrl, window.location.origin);
                             bustUrl.searchParams.set('_cb', new Date().getTime()); 
                             App.Tabs.loadTabContent(tabNameToRefresh, bustUrl.toString(), () => {
+                                // [FIX] Kirim tabName ke notifikasi
                                 App.Utils.displayNotification('success', successMessage, tabNameToRefresh);
                             }); 
                         }
@@ -2486,6 +2209,77 @@ App.Listeners = (() => {
         App.Utils.showCustomConfirm('Konfirmasi Promosi Data', 'Jadikan data ini sebagai data VALID (AKTIF)?', onConfirmAction);
     }
 
+    /**
+     * Menangani submit form di dalam modal (Create/Edit User, Create Mapping).
+     */
+    function handleModalFormSubmit(form) {
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonText = submitButton ? submitButton.innerHTML : 'Simpan';
+        if(submitButton) {
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+        }
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'), 'Accept': 'application/json' },
+            body: new FormData(form)
+        })
+        .then(response => {
+            if (!response.ok) return response.json().then(err => { throw err; });
+            return response.json();
+        })
+        .then(data => {
+            if (data.message) {
+                App.Modal.close();
+                
+                const successMessage = data.message;
+                let tabNameToRefresh = 'Dashboard';
+                if (form.id === 'create-mapping-form') tabNameToRefresh = 'Data Mapping Pelanggan';
+                else if (form.id === 'edit-user-form') tabNameToRefresh = 'Daftar Pengguna';
+
+                // [FIX] Panggil refresh dengan callback notifikasi
+                const tabButton = document.querySelector(`#tabs-header .tab-button[data-tab-name="${tabNameToRefresh}"]`);
+                if(tabButton) {
+                     App.Tabs.loadTabContent(tabNameToRefresh, tabButton.dataset.url || tabButton.href, () => {
+                        App.Utils.displayNotification('success', successMessage, tabNameToRefresh);
+                     });
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            if(submitButton) {
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalButtonText;
+            }
+
+            if (error.errors) {
+                let errorDiv = null;
+                if (form.id === 'create-mapping-form') errorDiv = form.querySelector('#create-mapping-errors');
+                else if (form.id === 'edit-user-form') errorDiv = form.querySelector('#edit-user-errors');
+
+                if (errorDiv) {
+                    let errorList = '<ul>';
+                    for (const key in error.errors) {
+                        errorList += `<li class="text-sm">- ${error.errors[key][0]}</li>`;
+                    }
+                    errorList += '</ul>';
+                    errorDiv.innerHTML = errorList;
+                    errorDiv.classList.remove('hidden');
+                    document.getElementById('modal-content').scrollTop = 0;
+                } else {
+                    App.Utils.displayNotification('error', 'Validasi gagal. Cek console.');
+                }
+            } else {
+                App.Utils.displayNotification('error', error.message || 'Terjadi kesalahan.');
+            }
+        });
+    }
+
+    /**
+     * Menangani submit form 'Approve' atau 'Reject' di tab Validasi.
+     */
     function handleValidationFormSubmit(form) {
         const isReject = form.id === 'detail-form-reject';
         if (isReject) {
@@ -2504,25 +2298,16 @@ App.Listeners = (() => {
         const formData = new FormData(form);
 
         if (panel) {
-            const mcbValue = panel.querySelector('#eval_mcb')?.value || '';
-            const pbtsValue = panel.querySelector('#eval_type_pbts')?.value || '';
-            const merkkwhValue = panel.querySelector('#eval_merkkwhmeter')?.value || '';
             const evalData = {
                 eval_peta: panel.querySelector('input[name="eval_peta"]:checked')?.value || null,
                 eval_peta_reason: panel.querySelector('#eval_peta_reason')?.value || null,
                 eval_persil: panel.querySelector('input[name="eval_persil"]:checked')?.value || null,
                 eval_persil_reason: panel.querySelector('#eval_persil_reason')?.value || null,
                 eval_meter_input: panel.querySelector('#eval_meter_input')?.value || null,
-                eval_mcb: mcbValue,
-                eval_type_pbts: pbtsValue,
-                eval_merkkwhmeter: merkkwhValue,
             };
             const rejectionReason = panel.querySelector('#eval_rejection_reason')?.value || ''; 
             formData.append('validation_data', JSON.stringify(evalData));
             formData.append('validation_notes', rejectionReason);
-            formData.append('eval_mcb', mcbValue);
-            formData.append('eval_type_pbts', pbtsValue);
-            formData.append('eval_merkkwhmeter', merkkwhValue);
         }
 
         fetch(form.action, {
@@ -2535,6 +2320,7 @@ App.Listeners = (() => {
             body: formData
         })
         .then(async response => {
+            // [FIX] Logika parsing yang lebih kuat
             const status = response.status;
             let data = null;
             const responseText = await response.text(); 
@@ -2561,7 +2347,8 @@ App.Listeners = (() => {
             let notificationType = data.action_type || (isReject ? 'reject' : 'success');
             const successMessage = data.status_message || (notificationType === 'reject' ? 'Penolakan berhasil.' : 'Validasi berhasil.');
 
-            App.Utils.displayNotification(notificationType, successMessage);
+            // [FIX] Kirim nama tab (meskipun kita di tab yang sama, ini lebih aman)
+            App.Utils.displayNotification(notificationType, successMessage, App.Utils.getActiveTabName(document.getElementById('tabs-header')));
             
             if (data.queue_empty) {
                 const container = form.closest('#interactive-validation-container');
@@ -2589,6 +2376,9 @@ App.Listeners = (() => {
         });
     }
 
+    /**
+     * Menangani input live search (debounce).
+     */
     function handleGlobalInput(e) {
         const searchInput = e.target.closest('form[id*="-search-form"] input[name="search"]');
         if (searchInput) {
@@ -2605,6 +2395,9 @@ App.Listeners = (() => {
         }
     }
 
+    /**
+     * Menangani tombol back/forward browser.
+     */
     function handlePopstate(e, tabsHeader, dashboardUrl) {
         const state = e.state;
         if (state && state.tab) {

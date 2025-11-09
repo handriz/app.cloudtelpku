@@ -113,9 +113,9 @@
             {{-- BAGIAN KONTEN UTAMA (Peta, Foto, Form) --}}
             {{-- ====================================================== --}}
             <div class="p-5">
-                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                     {{-- SEL 1: PETA & EVAL PETA --}}
-                     <div class="lg:col-span-2 space-y-4">
+                 <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                     {{-- SEL 1: PETA, FOTO PERSIL, & EVAL PETA --}}
+                     <div class="lg:col-span-3 space-y-4">
                         <div class="space-y-2">
                             <h4 class="font-semibold">Posisi Koordinat</h4>
                             <div id="validation-map" class="w-full h-80 lg:h-[300px] rounded-lg z-0 bg-gray-200" style="height: 300px;"></div>
@@ -152,7 +152,7 @@
                             </script>
                         @endif
                         </div>
-                        <div class="pt-2 border-t dark:border-gray-700">
+                                                <div class="pt-2 border-t dark:border-gray-700">
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Apakah posisi peta sudah sesuai?</label>
                             <div class="mt-2 space-x-4">
                                 <label class="inline-flex items-center"><input type="radio" name="eval_peta" value="sesuai" class="eval-radio text-indigo-600 focus:ring-indigo-500"><span class="ml-2 text-sm">Sesuai</span></label>
@@ -169,22 +169,8 @@
                                         </select>
                             </div>                                                
                         </div>
-                     </div>
-                     {{-- SEL 2: FOTO KWH, INPUT, FOTO PERSIL, EVAL PERSIL --}}
-                     <div class="lg:col-span-1 space-y-4">
-                         {{-- Foto KWH & Input Meter --}}
-                         <div class="space-y-2">
-                            <h4 class="font-semibold">Foto KWH Meter</h4>
-                            <button type="button" id="detail-foto-kwh-link" data-zoom-type="kwh" class="hidden block h-56 w-full rounded-lg shadow overflow-hidden image-zoom-trigger cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"> <img id="detail-foto-kwh" alt="Foto KWH" class="w-full h-full object-cover"> </button>
-                            <div id="detail-foto-kwh-none" class="h-56 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hidden">Foto tidak tersedia</div>
-                            <div class="mt-2">
-                                <label for="eval_meter_input" class="block text-xs font-medium text-red-600 dark:text-gray-400 mb-1"><b>Wajib !! Ketik No. Meter di Foto sebagai Validasi: </b></label>
-                                <input type="text" id="eval_meter_input" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Nomor Meter lengkap..." autocomplete="Off">
-                                <div id="eval_meter_status" class="text-xs mt-1 h-4"></div>
-                            </div>
-                         </div>
                          {{-- Foto Persil & Evaluasi Persil --}}
-                         <div class="space-y-2">
+                        <div class="space-y-2 pt-2 border-t dark:border-gray-700">
                             <h4 class="font-semibold">Foto Bangunan (Persil)</h4>
                             <button type="button" id="detail-foto-bangunan-link" data-zoom-type="persil" class="hidden block h-56 w-full rounded-lg shadow overflow-hidden image-zoom-trigger cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"> <img id="detail-foto-bangunan" alt="Foto Persil" class="w-full h-full object-cover"> </button>
                             <div id="detail-foto-bangunan-none" class="h-56 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hidden">Foto tidak tersedia</div>
@@ -200,11 +186,39 @@
                                             </label>
                                             <select id="eval_persil_reason" name="eval_persil_reason" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                                                 <option value="">-- Pilih Alasan --</option>
-                                                <option value="bukan_persil">Bukan Foto Persil / Bangunan</option>
-                                                <option value="diragukan">Foto App Tidak Ada </option>
-                                                <option value="tidak_valid">Foto Diragukan dari kegiatan lapangan</option>
+                                                <option value="bukan_persil">Bukan foto persil / bangunan</option>
+                                                <option value="diragukan">Foto App tidak ada pada persil</option>
+                                                <option value="tidak_valid">Foto diragukan dari kegiatan lapangan</option>
                                             </select>
                                         </div>
+                            </div>
+                        </div>
+                     </div>
+                     {{-- SEL 2: FOTO KWH, INPUT --}}
+                     <div class="lg:col-span-2 space-y-4">
+                         {{-- Foto KWH & Input Meter --}}
+                         <div class="space-y-2">
+                            <h4 class="font-semibold">Foto KWH Meter</h4>
+                            <button type="button" id="detail-foto-kwh-link" data-zoom-type="kwh" class="hidden block h-56 w-full rounded-lg shadow overflow-hidden image-zoom-trigger cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"> <img id="detail-foto-kwh" alt="Foto KWH" class="w-full h-full object-cover"> </button>
+                            <div id="detail-foto-kwh-none" class="h-56 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hidden">Foto tidak tersedia</div>
+                            <div class="mt-2">
+                                <label for="eval_meter_input" class="block text-xs font-medium text-red-600 dark:text-gray-400 mb-1"><b>Wajib !! Ketik No. Meter di Foto sebagai Validasi: </b></label>
+                                <input type="text" id="eval_meter_input" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Nomor Meter lengkap..." autocomplete="Off">
+                                <div id="eval_meter_status" class="text-xs mt-1 h-4"></div>
+                            </div>
+                            <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label for="eval_mcb" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">MCB (Contoh: 6A):</label>
+                                    <input type="text" id="eval_mcb" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="MCB...">
+                                </div>
+                                <div>
+                                    <label for="eval_type_pbts" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Merk Pembatas:</label>
+                                    <input type="text" id="eval_type_pbts" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Tipe PB/TS...">
+                                </div>
+                                <div>
+                                    <label for="eval_merkkwhmeter" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Merk KWH:</label>
+                                    <input type="text" id="eval_merkkwhmeter" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Merk KWH...">
+                                </div>
                             </div>
                          </div>
                      </div>

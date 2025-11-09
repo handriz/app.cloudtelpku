@@ -249,9 +249,12 @@ class MasterDataController extends Controller
         // Terapkan filter hirarki HANYA untuk non-admin
         if (!$user->hasRole('admin')) {
             $hierarchyFilter = $this->getHierarchyFilterForMaster($user); // Helper function (lihat di bawah)
+            
             if ($hierarchyFilter) {
                 // Pastikan filter diterapkan dengan benar
                 $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+                $level = HierarchyLevel::where('code', $hierarchyFilter['code'])->first();
+                $hierarchyName = $level ? $level->name : $hierarchyFilter['code']; // Fallback ke kode jika nama tidak ada
             } else {
                  // Jika user tidak punya hirarki, cegah dia melihat data apa pun
                 return response()->json(['exists' => false, 'message' => 'User tidak memiliki hak akses hirarki.'], 403); // Forbidden
@@ -268,7 +271,7 @@ class MasterDataController extends Controller
         if ($exists) {
             $message = $isActive ? 'ID Pelanggan ditemukan (Status: AKTIF).' : 'ID Pelanggan ditemukan (Status: NON AKTIF).';
         } else {
-            $message = 'ID Pelanggan tidak ditemukan di Master Data.';
+            $message = 'ID Pelanggan tidak ditemukan di Master Data (' . $hierarchyName . ').';
         }
 
         return response()->json([

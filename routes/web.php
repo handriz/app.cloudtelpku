@@ -44,7 +44,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         $dashboardRoutes = [
             'admin'          => 'admin.dashboard',
             'tl_user'        => 'team.dashboard',
-            'app_user'       => 'appuser.dashboard',
+            'appuser'        => 'appuser.dashboard',
             'executive_user' => 'executive.dashboard',
         ];
         // Temukan peran pengguna dan arahkan ke rute yang sesuai
@@ -111,7 +111,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // RUTE UNTUK PANEL PENGGUNA APLIKASI (TL & App User)
     // Menggunakan middleware 'role' yang spesifik
     // ======================================================================
-    Route::prefix('team')->name('team.')->middleware('role:team')->group(function () {
+    Route::prefix('team')->name('team.')->middleware('role:team,appuser,admin')->group(function () {
         Route::get('/dashboard', [TeamDashboardController::class, 'index'])->name('dashboard');
 
         Route::prefix('smart-target')->name('smart-target.')->group(function () {

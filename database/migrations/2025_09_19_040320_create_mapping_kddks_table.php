@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('objectid')->unique();
             $table->string('idpel')->nullable();
             $table->string('user_pendataan')->nullable();
+            $table->string('user_validasi')->nullable();
             $table->boolean('enabled')->default(true);
             $table->string('nokwhmeter')->nullable();
             $table->string('merkkwhmeter')->nullable();

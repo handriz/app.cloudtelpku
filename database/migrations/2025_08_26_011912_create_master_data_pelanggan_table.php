@@ -33,6 +33,7 @@ return new class extends Migration
             $table->string('fkmkwh')->nullable();
             $table->string('jenislayanan')->nullable();
             $table->string('status_dil')->nullable();
+            $table->date('tglnyala_pb')->nullable();
             $table->string('nomor_gardu')->nullable();
             $table->string('nama_gardu')->nullable();
             $table->decimal('koordinat_x', 11, 8)->nullable(); // decimal untuk koordinat (contoh: 0.81012312)

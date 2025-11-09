@@ -16,7 +16,7 @@
 
     {{-- Deskripsi --}}
     <p class="text-sm text-gray-600 dark:text-gray-400 mb-5">
-        Pilih satu atau lebih file foto (.jpg, .jpeg, .png). Pastikan nama file foto sesuai format: <code>objectid_idpel_suffix.ext</code> (contoh: <code>1_12345_kwh.jpg</code>). Foto akan diunggah ke folder sementara dan diproses oleh sistem di latar belakang.
+        Pilih satu atau lebih file foto (Maksimal 100mb per Upload dengan format .jpg, .jpeg, .png). Pastikan penamaan file foto sesuai format: <code>objectid_idpel_suffix</code> (contoh: <code>1_181100392xxx_foto_app</code>)-(contoh: <code>1_181100392xxx_foto_persil</code>) . Foto akan diunggah ke folder sementara dan diproses oleh sistem di latar belakang.
     </p>
 
     {{-- Form Utama --}}

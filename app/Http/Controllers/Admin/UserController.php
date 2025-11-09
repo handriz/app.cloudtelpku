@@ -13,6 +13,7 @@ use Illuminate\Validation\Rules;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
+use Illuminate\Http\JsonResponse;
 
 class UserController extends Controller
 {
@@ -126,7 +127,10 @@ class UserController extends Controller
             'mobile_app' => $request->has('mobile_app'),
         ]);
         if ($request->ajax() || $request->wantsJson()) {
-            return response()->json(['success' => 'Pengguna berhasil ditambahkan!', 'user' => $user]);
+            return response()->json([
+            'success' => true,
+            'message' => 'Pengguna berhasil ditambahkan!',
+            ]);
         }
             return redirect()->route('manajemen-pengguna.users.index')->with('success', 'Pengguna berhasil ditambahkan!');
     }
@@ -136,7 +140,17 @@ class UserController extends Controller
         $this->authorize('update', $user);
 
         $loggedInUser = Auth::user();
-        $roles = Role::all();
+        $roles = collect();
+        if ($loggedInUser->hasRole('admin')) {
+            $roles = Role::all();
+        } elseif ($loggedInUser->hasRole('team')) {
+            $roles = Role::whereIn('name', ['executive_user','appuser'])->get();
+        } elseif ($loggedInUser->hasRole('appuser')) {
+            $roles = Role::where('id', $user->role_id)->get();
+        } else {
+             $roles = Role::where('id', $user->role_id)->get();
+        }
+
         $hierarchyLevels = $this->getFilteredHierarchyLevels();
 
         $viewData = compact('user', 'roles', 'hierarchyLevels');
@@ -156,7 +170,7 @@ class UserController extends Controller
         // 1. Validasi ringkas, otomatis handle error jika gagal
         $validatedData = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'role_id' => ['required', 'exists:roles,id'],
             'hierarchy_level_code' => [
                 Rule::requiredIf(function () use ($request) {
@@ -188,8 +202,8 @@ class UserController extends Controller
                 case 'team':
                     $updateData['dashboard_route_name'] = 'team.dashboard';
                     break;
-                case 'app_user':
-                    $updateData['dashboard_route_name'] = 'app_user.dashboard';
+                case 'appuser':
+                    $updateData['dashboard_route_name'] = 'appuser.dashboard';
                     break;
                 case 'executive_user':
                     $updateData['dashboard_route_name'] = 'executive.dashboard';
@@ -202,7 +216,7 @@ class UserController extends Controller
         // 5. Simpan semua data dalam satu perintah
         $user->update($updateData);
 
-        return response()->json(['message' => 'Pengguna berhasil diperbarui!']);
+        return response()->json(['success' => true,'message' => 'Data pengguna berhasil diperbarui.'], 200);
     }
 
     public function destroy(Request $request, User $user)
@@ -232,7 +246,7 @@ class UserController extends Controller
             $filteredHierarchyLevels = $allHierarchyLevels->filter(function ($level) use ($currentUserHierarchyCode, $allHierarchyLevels) {
                 return $this->isHierarchyDescendantOrSame($currentUserHierarchyCode, $level->code, $allHierarchyLevels);
             });
-        } elseif ($loggedInUser->hasRole('app_user')) {
+        } elseif ($loggedInUser->hasRole('appuser')) {
             $filteredHierarchyLevels = $allHierarchyLevels->where('code', $loggedInUser->hierarchy_level_code);
         } else {
             $filteredHierarchyLevels = $allHierarchyLevels->where('code', $loggedInUser->hierarchy_level_code);
@@ -241,9 +255,6 @@ class UserController extends Controller
         return $filteredHierarchyLevels;
     }
 
-        /**
-     * Check if one hierarchy is a descendant of another.
-     */
     protected function isHierarchyDescendantOrSame(string $parentHierarchyCode, string $childHierarchyCode): bool
     {
         if ($parentHierarchyCode === $childHierarchyCode) {

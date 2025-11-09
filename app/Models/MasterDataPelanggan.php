@@ -33,6 +33,7 @@ class MasterDataPelanggan extends Model
         'fkmkwh',
         'jenislayanan',
         'status_dil',
+        'tglnyala_pb',
         'nomor_gardu',
         'nama_gardu',
         'koordinat_x',
@@ -40,6 +41,10 @@ class MasterDataPelanggan extends Model
         'kdpembmeter',
         'kdam',
         'vkrn',
+        'kdpt',
+        'kdpt_2',
+        'pemda',
+        'ket_keperluan',
     ];
 
     protected $casts = [

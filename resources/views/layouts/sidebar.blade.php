@@ -5,7 +5,7 @@
     <div class="flex items-center justify-center h-16 border-b border-gray-200">
         <a href="{{ route('dashboard') }}" class="flex items-center space-x-2">
             <x-application-logo class="block h-9 w-auto fill-current text-indigo-600" />
-            <span class="text-xl font-semibold text-gray-800 menu-text">CloudTelpku</span>
+            <span class="text-xl font-semibold text-gray-800 menu-text">Cloud TE</span>
         </a>
         <button @click="mobileSidebarOpen = false" class="lg:hidden text-gray-500">
             <i class="fas fa-times"></i>

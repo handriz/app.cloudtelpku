@@ -125,17 +125,30 @@ class MappingKddkController extends Controller
         $searchedIdpel = null;
         
         if ($search) {
-            $searchedMapping = $mappings->first();
+            $searchedIdpel = $search;
+            
+            // 6a. Coba cari data yang 'enabled' DULU untuk IDPEL ini
+            $focusedQuery = MappingKddk::query()
+                ->where('mapping_kddk.idpel', $searchedIdpel)
+                ->where('mapping_kddk.enabled', true) // Prioritas: Enabled = 1
+                ->latest() // Ambil yang terbaru jika ada beberapa yang enabled (jarang)
+                ->first();
+            
+            if (!$focusedQuery) {
+                // 6b. Jika tidak ada yang enabled, ambil saja data yang paling verified/terbaru
+                // Kita gunakan hasil pertama dari Paginasi sebagai fallback
+                $focusedQuery = $mappings->first();
+            }
+            
+            $searchedMapping = $focusedQuery;
+            // END PERBAIKAN FOKUS DATA ENABLE
 
             if ($searchedMapping) {
-                $searchedIdpel = $searchedMapping->idpel;
-
                 $mappingStatus = ($searchedMapping->enabled) ? 'valid' : 'unverified';
                 
             } elseif ($isIdpelSearch) {
-            // Kasus jika IDPEL dicari tapi tidak ada hasil (misal: IDPEL hanya ada di temporary)
-            $searchedIdpel = $search;
-            $mappingStatus = 'unverified';
+                // Kasus jika IDPEL dicari tapi tidak ada hasil
+                $mappingStatus = 'unverified';
             }
         }
         // 7. Hitung data untuk kartu ringkasan
@@ -179,7 +192,12 @@ class MappingKddkController extends Controller
 
         // Jika tidak ada pencarian, kembalikan semua data dalam satu grup 'all'
         if (!$search) {
-            return response()->json(['all' => []]);
+            $initialCustomers = (clone $baseQuery)
+            ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex')
+            ->inRandomOrder()
+            ->limit(100)
+            ->get();
+            return response()->json(['searched' => [], 'nearby' => [], 'all' => $initialCustomers]);
         }
 
         // Jika ADA pencarian, pisahkan logikanya
@@ -198,6 +216,7 @@ class MappingKddkController extends Controller
             $lon = $centerPoint->longitudex;
             $radius = 0.1; // 100 meter
 
+            // **PERHITUNGAN HAVERSINE HANYA JALAN JIKA ADA SEARCH**
             $nearbyCustomers = (clone $baseQuery)
                 ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex')
                 ->selectRaw("( 6371 * acos( cos( radians(?) ) * cos( radians( mapping_kddk.latitudey ) ) * cos( radians( mapping_kddk.longitudex ) - radians(?) ) + sin( radians(?) ) * sin( radians( mapping_kddk.latitudey ) ) ) ) AS distance", [$lat, $lon, $lat])
@@ -210,7 +229,8 @@ class MappingKddkController extends Controller
 
         return response()->json([
             'searched' => $searchedCustomers,
-            'nearby' => $nearbyCustomers
+            'nearby' => $nearbyCustomers,
+            'all' => []
         ]);
     }
 
@@ -248,8 +268,8 @@ class MappingKddkController extends Controller
         
         ];
         
-        $exampleObjectId = '1';
-        $exampleIdpel = '181405316052';
+        $exampleObjectId = 'objectid_dari_file_csv';
+        $exampleIdpel = 'idpel_dari_file_csv';
 
         $exampleRow = [
             'objectid' => $exampleObjectId,
@@ -262,8 +282,8 @@ class MappingKddkController extends Controller
             'namagd' => '', 'jenis_kabel' => '', 'ukuran_kabel' => '', 'ket_survey' => '', 
             'deret' => '', 'sr' => '', 'ket_validasi' => '',
 
-            'foto_kwh' => $exampleObjectId . '_' . $exampleIdpel . '_foto_app.jpg',
-            'foto_bangunan' => $exampleObjectId . '_' . $exampleIdpel . '_foto_persil.jpg',
+            'foto_kwh' => '**="mapping_photos/unverified/" & B2 & "/" & TEXTJOIN("_"; TRUE; A2; B2; "foto_app")**',
+            'foto_bangunan' => '**="mapping_photos/unverified/" & B2 & "/" & TEXTJOIN("_"; TRUE; A2; B2; "foto_persil")**',
         ];
 
         $callback = function() use ($columns , $exampleRow) {
@@ -281,6 +301,7 @@ class MappingKddkController extends Controller
         return view('team.mapping-kddk.partials.create');
     }
 
+    const MANUAL_ID_OFFSET = 2000000; // Mulai ID manual dari 10 Juta + 1
     public function store(Request $request)
     {
         // 1. Validasi Data (user_pendataan tidak perlu divalidasi dari input)
@@ -308,119 +329,67 @@ class MappingKddkController extends Controller
 
         $validatedData = $validator->validated();
         $validatedData['user_pendataan'] = Auth::user()->name;
-
-        // --- LOGIKA max() + 1 ---
-        $lastTempId = TemporaryMapping::max('objectid');
-        $lastKddkId = MappingKddk::max('objectid');
-        $trueLastObjectId = max($lastTempId, $lastKddkId);
-        $newObjectId = ($trueLastObjectId !== null ? $trueLastObjectId : 0) + 1;
-        $validatedData['objectid'] = $newObjectId;
         $idpel = $validatedData['idpel'];
 
-        // 3. Pindahkan file dari 'temp_photos' (local disk) ke 'public' disk
         $finalPaths = [];
+        $tempFilesToDelete = [];
+        $newObjectId = null; // Inisialisasi  
         $errors = []; // Tampung error
 
-        foreach (['foto_kwh', 'foto_bangunan'] as $photoType) {
-            $tempFilename = $validatedData[$photoType]; 
-            $tempPathRelative = 'temp_photos/' . basename($tempFilename); // Keamanan: basename
+        DB::beginTransaction();
+        try {
+            DB::table('objectid_sequence')->insert(['created_at' => now()]);
+            $sequenceId = DB::getPdo()->lastInsertId();
 
-            Log::debug('Store (Check Extension) - Processing:', ['temp_filename' => $tempFilename]);
+            $newObjectId = $sequenceId + self::MANUAL_ID_OFFSET;
 
-            if (Storage::disk('local')->exists($tempPathRelative)) {
+            $validatedData['objectid'] = $newObjectId;
 
-                // --- LOG TAMBAHAN ---
-                $detectedExtension = pathinfo($tempFilename, PATHINFO_EXTENSION);
-                $tempMimeType = Storage::disk('local')->mimeType($tempPathRelative); // Cek tipe konten asli
-                Log::debug('Store (Check Extension) - Details:', [
-                    'detected_extension' => $detectedExtension,
-                    'temp_mime_type' => $tempMimeType // Apakah ini image/jpeg atau image/png?
-                ]);
+            foreach (['foto_kwh', 'foto_bangunan'] as $photoType) {
+                $tempFilename = $validatedData[$photoType];
+                $tempPathRelative = 'temp_photos/' . basename($tempFilename);
+                $tempFilesToDelete[] = $tempPathRelative;
 
-                $extension = pathinfo($tempFilename, PATHINFO_EXTENSION);
-                if (empty($extension) || !in_array(strtolower($extension), ['jpg', 'jpeg', 'png'])) {
-                    $errors[$photoType] = "Ekstensi file sementara '{$tempFilename}' tidak valid atau kosong.";
-                    Log::warning($errors[$photoType]);
-                    continue; // Lanjut ke foto berikutnya
-                }
+                if (Storage::disk('local')->exists($tempPathRelative)) {
+                    $extension = pathinfo($tempFilename, PATHINFO_EXTENSION);
+                    if (empty($extension) || !in_array(strtolower($extension), ['jpg', 'jpeg', 'png'])) {
+                        throw new \Exception("Ekstensi file '{$tempFilename}' tidak valid.");
+                    }
+                    $newFilename = $newObjectId . '_' . $idpel . '_' . ($photoType === 'foto_kwh' ? 'foto_app' : 'foto_persil') . '.' . $extension;
+                    $finalRelativePath = "mapping_photos/unverified/{$idpel}/{$newFilename}";
 
-                // Buat nama file baru DENGAN ekstensi
-                $newFilename = $newObjectId . '_' . $idpel . '_' . ($photoType === 'foto_kwh' ? 'foto_app' : 'foto_persil') . '.' . $extension;
-                // Buat path relatif tujuan LENGKAP DENGAN ekstensi
-                $finalRelativePath = "mapping_photos/unverified/{$idpel}/{$newFilename}";
-
-                Log::debug('Store (Check Extension) - Saving as:', ['target_path' => $finalRelativePath]);
-
-                try {
-                    // Dapatkan konten file dari disk local
                     $fileContent = Storage::disk('local')->get($tempPathRelative);
-                    if ($fileContent === false) {
-                         throw new \Exception("Gagal membaca konten file sementara.");
-                    }
+                    if ($fileContent === false) throw new \Exception("Gagal membaca file sementara: $tempPathRelative");
 
-                    // Simpan konten ke disk public
-                    $putResult = Storage::disk('public')->put($finalRelativePath, $fileContent);
-                    if (!$putResult) {
-                         throw new \Exception("Operasi put() gagal disimpan ke disk public.");
-                    }
+                    if (!Storage::disk('public')->put($finalRelativePath, $fileContent)) throw new \Exception("Gagal menyimpan file: $finalRelativePath");
 
-                    // --- VERIFIKASI NAMA FILE FISIK ---
-                    // Cek apakah file fisik BENAR-BENAR ada DENGAN ekstensi setelah disimpan
-                    if (Storage::disk('public')->exists($finalRelativePath)) {
-                        // File ditemukan dengan nama + ekstensi, ini BENAR
-                        $finalPaths[$photoType] = $finalRelativePath; // Simpan path ini ke DB
-                        Log::info('Store (Fix Attempt) - File saved successfully WITH extension:', ['path' => $finalRelativePath]);
-                        Storage::disk('local')->delete($tempPathRelative); // Hapus file temp setelah sukses
-                    } else {
-                        // Jika tidak ditemukan DENGAN ekstensi, cek TANPA ekstensi
-                        $pathWithoutExt = pathinfo($finalRelativePath, PATHINFO_DIRNAME) . '/' . pathinfo($finalRelativePath, PATHINFO_FILENAME);
-                        if (Storage::disk('public')->exists($pathWithoutExt)) {
-                            // Bug terdeteksi! File fisik disimpan tanpa ekstensi
-                            Log::error("!!! BUG DETECTED in store !!! File fisik disimpan TANPA ekstensi:", ['expected' => $finalRelativePath, 'actual' => $pathWithoutExt]);
-                            // Opsional: Coba rename file fisik agar memiliki ekstensi
-                            try {
-                                 Log::info("Mencoba rename file fisik tanpa ekstensi ke nama yang benar...");
-                                 Storage::disk('public')->move($pathWithoutExt, $finalRelativePath);
-                                 // Jika rename berhasil, kita lanjutkan seolah-olah sukses
-                                 $finalPaths[$photoType] = $finalRelativePath;
-                                 Log::info('Store (Fix Attempt) - Rename berhasil. File sekarang DENGAN ekstensi:', ['path' => $finalRelativePath]);
-                                 Storage::disk('local')->delete($tempPathRelative); // Hapus file temp
-                            } catch (\Exception $renameErr) {
-                                 Log::error("Gagal me-rename file fisik tanpa ekstensi: " . $renameErr->getMessage());
-                                 throw new \Exception("Bug terdeteksi: File fisik disimpan tanpa ekstensi oleh Storage::put() dan gagal di-rename.");
-                            }
-                        } else {
-                            // File tidak ditemukan sama sekali setelah put()
-                            throw new \Exception("File tidak ditemukan di disk 'public' setelah put(), baik dengan maupun tanpa ekstensi.");
-                        }
-                    }
-                    // --- AKHIR VERIFIKASI ---
-
-                } catch (\Exception $e) {
-                     $errors[$photoType] = "Gagal memproses file '{$tempFilename}': " . $e->getMessage();
-                     Log::error('Store (Fix Attempt) - Error: ' . $errors[$photoType]);
-                     // Jangan hapus file temp jika gagal dipindah
+                    $finalPaths[$photoType] = $finalRelativePath;
+                } else {
+                    throw new \Exception("File sementara '{$tempFilename}' tidak ditemukan.");
                 }
-            } else {
-                 $errors[$photoType] = "File sementara '{$tempFilename}' tidak ditemukan (Path: {$tempPathRelative}).";
-                 Log::warning('Store (Fix Attempt) - Error File Temp: ' . $errors[$photoType]);
             }
-        }
+            unset($validatedData['foto_kwh'], $validatedData['foto_bangunan']);
+            $finalData = array_merge($validatedData, $finalPaths);
+            TemporaryMapping::create($finalData);
 
-        // Jika ada error saat memproses foto, kembalikan error
-        if (!empty($errors)) {
-             // Hapus file yang mungkin sudah terlanjur dipindah di iterasi sebelumnya
-             if (isset($finalPaths['foto_kwh'])) Storage::disk('public')->delete($finalPaths['foto_kwh']);
-             if (isset($finalPaths['foto_bangunan'])) Storage::disk('public')->delete($finalPaths['foto_bangunan']);
-             return response()->json(['errors' => $errors], 422);
-        }
+            DB::commit();
 
-        // 4. Buat record di TemporaryMapping (HANYA JIKA SEMUA FOTO BERHASIL)
-        unset($validatedData['foto_kwh'], $validatedData['foto_bangunan']); // Hapus nama file temp dari data DB
-        $finalData = array_merge($validatedData, $finalPaths); // Gabung dengan path final (yang ada ekstensinya)
-        TemporaryMapping::create($finalData);
+            foreach($tempFilesToDelete as $tempPath) {
+                if (Storage::disk('local')->exists($tempPath)) {
+                    Storage::disk('local')->delete($tempPath);
+                }
+            }
+            return response()->json(['success' => true,'message' => 'Data mapping berhasil ditambahkan!']);
 
-        return response()->json(['message' => 'Data mapping berhasil ditambahkan!']);
+        } catch (\Exception $e) {
+            // 7. Rollback jika gagal
+            DB::rollBack();
+            if (isset($finalPaths['foto_kwh'])) Storage::disk('public')->delete($finalPaths['foto_kwh']);
+            if (isset($finalPaths['foto_bangunan'])) Storage::disk('public')->delete($finalPaths['foto_bangunan']);
+
+            Log::error("Gagal store mapping KDDK (Controller): " . $e->getMessage());
+            return response()->json(['errors' => ['server' => [substr($e->getMessage(), 0, 200)]]], 422);
+        }            
     }
 
     public function uploadTemporaryPhoto(Request $request)
@@ -514,6 +483,8 @@ class MappingKddkController extends Controller
 
         DB::beginTransaction();
         try {
+
+
             // 1. Cari data valid di tabel utama
             $validData = MappingKddk::findOrFail($id);
             $idpel = $validData->idpel;
@@ -552,12 +523,21 @@ class MappingKddkController extends Controller
             $tempDataArray['locked_by'] = null;     
             $tempDataArray['locked_at'] = null;
 
-            // 5. Gunakan updateOrCreate untuk memasukkan data ke temporary_mappings
-            // Ini aman jika data dengan IDPEL yg sama mungkin sudah ada
-            TemporaryMapping::updateOrCreate(
-                ['objectid' => $objectid], // Kunci pencarian
-                $tempDataArray      // Data untuk di-create atau di-update
-            );
+            // 5. GANTI LOGIKA: KUNCI BARIS & INSERT/UPDATE (Anti-Race Condition)
+            // Kita menggunakan objectid sebagai kunci dan lockForUpdate untuk mencegah Job Impor Bulk menimpa serentak.
+            
+            $existingTemp = TemporaryMapping::where('objectid', $objectid)
+                                            ->lockForUpdate() // <--- IMPLEMENTASI LOCKING
+                                            ->first();
+                                            
+            if ($existingTemp) {
+                // Jika baris sudah ada (mungkin Job sedang mengunci atau sudah ada di antrian), update saja
+                $existingTemp->fill($tempDataArray);
+                $existingTemp->save();
+            } else {
+                // Jika baris tidak ada, buat record baru di antrian
+                TemporaryMapping::create($tempDataArray); 
+            }
 
             // 6. Hapus data dari mapping_kddk (tabel utama)
             $validData->delete();
