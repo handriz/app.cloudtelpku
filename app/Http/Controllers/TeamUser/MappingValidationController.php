@@ -248,6 +248,10 @@ class MappingValidationController extends Controller
             'mcb'               => $item->mcb,
             'type_pbts'         => $item->type_pbts,
             'merkkwhmeter'      => $item->merkkwhmeter,
+            'tahun_buat'        => $item->tahun_buat,
+            'sr'                => $item->sr,
+            'latitudey_sr'      => $item->latitudey_sr,
+            'longitudex_sr'     => $item->longitudex_sr,
         ];
     }
 
@@ -270,6 +274,10 @@ class MappingValidationController extends Controller
             $tempData->mcb = $request->input('eval_mcb');
             $tempData->type_pbts = $request->input('eval_type_pbts');
             $tempData->merkkwhmeter = $request->input('eval_merkkwhmeter');
+            $tempData->tahun_buat = $request->input('eval_tahun_buat');
+            $tempData->sr = $request->input('eval_sr');
+            $tempData->latitudey_sr = $request->input('eval_latitudey_sr');
+            $tempData->longitudex_sr = $request->input('eval_longitudex_sr');
 
             $idpel = $tempData->idpel;
             $objectid = $tempData->objectid;
@@ -590,6 +598,31 @@ class MappingValidationController extends Controller
                 'value' => htmlspecialchars($data['eval_merkkwhmeter'])
             ];
         }
+
+        if (!empty($data['eval_tahun_buat'])) {
+            $history[] = [
+                'label' => 'Input Tahun Buat (Saat Ditolak)',
+                'value' => htmlspecialchars($data['eval_tahun_buat'])
+            ];
+        }
+        if (!empty($data['eval_sr'])) {
+            $history[] = [
+                'label' => 'Input Tipe SR (Saat Ditolak)',
+                'value' => htmlspecialchars($data['eval_sr'])
+            ];
+        }
+        if (!empty($data['eval_latitudey_sr'])) {
+            $history[] = [
+                'label' => 'Input Lat SR (Saat Ditolak)',
+                'value' => htmlspecialchars($data['eval_latitudey_sr'])
+            ];
+        }
+        if (!empty($data['eval_longitudex_sr'])) {
+            $history[] = [
+                'label' => 'Input Lon SR (Saat Ditolak)',
+                'value' => htmlspecialchars($data['eval_longitudex_sr'])
+            ];
+        }  
 
         // 4. Tambahkan catatan bebas
         if (!empty($notes)) {

@@ -32,6 +32,8 @@ return new class extends Migration
             $table->text('ket_survey')->nullable();
             $table->string('deret')->nullable();
             $table->string('sr')->nullable();
+            $table->decimal('latitudey_sr', 11, 8)->nullable();
+            $table->decimal('longitudex_sr', 11, 8)->nullable();
             $table->text('ket_validasi')->nullable();
             $table->string('foto_kwh')->nullable();
             $table->string('foto_bangunan')->nullable();

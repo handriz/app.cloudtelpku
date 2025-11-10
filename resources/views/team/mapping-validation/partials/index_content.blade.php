@@ -76,7 +76,6 @@
         </div>
 
         {{-- Konten Detail (Awalnya tersembunyi) --}}
-        {{-- Panel ini harus berada DI DALAM #interactive-validation-container --}}
         <div id="validation-content" class="hidden">
             
             {{-- ====================================================== --}}
@@ -106,7 +105,6 @@
             {{-- ====================================================== --}}
             {{-- BAGIAN ALERT (Riwayat Penolakan) --}}
             {{-- ====================================================== --}}
-            {{-- Diposisikan setelah header, sebelum konten utama --}}
             @include('team.mapping-validation.partials._rejection_history_alert')
 
             {{-- ====================================================== --}}
@@ -114,90 +112,115 @@
             {{-- ====================================================== --}}
             <div class="p-5">
                  <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
-                     {{-- SEL 1: PETA, FOTO PERSIL, & EVAL PETA --}}
+                     
+                     {{-- SEL 1: PETA, FOTO PERSIL, & INPUT --}}
                      <div class="lg:col-span-3 space-y-4">
+                        
                         <div class="space-y-2">
                             <h4 class="font-semibold">Posisi Koordinat</h4>
                             <div id="validation-map" class="w-full h-80 lg:h-[300px] rounded-lg z-0 bg-gray-200" style="height: 300px;"></div>
                             <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-2 text-sm flex items-center justify-between mt-2">
-                                {{-- Tampilan Koordinat --}}
                                 <div>
                                     <span class="font-medium text-gray-700 dark:text-gray-300">Koordinat:</span>
-                                    <span id="validation-lat-lon" class="font-bold text-indigo-600 dark:text-indigo-400">
-                                        Memuat...
-                                    </span>
+                                    <span id="validation-lat-lon" class="font-bold text-indigo-600 dark:text-indigo-400">Memuat...</span>
                                 </div>
-                                
-                                {{-- Ikon Street View (Gunakan ID unik: validation-street-view-link) --}}
-                                <a id="validation-street-view-link" 
-                                href="#" 
-                                rel="noopener noreferrer" 
-                                title="Buka Google Street View"
-                                class="text-blue-500 hover:text-blue-700 hidden"> <i class="fas fa-street-view fa-lg"></i>
-                                </a>
+                                <a id="validation-street-view-link" href="#" rel="noopener noreferrer" title="Buka Google Street View" class="text-blue-500 hover:text-blue-700 hidden"> <i class="fas fa-street-view fa-lg"></i></a>
                             </div>
-                        @if(isset($itemToValidate) && $itemToValidate->latitudey && $itemToValidate->longitudex)
-                            <script>
-                                document.addEventListener('DOMContentLoaded', function() {
-                                    
-                                    // Panggil fungsi inisialisasi Validation Map yang baru dibuat
-                                    // Menggunakan ID kontainer yang Anda sebutkan: "validation-map"
-                                    initializeValidationMap(
-                                        document.getElementById('validation-map'),
-                                        parseFloat({{ $itemToValidate->latitudey }}),
-                                        parseFloat({{ $itemToValidate->longitudex }}),
-                                        '{{ $itemToValidate->idpel }}'
-                                    );
-                                });
-                            </script>
-                        @endif
                         </div>
-                                                <div class="pt-2 border-t dark:border-gray-700">
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Apakah posisi peta sudah sesuai?</label>
-                            <div class="mt-2 space-x-4">
-                                <label class="inline-flex items-center"><input type="radio" name="eval_peta" value="sesuai" class="eval-radio text-indigo-600 focus:ring-indigo-500"><span class="ml-2 text-sm">Sesuai</span></label>
-                                <label class="inline-flex items-center"><input type="radio" name="eval_peta" value="tidak" class="eval-radio text-red-600 focus:ring-red-500"><span class="ml-2 text-sm">Tidak Sesuai</span></label>
-                            </div>
-                            <div id="eval_peta_reason_container" class="mt-3 hidden space-y-1">
-                                         <label for="eval_peta_reason" class="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                            Alasan Peta Tidak Sesuai:
-                                        </label>
-                                        <select id="eval_peta_reason" name="eval_peta_reason" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
-                                            <option value="">-- Pilih Alasan --</option>
-                                            <option value="posisi_bangunan">Posisi titik tagging tidak berada di bangunan</option>
-                                            <option value="luar_wilayah">Titik koordinat tidak valid atau berada diluar wilayah ULP / UP3</option>
-                                        </select>
-                            </div>                                                
-                        </div>
-                         {{-- Foto Persil & Evaluasi Persil --}}
+
                         <div class="space-y-2 pt-2 border-t dark:border-gray-700">
                             <h4 class="font-semibold">Foto Bangunan (Persil)</h4>
                             <button type="button" id="detail-foto-bangunan-link" data-zoom-type="persil" class="hidden block h-56 w-full rounded-lg shadow overflow-hidden image-zoom-trigger cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"> <img id="detail-foto-bangunan" alt="Foto Persil" class="w-full h-full object-cover"> </button>
                             <div id="detail-foto-bangunan-none" class="h-56 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hidden">Foto tidak tersedia</div>
-                            <div class="pt-2 border-t dark:border-gray-700">
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t dark:border-gray-700 pt-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Apakah posisi peta sudah sesuai?</label>
+                                <div class="mt-2 space-x-4">
+                                    <label class="inline-flex items-center"><input type="radio" name="eval_peta" value="sesuai" class="eval-radio text-indigo-600 focus:ring-indigo-500"><span class="ml-2 text-sm">Sesuai</span></label>
+                                    <label class="inline-flex items-center"><input type="radio" name="eval_peta" value="tidak" class="eval-radio text-red-600 focus:ring-red-500"><span class="ml-2 text-sm">Tidak Sesuai</span></label>
+                                </div>
+                                <div id="eval_peta_reason_container" class="mt-3 hidden space-y-1">
+                                    <label for="eval_peta_reason" class="block text-xs font-medium text-gray-600 dark:text-gray-400">Alasan Peta Tidak Sesuai:</label>
+                                    <select id="eval_peta_reason" name="eval_peta_reason" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                        <option value="">-- Pilih Alasan --</option>
+                                        <option value="posisi_bangunan">Posisi titik tagging tidak berada di bangunan</option>
+                                        <option value="luar_wilayah">Titik koordinat tidak valid atau berada diluar wilayah ULP / UP3</option>
+                                    </select>
+                                </div>                                                
+                            </div>
+                            <div>
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Apakah Foto Persil sudah sesuai?</label>
                                 <div class="mt-2 space-x-4">
                                      <label class="inline-flex items-center"><input type="radio" name="eval_persil" value="sesuai" class="eval-radio text-indigo-600 focus:ring-indigo-500"><span class="ml-2 text-sm">Sesuai</span></label>
                                      <label class="inline-flex items-center"><input type="radio" name="eval_persil" value="tidak" class="eval-radio text-red-600 focus:ring-red-500"><span class="ml-2 text-sm">Tidak Sesuai</span></label>
                                 </div>
                                 <div id="eval_persil_reason_container" class="mt-3 hidden space-y-1">
-                                             <label for="eval_persil_reason" class="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                                                Alasan Foto Persil Tidak Sesuai:
-                                            </label>
-                                            <select id="eval_persil_reason" name="eval_persil_reason" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
-                                                <option value="">-- Pilih Alasan --</option>
-                                                <option value="bukan_persil">Bukan foto persil / bangunan</option>
-                                                <option value="diragukan">Foto App tidak ada pada persil</option>
-                                                <option value="tidak_valid">Foto diragukan dari kegiatan lapangan</option>
-                                            </select>
-                                        </div>
+                                    <label for="eval_persil_reason" class="block text-xs font-medium text-gray-600 dark:text-gray-400">Alasan Foto Persil Tidak Sesuai:</label>
+                                    <select id="eval_persil_reason" name="eval_persil_reason" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                        <option value="">-- Pilih Alasan --</option>
+                                        <option value="bukan_persil">Bukan foto persil / bangunan</option>
+                                        <option value="diragukan">Foto App tidak ada pada persil</option>
+                                        <option value="tidak_valid">Foto diragukan dari kegiatan lapangan</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                     </div>
+
+                        <div class="pt-4 border-t dark:border-gray-700 space-y-2">
+                            <h4 class="font-semibold">Input Teknis</h4>
+                            <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="eval_mcb" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Kapasitas MCB (Contoh: 6A):</label>
+                                    <input type="text" id="eval_mcb" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="MCB...">
+                                </div>
+                                <div>
+                                    <label for="eval_type_pbts" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Merk MCB:</label>
+                                    <input type="text" id="eval_type_pbts" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Tipe PB/TS...">
+                                </div>
+                                <div>
+                                    <label for="eval_merkkwhmeter" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Merk KWH:</label>
+                                    <input type="text" id="eval_merkkwhmeter" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Merk KWH...">
+                                </div>
+                                <div>
+                                    <label for="eval_tahun_buat" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Tahun Buat:</label>
+                                    <input type="text" id="eval_tahun_buat" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Tahun...">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-4 border-t dark:border-gray-700 space-y-2">
+                            <h4 class="font-semibold">Input Sambungan</h4>
+                            <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label for="eval_sr" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Tipe SR:</label>
+                                    <select id="eval_sr" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                        <option value="">-- Pilih Tipe --</option>
+                                        <option value="Sambungan dari tiang">Sambungan dari tiang</option>
+                                        <option value="SR deret">SR deret</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="eval_latitudey_sr" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">
+                                        Latitude SR (Klik <i class="fas fa-street-view"></i>)
+                                    </label>
+                                    <input type="text" id="eval_latitudey_sr" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Latitude SR...">
+                                </div>
+                                <div>
+                                    <label for="eval_longitudex_sr" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">
+                                        Longitude SR (Klik <i class="fas fa-street-view"></i>)
+                                    </label>
+                                    <input type="text" id="eval_longitudex_sr" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Longitude SR...">
+                                </div>
+                            </div>
+                        </div>
+                     </div> {{-- <-- Penutup untuk lg:col-span-3 --}}
+
                      {{-- SEL 2: FOTO KWH, INPUT --}}
                      <div class="lg:col-span-2 space-y-4">
                          {{-- Foto KWH & Input Meter --}}
-                         <div class="space-y-2">
+                        <div class="space-y-2">
                             <h4 class="font-semibold">Foto KWH Meter</h4>
                             <button type="button" id="detail-foto-kwh-link" data-zoom-type="kwh" class="hidden block h-56 w-full rounded-lg shadow overflow-hidden image-zoom-trigger cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"> <img id="detail-foto-kwh" alt="Foto KWH" class="w-full h-full object-cover"> </button>
                             <div id="detail-foto-kwh-none" class="h-56 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hidden">Foto tidak tersedia</div>
@@ -206,28 +229,13 @@
                                 <input type="text" id="eval_meter_input" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Nomor Meter lengkap..." autocomplete="Off">
                                 <div id="eval_meter_status" class="text-xs mt-1 h-4"></div>
                             </div>
-                            <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label for="eval_mcb" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">MCB (Contoh: 6A):</label>
-                                    <input type="text" id="eval_mcb" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="MCB...">
-                                </div>
-                                <div>
-                                    <label for="eval_type_pbts" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Merk Pembatas:</label>
-                                    <input type="text" id="eval_type_pbts" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Tipe PB/TS...">
-                                </div>
-                                <div>
-                                    <label for="eval_merkkwhmeter" class="block text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Merk KWH:</label>
-                                    <input type="text" id="eval_merkkwhmeter" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Merk KWH...">
-                                </div>
-                            </div>
-                         </div>
-                     </div>
-                 </div>
-            </div>
+                        </div>
+                     </div> {{-- <-- Penutup untuk lg:col-span-2 --}}
 
-            {{-- ====================================================== --}}
-            {{-- BAGIAN FOOTER (Form Alasan & Tombol Aksi) --}}
-            {{-- ====================================================== --}}
+                 </div>
+            </div> {{-- <-- Penutup untuk <div class="p-5"> --}}
+
+
             <div id="evaluation-form" class="p-5 border-t dark:border-gray-700 space-y-4">
                  <h4 class="font-semibold text-lg">Alasan Penolakan Khusus (Jika Ada)</h4>
                  <div id="rejection_reason_container" class="hidden space-y-1">
@@ -242,14 +250,14 @@
                 <form id="detail-form-reject" action="#" method="POST"> 
                     @csrf 
                     @method('DELETE') 
-                    <button id="detail-button-reject" type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md font-semibold text-xs uppercase hover:bg-red-700 opacity-50 cursor-not-allowed transition duration-150 ease-in-out" disabled> Tolak </button> 
+                    <button id="detail-button-reject" type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md font-semibold text-xs uppercase hover:bg-red-700 opacity-50 cursor-not-allowed transition duration-150 ease-in-out" disabled> Tolak </button>
                 </form>     
                 <form id="detail-form-validate" action="#" method="POST"> @csrf <button id="detail-button-validate" type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md font-semibold text-xs uppercase hover:bg-indigo-700 opacity-50 cursor-not-allowed transition duration-150 ease-in-out" disabled> Validasi & Setujui </button> </form>
             </div>
-        </div>
+            </div> {{-- <-- INI TAG PENUTUP UNTUK #validation-content --}}
     </div>
 
-        {{-- ====================================================== --}}
+    {{-- ====================================================== --}}
     {{-- MODAL UNTUK GOOGLE STREET VIEW --}}
     {{-- ====================================================== --}}
     <div id="street-view-modal" class="fixed top-10 right-10 hidden z-50">
@@ -263,17 +271,19 @@
             {{-- Header Modal --}}
             <div id="street-view-header" class="px-6 py-3 border-b border-gray-200 dark:border-gray-700 cursor-move">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Google Street View</h3>
+                <button id="toggle-capture-mode" type="button" class="px-3 py-1 bg-indigo-600 text-white rounded-md font-semibold text-xs uppercase hover:bg-indigo-700 transition duration-150 ease-in-out">
+                    <i class="fas fa-crosshairs mr-1"></i> Aktifkan Mode Klik
+                </button>            
             </div>
 
-            {{-- Konten Iframe --}}
-            <div class="flex-grow p-1"> {{-- p-1 agar ada sedikit padding --}}
-                <iframe id="street-view-iframe" 
-                        src="" 
-                        frameborder="0" 
-                        allowfullscreen="" 
-                        loading="lazy"
-                        referrerpolicy="no-referrer-when-downgrade"
-                        class="w-full h-full rounded-md"></iframe>
+           {{-- Konten Iframe (DIGANTI MENJADI DIV) --}}
+            <div class="flex-grow p-1 relative"> 
+                <div id="street-view-js-container" class="w-full h-full rounded-md bg-gray-200 dark:bg-gray-700"></div>
+                
+                {{-- LAPISAN OVERLAY UNTUK MENANGKAP KLIK --}}
+                <div id="street-view-overlay" 
+                   style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; cursor: crosshair; pointer-events: none;">
+                </div>
             </div>
         </div>
     </div>

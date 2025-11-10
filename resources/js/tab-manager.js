@@ -36,6 +36,7 @@ App.State = {
     currentValidationId: null,
     currentValidationDetails: null, 
     mapInstance: null, 
+    streetViewPanoramaInstance: null,
     searchDebounceTimer: null
 };
 
@@ -443,34 +444,101 @@ App.Tabs = (() => {
 // ===================================================================
 
 App.Modal = (() => {
-    let mainModal, modalContent, imageModal, imageModalImg, imageModalClose, imageModalOverlay, modalMeterInputContainer, modalMeterInput;
+    let mainModal, modalContent, imageModal, imageModalImg, imageModalClose, modalMeterInputContainer, modalMeterInput;
+    let draggableInputWrapper; // VARIABEL BARU UNTUK INPUT WRAPPER
+
+    // Variabel Zoom/Pan
     let isPanning = false;
     let scale = 1;
     let translateX = 0;
     let translateY = 0;
     let startX, startY;
+    let rotation = 0;
+
+    // Variabel Drag Input
+    let isDraggingInput = false;
+    let dragInputHandler;
+    let inputOffsetX, inputOffsetY;
 
     function init(elements) {
         mainModal = elements.mainModal;
         modalContent = elements.modalContent;
-        imageModal = elements.imageModal;
-        imageModalImg = elements.imageModalImg;
+        imageModal = elements.imageModal; 
+        imageModalImg = elements.imageModalImg; 
         imageModalClose = elements.imageModalClose;
-        imageModalOverlay = elements.imageModalOverlay;
         modalMeterInputContainer = elements.modalMeterInputContainer;
         modalMeterInput = elements.modalMeterInput;
 
-        // Pasang listener tutup modal gambar
-        if (imageModal) {
+        // Inisialisasi elemen baru
+        draggableInputWrapper = document.getElementById('draggable-input-wrapper');
+        dragInputHandler = document.getElementById('input-drag-handler');
+        let imageRotateButton = document.getElementById('image-viewer-rotate');
+
+        if (imageModal && imageModalImg && draggableInputWrapper && dragInputHandler) {
+            
+            // Listener Modal Close
             imageModalClose.addEventListener('click', closeImageModal);
-            imageModalOverlay.addEventListener('click', closeImageModal);
+            imageModal.addEventListener('click', (e) => {
+                if (e.target.id === 'image-viewer-modal') { 
+                    closeImageModal();
+                } 
+            });
+
+            // --- LISTENER ZOOM/PAN (PADA GAMBAR) ---
             imageModalImg.addEventListener('wheel', handleWheelZoom, { passive: false });
             imageModalImg.addEventListener('mousedown', handlePanStart);
-            imageModal.addEventListener('mousemove', handlePanMove);
-            imageModal.addEventListener('mouseup', handlePanEnd);
-            imageModal.addEventListener('mouseleave', handlePanEnd);
+            imageModal.addEventListener('mousemove', handlePanMove); 
+            imageModal.addEventListener('mouseup', handlePanEnd); 
+            imageModal.addEventListener('mouseleave', handlePanEnd); 
+
+            // --- LISTENER ROTASI ---
+            if (imageRotateButton) {
+                imageRotateButton.addEventListener('click', handleRotate);
+            }
+
+            // --- LISTENER DRAG INPUT ---
+            dragInputHandler.addEventListener('mousedown', handleInputDragStart);
+            imageModal.addEventListener('mousemove', handleInputDragMove);
+            imageModal.addEventListener('mouseup', handleInputDragEnd);
+            imageModal.addEventListener('mouseleave', handleInputDragEnd); 
+        } 
+    }
+
+    // --- FUNGSI DRAG INPUT BARU ---
+    function handleInputDragStart(e) {
+        e.preventDefault();
+        // Hentikan agar tidak dianggap klik latar belakang saat drag dimulai
+        e.stopPropagation(); 
+        
+        isDraggingInput = true;
+        // Hitung offset dari kursor ke wrapper
+        inputOffsetX = e.clientX - draggableInputWrapper.getBoundingClientRect().left;
+        inputOffsetY = e.clientY - draggableInputWrapper.getBoundingClientRect().top;
+        
+        dragInputHandler.style.cursor = 'grabbing';
+        draggableInputWrapper.style.transition = 'none';
+    }
+
+    function handleInputDragMove(e) {
+        if (!isDraggingInput) return;
+        e.preventDefault();
+        let newX = e.clientX - inputOffsetX;
+        let newY = e.clientY - inputOffsetY;
+        draggableInputWrapper.style.left = `${newX}px`;
+        draggableInputWrapper.style.top = `${newY}px`;
+        draggableInputWrapper.style.right = 'auto'; // Pastikan right direset
+        draggableInputWrapper.style.bottom = 'auto'; // Pastikan bottom direset
+    }
+
+    function handleInputDragEnd() {
+        if (isDraggingInput) {
+            isDraggingInput = false;
+            dragInputHandler.style.cursor = 'grab';
+            draggableInputWrapper.style.transition = 'transform 0.1s ease-out';
         }
     }
+    // --- AKHIR FUNGSI DRAG INPUT BARU ---
+
 
     function open(url) {
         if (!mainModal || !modalContent) return;
@@ -516,7 +584,6 @@ App.Modal = (() => {
                             window.UploadInitializers.initializeBatchPhotoUploadForm();
                         }
                     }
-                    // ... (Inisialisasi form upload chunk/foto bisa ditambahkan di sini juga) ...
                 }, 150);
             })
             .catch(error => {
@@ -535,37 +602,89 @@ App.Modal = (() => {
         if (imgElement && imgElement.src) {
             imageModalImg.src = imgElement.src;
 
+            // Pastikan wrapper input ditampilkan di sini
+            draggableInputWrapper.classList.add('hidden'); 
+            
             if (zoomType === 'kwh' && modalMeterInputContainer) {
-                const mainMeterInput = imgElement.closest('#validation-content')?.querySelector('#eval_meter_input');
-                modalMeterInput.value = mainMeterInput ? mainMeterInput.value : ''; 
-                modalMeterInputContainer.classList.remove('hidden');
-                setTimeout(() => modalMeterInput.focus(), 50); 
-            } else if (modalMeterInputContainer) {
-                modalMeterInputContainer.classList.add('hidden');
-            }
+                const activeTabContent = document.querySelector('.tab-content:not(.hidden)');
+                
+                // Ambil semua input dari panel validasi utama
+                const mainMeterInput = activeTabContent?.querySelector('#eval_meter_input');
+                const mainMcbInput = activeTabContent?.querySelector('#eval_mcb');
+                const mainPbtsInput = activeTabContent?.querySelector('#eval_type_pbts');
+                const mainMerkKwhInput = activeTabContent?.querySelector('#eval_merkkwhmeter');
+                const mainTahunBuatInput = activeTabContent?.querySelector('#eval_tahun_buat');
+                
+                // --- TEMUKAN INPUT DI MODAL ---
+                const modalMeterInput = modalMeterInputContainer.querySelector('#modal-input-meter');
+                const modalMcbInput = modalMeterInputContainer.querySelector('#modal-input-mcb');
+                const modalPbtsInput = modalMeterInputContainer.querySelector('#modal-input-pbts');
+                const modalMerkKwhInput = modalMeterInputContainer.querySelector('#modal-input-merkkwh');
+                const modalTahunBuatInput = modalMeterInputContainer.querySelector('#modal-input-tahun_buat');
+
+                // --- PERBAIKAN: ISI INPUT MODAL (PRE-FILL) ---
+                if (modalMeterInput) modalMeterInput.value = mainMeterInput ? mainMeterInput.value : '';
+                if (modalMcbInput) modalMcbInput.value = mainMcbInput ? mainMcbInput.value : '';
+                if (modalPbtsInput) modalPbtsInput.value = mainPbtsInput ? mainPbtsInput.value : '';
+                if (modalMerkKwhInput) modalMerkKwhInput.value = mainMerkKwhInput ? mainMerkKwhInput.value : '';
+                if (modalTahunBuatInput) modalTahunBuatInput.value = mainTahunBuatInput ? mainTahunBuatInput.value : '';
+
+                // Tampilkan input container (wrapper luar)
+                draggableInputWrapper.classList.remove('hidden'); 
+                if (modalMeterInput) setTimeout(() => modalMeterInput.focus(), 50); 
+            } 
+
+            // --- Perbaikan Zoom/Pan ---
             resetZoomState();
-            applyTransform();
+            imageModalImg.style.transition = 'none'; 
+            imageModalImg.style.transform = 'none'; 
+            // --- Akhir Perbaikan Zoom/Pan ---
+
             imageModal.classList.remove('hidden');
         }
     }
 
     function closeImageModal() {
-        if (modalMeterInputContainer && !modalMeterInputContainer.classList.contains('hidden')) {
-            const modalValue = modalMeterInput.value;
-            const activeTabContent = document.querySelector('.tab-content:not(.hidden)');
-            const mainMeterInput = activeTabContent?.querySelector('#eval_meter_input');
-            
-            if (mainMeterInput) {
-                mainMeterInput.value = modalValue;
-                mainMeterInput.dispatchEvent(new Event('input', { bubbles: true })); 
+        if (!draggableInputWrapper.classList.contains('hidden')) {
+            const modalMeterInputContainer = draggableInputWrapper.querySelector('#modal-meter-input-container');
+            if (modalMeterInputContainer) {
+                
+                const activeTabContent = document.querySelector('.tab-content:not(.hidden)');
+                
+                // --- TEMUKAN INPUT DI MODAL ---
+                const modalMeterInput = modalMeterInputContainer.querySelector('#modal-input-meter');
+                const modalMcbInput = modalMeterInputContainer.querySelector('#modal-input-mcb');
+                const modalPbtsInput = modalMeterInputContainer.querySelector('#modal-input-pbts');
+                const modalMerkKwhInput = modalMeterInputContainer.querySelector('#modal-input-merkkwh');
+                const modalTahunBuatInput = modalMeterInputContainer.querySelector('#modal-input-tahun_buat');
+
+                // --- TEMUKAN INPUT DI PANEL UTAMA ---
+                const mainMeterInput = activeTabContent?.querySelector('#eval_meter_input');
+                const mainMcbInput = activeTabContent?.querySelector('#eval_mcb');
+                const mainPbtsInput = activeTabContent?.querySelector('#eval_type_pbts');
+                const mainMerkKwhInput = activeTabContent?.querySelector('#eval_merkkwhmeter');
+                const mainTahunBuatInput = activeTabContent?.querySelector('#eval_tahun_buat');
+                
+                // Kembalikan Nomor Meter (dan panggil event input untuk validasi)
+                if (mainMeterInput && modalMeterInput) {
+                    mainMeterInput.value = modalMeterInput.value;
+                    mainMeterInput.dispatchEvent(new Event('input', { bubbles: true })); 
+                }
+                
+                if (mainMcbInput && modalMcbInput) mainMcbInput.value = modalMcbInput.value;
+                if (mainPbtsInput && modalPbtsInput) mainPbtsInput.value = modalPbtsInput.value;
+                if (mainMerkKwhInput && modalMerkKwhInput) mainMerkKwhInput.value = modalMerkKwhInput.value;
+                if (mainTahunBuatInput && modalTahunBuatInput) mainTahunBuatInput.value = modalTahunBuatInput.value;
+
+                // --- BERSIHKAN MODAL ---
+                draggableInputWrapper.classList.add('hidden');
             }
-            modalMeterInputContainer.classList.add('hidden');
-            modalMeterInput.value = '';
         }
         imageModal.classList.add('hidden');
-        imageModalImg.src = ''; 
+        imageModalImg.src = '';
+
         resetZoomState();
-        applyTransform();
+        imageModalImg.style.transform = 'none'; 
     }
 
     function initializeUploadFormChecks(modalContent) {
@@ -574,16 +693,14 @@ App.Modal = (() => {
 
         const fileInput = uploadForm.querySelector('#file-input');
         const fileNameDisplay = uploadForm.querySelector('#file-name');
-        const uploadButton = uploadForm.querySelector('#start-chunk-upload');
+        const uploadButton = uploadForm.querySelector('#start-chunk-upload'); 
 
         if (!fileInput || !fileNameDisplay || !uploadButton) {
             console.warn("Upload form checks skipped: missing elements.");
             return;
         }
 
-        // Fungsi untuk mengaktifkan/menonaktifkan tombol
         const checkFileStatus = () => {
-            // Kita asumsikan #file-name akan diisi teks JIKA file ada
             if (fileNameDisplay.textContent.trim().length > 0) {
                 uploadButton.disabled = false;
                 uploadButton.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -593,30 +710,25 @@ App.Modal = (() => {
             }
         };
 
-        // Kita gunakan MutationObserver untuk mendeteksi perubahan teks di #file-name
         const observer = new MutationObserver(checkFileStatus);
         
-        // Mulai mengamati #file-name untuk perubahan (termasuk teks)
         observer.observe(fileNameDisplay, { 
             childList: true, 
             subtree: true, 
             characterData: true 
         });
 
-        // Cek juga jika user membatalkan (mengosongkan) input file
         fileInput.addEventListener('change', () => {
             if (fileInput.files.length === 0) {
-                // Paksa update UI jika input file dibersihkan
                 fileNameDisplay.textContent = ''; 
             }
         });
 
-        // Cek status awal
         checkFileStatus();
     }
-
+    
     function initializeUploadLogic(uploadForm) {
-        const startButton = uploadForm.querySelector('#start-chunk-upload');
+        const startButton = uploadForm.querySelector('#start-chunk-upload'); 
         
         if (!startButton) {
             console.error('Upload Logic: Tombol #start-chunk-upload tidak ditemukan.');
@@ -627,8 +739,6 @@ App.Modal = (() => {
             e.preventDefault();
             console.log("Tombol Mulai Upload Ditekan. Memicu Logika Chunk Upload...");
             
-            // --- INI ADALAH TITIK DI MANA ANDA HARUS MEMANGGIL LOGIKA INTI UPLOAD ANDA ---
-            
             if (window.UploadInitializers && typeof window.UploadInitializers.startChunkUpload === 'function') {
                 window.UploadInitializers.startChunkUpload(uploadForm);
             } else {
@@ -637,34 +747,32 @@ App.Modal = (() => {
         });
     }
 
+    // --- FUNGSI-FUNGSI HELPER BARU UNTUK ZOOM/PAN ---
+    
     function resetZoomState() {
         scale = 1;
         translateX = 0;
         translateY = 0;
         isPanning = false;
+        rotation = 0;
     }
 
     function applyTransform() {
         if (imageModalImg) {
-            // Kita atur transform-origin ke tengah agar zoom lebih baik
             imageModalImg.style.transformOrigin = '50% 50%';
-            imageModalImg.style.transition = 'transform 0.1s ease-out'; // Transisi halus
-            imageModalImg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
-            // Ubah kursor untuk menandakan bisa di-pan
+            imageModalImg.style.transition = 'transform 0.1s ease-out'; 
+            imageModalImg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale}) rotate(${rotation}deg)`;
             imageModalImg.style.cursor = scale > 1 ? 'grab' : 'zoom-in';
         }
     }
+
     function handleWheelZoom(e) {
-        e.preventDefault(); // Hentikan scroll halaman
-        const scaleAmount = 0.1; // Seberapa cepat zoom
+        e.preventDefault(); 
         
-        // Tentukan zoom-in (scroll ke atas) atau zoom-out (scroll ke bawah)
+        const scaleAmount = 0.1; 
         const newScale = e.deltaY < 0 ? scale + scaleAmount : scale - scaleAmount;
+        scale = Math.min(Math.max(1, newScale), 5); // Batasi zoom
         
-        // Batasi zoom (minimal 1x, maksimal 5x)
-        scale = Math.min(Math.max(1, newScale), 5);
-        
-        // Jika zoom kembali ke 1x, reset posisi pan
         if (scale === 1) {
             translateX = 0;
             translateY = 0;
@@ -674,34 +782,41 @@ App.Modal = (() => {
     }
 
     function handlePanStart(e) {
-        if (scale === 1) return; // Jangan geser jika tidak di-zoom
+        if (scale === 1) return; 
+        
         e.preventDefault();
+        e.stopPropagation(); 
         isPanning = true;
-        // Catat posisi awal klik relatif terhadap posisi geser saat ini
         startX = e.clientX - translateX;
         startY = e.clientY - translateY;
-        imageModalImg.style.cursor = 'grabbing'; // Kursor "menggenggam"
-        imageModalImg.style.transition = 'none'; // Matikan transisi saat menggeser
+        imageModalImg.style.cursor = 'grabbing'; 
+        imageModalImg.style.transition = 'none'; 
     }
 
     function handlePanMove(e) {
         if (!isPanning) return;
         e.preventDefault();
-        // Hitung posisi baru
+        e.stopPropagation();
         translateX = e.clientX - startX;
-        translateY = e.clientY - startY;
+        translateY = e.clientY - translateY;
         applyTransform();
     }
 
     function handlePanEnd(e) {
         isPanning = false;
         if (scale > 1) {
-            imageModalImg.style.cursor = 'grab'; // Kembalikan kursor ke "grab"
+            imageModalImg.style.cursor = 'grab'; 
         }
-        // Aktifkan kembali transisi
         imageModalImg.style.transition = 'transform 0.1s ease-out';
     }
-    
+
+    function handleRotate(e) {
+        e.preventDefault();
+        e.stopPropagation(); 
+        rotation = (rotation + 90) % 360; // Tambah 90 derajat
+        applyTransform(); // Terapkan
+    }
+
     return {
         init,
         open,
@@ -1292,9 +1407,17 @@ App.Validation = (() => {
         const mcbInput = content.querySelector('#eval_mcb');
         const pbtsInput = content.querySelector('#eval_type_pbts');
         const merkkwhInput = content.querySelector('#eval_merkkwhmeter');
+        const tahunBuatInput = content.querySelector('#eval_tahun_buat');
+        const srInput = content.querySelector('#eval_sr');
+        const latSrInput = content.querySelector('#eval_latitudey_sr');
+        const lonSrInput = content.querySelector('#eval_longitudex_sr');
         if (mcbInput) mcbInput.value = details.mcb || '';
         if (pbtsInput) pbtsInput.value = details.type_pbts || '';
         if (merkkwhInput) merkkwhInput.value = details.merkkwhmeter || '';
+        if (tahunBuatInput) tahunBuatInput.value = details.tahun_buat || '';
+        if (srInput) srInput.value = details.sr || ''; 
+        if (latSrInput) latSrInput.value = details.latitudey_sr || '';
+        if (lonSrInput) lonSrInput.value = details.longitudex_sr || '';
         
         // Cek form setelah diisi
         checkEvaluationForm(content, details);
@@ -1361,16 +1484,28 @@ App.Validation = (() => {
             }
         }, 200);
     }
-    
+        
+
     function handleValidationStreetView(content, container, details) {
         const latLonEl = content.querySelector('#validation-lat-lon');
         const streetViewLinkEl = content.querySelector('#validation-street-view-link');
         const validationTabPanel = container.closest('.tab-content'); 
         const streetViewModal = validationTabPanel ? validationTabPanel.querySelector('#street-view-modal') : null;
-        const streetViewIframe = validationTabPanel ? validationTabPanel.querySelector('#street-view-iframe') : null;
-        const streetViewHeader = validationTabPanel ? validationTabPanel.querySelector('#street-view-header') : null;
-        const streetViewCloseButton = validationTabPanel ? validationTabPanel.querySelector('#street-view-close-button') : null;
+        
+        // PERBAIKAN PENCARIAN DOM: Cari kontainer dan overlay langsung di dalam modal yang statis
+        const streetViewContainer = streetViewModal ? streetViewModal.querySelector('#street-view-js-container') : null;
+        const streetViewOverlay = streetViewModal ? streetViewModal.querySelector('#street-view-overlay') : null;
+        
+        const streetViewHeader = streetViewModal ? streetViewModal.querySelector('#street-view-header') : null;
+        const streetViewCloseButton = streetViewModal ? streetViewModal.querySelector('#street-view-close-button') : null;
+        
+        // Ambil tombol toggle baru
+        const toggleCaptureModeButton = streetViewModal ? streetViewModal.querySelector('#toggle-capture-mode') : null; 
 
+        const srLatInput = content.querySelector('#eval_latitudey_sr');
+        const srLonInput = content.querySelector('#eval_longitudex_sr');
+        
+        // 1. Update Koordinat Tampilan
         if (latLonEl && streetViewLinkEl) {
             if (details.lat && details.lon && parseFloat(details.lat) !== 0) {
                 latLonEl.textContent = `${details.lat.toFixed(6)}, ${details.lon.toFixed(6)}`;
@@ -1381,33 +1516,161 @@ App.Validation = (() => {
             }
         }
         
-        if (streetViewLinkEl && streetViewModal && streetViewIframe && streetViewHeader && streetViewCloseButton) {
-            const handleValidationStreetViewClick = (e) => {
-                e.preventDefault(); e.stopPropagation();
-                if (details.lat && details.lon && parseFloat(details.lat) !== 0) {
-                    const lat = details.lat;
-                    const lon = details.lon;
-                    const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
-                    streetViewIframe.src = streetViewUrl; 
-                    streetViewModal.classList.remove('hidden'); 
-                    streetViewModal.style.left = '';
-                    streetViewModal.style.top = '';
-                    streetViewModal.style.right = ''; 
-                } else {
-                    alert('Koordinat tidak valid untuk Street View.');
-                }
-            };
+        // 2. Inisialisasi Modal
+        if (streetViewLinkEl && streetViewModal && streetViewContainer && streetViewOverlay && streetViewHeader && streetViewCloseButton && toggleCaptureModeButton) {
+            
             const closeValidationStreetView = () => {
                 streetViewModal.classList.add('hidden');
-                streetViewIframe.src = ""; 
+                if (streetViewContainer) streetViewContainer.innerHTML = ""; 
+                App.State.streetViewPanoramaInstance = null;
                 streetViewModal.style.left = '';
                 streetViewModal.style.top = '';
                 streetViewModal.style.right = '';
+                
+                // Pastikan overlay dikembalikan ke mode pasif saat ditutup
+                streetViewOverlay.style.pointerEvents = 'none';
+                if (toggleCaptureModeButton) {
+                    toggleCaptureModeButton.textContent = 'Aktifkan Mode Klik';
+                    toggleCaptureModeButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    toggleCaptureModeButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                }
+            };
+
+            // FUNGSI INTI: Logic saat overlay diklik
+            const handleOverlayClick = (e, panorama) => {
+                if (e.button !== 0) return; 
+                
+                console.log("DEBUG-FINAL: 💥 KLIK PADA OVERLAY DOM terdeteksi."); 
+
+                // Ambil posisi LatLng dari Pano ID saat ini
+                const latLng = panorama.getPosition();
+
+                if (!latLng) {
+                    console.log("DEBUG-FINAL: GAGAL mendapatkan LatLng dari Panorama.");
+                    alert('Gagal mengambil koordinat. Silakan coba klik tombol Street View lagi.');
+                    return;
+                }
+                
+                console.log("DEBUG-FINAL: ✅ KONVERSI BERHASIL (Menggunakan Posisi Pano ID). Mencoba mengisi input.");
+
+                const clickedLat = latLng.lat().toFixed(8); 
+                const clickedLng = latLng.lng().toFixed(8);
+
+                if (srLatInput && srLonInput) {
+                    srLatInput.value = clickedLat;
+                    srLonInput.value = clickedLng;
+                    alert(`Koordinat SR/Tetangga diisi berdasarkan Posisi Pano ID:\nLat: ${clickedLat}, Lon: ${clickedLng}`);
+                    
+                    // Matikan mode klik setelah berhasil
+                    handleToggleCaptureMode(); 
+                    closeValidationStreetView(); 
+                }
+            };
+
+            // FUNGSI TOGGLE: Mengaktifkan/Menonaktifkan Overlay
+            const handleToggleCaptureMode = () => {
+                const isCaptureMode = streetViewOverlay.style.pointerEvents === 'auto';
+                
+                if (isCaptureMode) {
+                    // MATIKAN MODE
+                    streetViewOverlay.style.pointerEvents = 'none';
+                    toggleCaptureModeButton.textContent = 'Aktifkan Mode Klik';
+                    toggleCaptureModeButton.classList.remove('bg-red-600', 'hover:bg-red-700');
+                    toggleCaptureModeButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                    streetViewOverlay.removeEventListener('click', streetViewOverlay.__boundHandler); 
+                } else {
+                    // AKTIFKAN MODE
+                    if (!App.State.streetViewPanoramaInstance) {
+                        alert("Street View belum dimuat. Silakan tunggu atau coba lagi.");
+                        return;
+                    }
+                    streetViewOverlay.style.pointerEvents = 'auto';
+                    toggleCaptureModeButton.textContent = 'Klik untuk Ambil (Mode Aktif)';
+                    toggleCaptureModeButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+                    toggleCaptureModeButton.classList.add('bg-red-600', 'hover:bg-red-700');
+                    
+                    // Tambahkan listener saat mode aktif
+                    const panorama = App.State.streetViewPanoramaInstance;
+                    streetViewOverlay.__boundHandler = (e) => handleOverlayClick(e, panorama);
+                    streetViewOverlay.addEventListener('click', streetViewOverlay.__boundHandler);
+                }
+            };
+
+
+            const handleValidationStreetViewClick = async (e) => { 
+                e.preventDefault(); 
+                e.stopPropagation();
+
+                if (!details.lat || !details.lon || parseFloat(details.lat) === 0) {
+                    alert('Koordinat tidak valid untuk Street View.');
+                    return;
+                }
+                
+                const targetLatLng = { lat: details.lat, lng: details.lon };
+                
+                streetViewModal.classList.remove('hidden'); 
+                streetViewModal.style.left = '';
+                streetViewModal.style.top = '';
+                streetViewModal.style.right = ''; 
+
+                try {
+                    const { StreetViewService, StreetViewPanorama } = await google.maps.importLibrary("streetView");
+                    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+                    
+                    console.log("--- DEBUG: Library StreetView dan Marker berhasil di-await ---");
+
+                    const streetViewService = new StreetViewService();
+                    
+                    streetViewService.getPanorama(
+                        { location: targetLatLng, radius: 50 }, 
+                        (data, status) => {
+                            if (status === "OK") {
+                                const panorama = new StreetViewPanorama(
+                                    streetViewContainer, 
+                                    {
+                                        position: data.location.latLng,
+                                        pov: { heading: 0, pitch: 0 },
+                                        zoom: 1,
+                                        addressControl: false, 
+                                        linksControl: true, 
+                                        fullscreenControl: false, 
+                                        disableDefaultUI: true, 
+                                        panControl: false, 
+                                        zoomControl: false, 
+                                    }
+                                );
+                                
+                                App.State.streetViewPanoramaInstance = panorama; 
+
+                                const marker = new google.maps.Marker({
+                                    position: targetLatLng,
+                                    map: panorama,
+                                    title: "Posisi Asli Database"
+                                });
+                                
+                                // Reset mode ke pasif setelah panorama dimuat
+                                streetViewOverlay.style.pointerEvents = 'none';
+                                toggleCaptureModeButton.textContent = 'Aktifkan Mode Klik';
+
+                            } else {
+                                streetViewContainer.innerHTML = '<div class="flex items-center justify-center h-full text-red-500 p-4">Street View tidak tersedia untuk lokasi ini.</div>';
+                            }
+                        }
+                    );
+
+                } catch (apiError) {
+                    console.error("Google Maps JS API gagal dimuat:", apiError);
+                    streetViewContainer.innerHTML = `<div class="p-4 text-red-500">Gagal memuat Google Maps API. Pastikan koneksi internet dan API Key Anda benar.<br><small>${apiError.message}</small></div>`;
+                }
             };
         
+            // --- Logika Drag Modal (DIPERTAHANKAN) ---
             let isDragging = false, offsetX, offsetY;
             const onMouseDown = (e) => {
                 if (e.target.id !== 'street-view-header' && !e.target.closest('#street-view-header')) return;
+                // PENTING: Memastikan klik pada overlay atau tombol toggle tidak memicu drag
+                if (e.target === streetViewOverlay || e.target === toggleCaptureModeButton || e.target.closest('#toggle-capture-mode')) return; 
+                
                 isDragging = true;
                 offsetX = e.clientX - streetViewModal.getBoundingClientRect().left;
                 offsetY = e.clientY - streetViewModal.getBoundingClientRect().top;
@@ -1432,19 +1695,25 @@ App.Validation = (() => {
                 document.removeEventListener('mouseup', onMouseUp);
             };
 
+            // Pasang listener
             streetViewLinkEl.removeEventListener('click', streetViewLinkEl.__handler);
             streetViewCloseButton.removeEventListener('click', streetViewCloseButton.__handler);
             if (streetViewHeader.__handler) {
-                 streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
+                streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
+            }
+            if (toggleCaptureModeButton && toggleCaptureModeButton.__handler) {
+                toggleCaptureModeButton.removeEventListener('click', toggleCaptureModeButton.__handler);
             }
 
             streetViewLinkEl.__handler = handleValidationStreetViewClick;
             streetViewCloseButton.__handler = closeValidationStreetView;
             streetViewHeader.__handler = onMouseDown;
-            
+            toggleCaptureModeButton.__handler = handleToggleCaptureMode;
+
             streetViewLinkEl.addEventListener('click', handleValidationStreetViewClick);
             streetViewCloseButton.addEventListener('click', closeValidationStreetView);
             streetViewHeader.addEventListener('mousedown', onMouseDown);
+            toggleCaptureModeButton.addEventListener('click', handleToggleCaptureMode);
         }
     }
 
@@ -1516,6 +1785,16 @@ App.Validation = (() => {
         const merkkwhInput = panel.querySelector('#eval_merkkwhmeter');
         if (merkkwhInput) merkkwhInput.value = '';
 
+        const tahunBuatInput = panel.querySelector('#eval_tahun_buat');
+        if (tahunBuatInput) tahunBuatInput.value = '';
+
+        const srInput = panel.querySelector('#eval_sr'); 
+        if (srInput) srInput.value = '';
+        const latSrInput = panel.querySelector('#eval_latitudey_sr');
+        if (latSrInput) latSrInput.value = '';
+        const lonSrInput = panel.querySelector('#eval_longitudex_sr');
+        if (lonSrInput) lonSrInput.value = '';
+
         const meterStatus = panel.querySelector('#eval_meter_status');
         if (meterStatus) meterStatus.textContent = '';
         
@@ -1567,9 +1846,18 @@ App.Validation = (() => {
         const mcbInput = panel.querySelector('#eval_mcb');
         const pbtsInput = panel.querySelector('#eval_type_pbts');
         const merkkwhInput = panel.querySelector('#eval_merkkwhmeter');
+        const tahunBuatInput = panel.querySelector('#eval_tahun_buat');
+        const srInput = panel.querySelector('#eval_sr'); 
+        const latSrInput = panel.querySelector('#eval_latitudey_sr');
+        const lonSrInput = panel.querySelector('#eval_longitudex_sr');
+
         const mcbValue = mcbInput ? mcbInput.value.trim() : '';
         const pbtsValue = pbtsInput ? pbtsInput.value.trim() : '';
         const merkkwhValue = merkkwhInput ? merkkwhInput.value.trim() : '';
+        const tahunBuatValue = tahunBuatInput ? tahunBuatInput.value.trim() : '';
+        const srValue = srInput ? srInput.value.trim() : ''; 
+        const latSrValue = latSrInput ? latSrInput.value.trim() : '';
+        const lonSrValue = lonSrInput ? lonSrInput.value.trim() : '';
         const petaReasonContainer = panel.querySelector('#eval_peta_reason_container');
         const petaReasonSelect = panel.querySelector('#eval_peta_reason');
         const persilReasonContainer = panel.querySelector('#eval_persil_reason_container');
@@ -1641,8 +1929,9 @@ App.Validation = (() => {
         const isPersilReasonSelected = !persilTidakSesuai || (persilTidakSesuai && persilReasonSelect && persilReasonSelect.value.trim() !== '');
         const isRejectionReasonFilled = !hasAnyRejection || (rejectionReason && rejectionReason.value.trim().length >= MIN_REJECTION_CHARS);
 
-        const areNewFieldsFilled = mcbValue.length > 0 && pbtsValue.length > 0 && merkkwhValue.length > 0;
-        if (meterMatch && petaValue === 'sesuai' && persilValue === 'sesuai' && areNewFieldsFilled) {
+        const areNewFieldsFilled = mcbValue.length > 0 && pbtsValue.length > 0 && merkkwhValue.length > 0 && tahunBuatValue.length > 0;
+        const areSrFieldsFilled = srValue.length > 0 && latSrValue.length > 0 && lonSrValue.length > 0;
+        if (meterMatch && petaValue === 'sesuai' && persilValue === 'sesuai' && areNewFieldsFilled && areSrFieldsFilled) {
             validateButton.disabled = false;
             validateButton.classList.remove('opacity-50', 'cursor-not-allowed');
         }
@@ -2126,6 +2415,60 @@ App.Listeners = (() => {
         });
     }
 
+    function handleTakeStreetViewCoord(elements) {
+        console.log("DEBUG COORD: 1. Fungsi handleTakeStreetViewCoord dipanggil.");
+
+        if (!App.State.streetViewPanoramaInstance) {
+            console.error("DEBUG COORD: 2. GAGAL! App.State.streetViewPanoramaInstance adalah NULL.");
+            alert("Gagal: Objek Street View (Panorama) belum siap atau hilang.");
+            return;
+        }
+
+        const panorama = App.State.streetViewPanoramaInstance;
+        
+        // --- Langkah 3: Ambil Posisi ---
+        let position;
+        try {
+            position = panorama.getPosition(); 
+            if (!position) {
+                console.error("DEBUG COORD: 3. GAGAL! panorama.getPosition() mengembalikan NULL.");
+                alert("Gagal: Tidak dapat mengambil posisi (koordinat) dari Street View saat ini.");
+                return;
+            }
+        } catch (e) {
+            console.error("DEBUG COORD: 3. GAGAL! Error saat memanggil getPosition():", e);
+            alert("Error: Terjadi kesalahan saat mengambil koordinat.");
+            return;
+        }
+        
+        const clickedLat = position.lat().toFixed(8); 
+        const clickedLng = position.lng().toFixed(8);
+
+        console.log(`DEBUG COORD: 4. Koordinat Berhasil Diambil: ${clickedLat}, ${clickedLng}`);
+
+        // --- Langkah 5: Cari Input di Panel Utama ---
+        const activeTabContent = document.querySelector('.tab-content:not(.hidden)');
+        const srLatInput = activeTabContent?.querySelector('#eval_latitudey_sr'); 
+        const srLonInput = activeTabContent?.querySelector('#eval_longitudex_sr');
+        
+        if (!srLatInput || !srLonInput) {
+            console.error("DEBUG COORD: 5. GAGAL! Input SR tidak ditemukan di tab aktif. Lat:", srLatInput, "Lon:", srLonInput);
+            alert('Error: Tidak dapat menemukan input Latitude SR/Longitude SR. Pastikan Anda berada di tab Validasi.');
+            return;
+        }
+
+        console.log("DEBUG COORD: 6. Input SR berhasil ditemukan.");
+
+        // --- Langkah 7: Isi Nilai dan Tutup ---
+        srLatInput.value = clickedLat;
+        srLonInput.value = clickedLng;
+        alert(`Koordinat SR/Tetangga telah diisi berdasarkan posisi kamera:\nLat: ${clickedLat}, Lon: ${clickedLng}`);
+        
+        // Tutup modal Street View
+        const closeButton = document.getElementById('street-view-close-button');
+        if (closeButton) closeButton.click();
+    }
+
     function handleGlobalClick(e, elements) {
         // --- Urutan Prioritas Pengecekan Klik ---
 
@@ -2507,6 +2850,10 @@ App.Listeners = (() => {
             const mcbValue = panel.querySelector('#eval_mcb')?.value || '';
             const pbtsValue = panel.querySelector('#eval_type_pbts')?.value || '';
             const merkkwhValue = panel.querySelector('#eval_merkkwhmeter')?.value || '';
+            const tahunBuatValue = panel.querySelector('#eval_tahun_buat')?.value || '';
+            const srValue = panel.querySelector('#eval_sr')?.value || '';
+            const latSrValue = panel.querySelector('#eval_latitudey_sr')?.value || '';
+            const lonSrValue = panel.querySelector('#eval_longitudex_sr')?.value || '';
             const evalData = {
                 eval_peta: panel.querySelector('input[name="eval_peta"]:checked')?.value || null,
                 eval_peta_reason: panel.querySelector('#eval_peta_reason')?.value || null,
@@ -2516,6 +2863,10 @@ App.Listeners = (() => {
                 eval_mcb: mcbValue,
                 eval_type_pbts: pbtsValue,
                 eval_merkkwhmeter: merkkwhValue,
+                eval_tahun_buat: tahunBuatValue,
+                eval_sr: srValue, 
+                eval_latitudey_sr: latSrValue,
+                eval_longitudex_sr: lonSrValue,
             };
             const rejectionReason = panel.querySelector('#eval_rejection_reason')?.value || ''; 
             formData.append('validation_data', JSON.stringify(evalData));
@@ -2523,6 +2874,7 @@ App.Listeners = (() => {
             formData.append('eval_mcb', mcbValue);
             formData.append('eval_type_pbts', pbtsValue);
             formData.append('eval_merkkwhmeter', merkkwhValue);
+            formData.append('eval_tahun_buat', tahunBuatValue);
         }
 
         fetch(form.action, {

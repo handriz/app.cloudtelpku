@@ -14,8 +14,16 @@
 
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
-        
+
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+    
+    <script>
+            function initMap() {
+                // Biarkan kosong.
+            }
+    </script>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google-maps.key') }}&libraries=streetView&callback=initMap" async></script>
     <style>
         .sidebar-collapsed { width: 70px !important; }
         .sidebar-collapsed .menu-text { display: none; }
@@ -102,54 +110,59 @@
         </div>
 
         <div id="image-viewer-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 dark:bg-opacity-90 flex items-center justify-center z-[99] hidden p-4" style="backdrop-filter: blur(4px);">
-            <button id="image-viewer-close" class="absolute top-4 right-6 text-white text-4xl opacity-80 hover:opacity-100 z-[101]">&times;</button>
             
-            <div class="relative w-full h-full flex items-center justify-center">
-                <img id="image-viewer-img" src="" alt="Pratinjau Gambar" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-xl">
-            
-                {{-- == INPUT METER SEMENTARA (AWALNYA HIDDEN) == --}}
-                <div id="modal-meter-input-container" class="w-full max-w-md hidden">
-                    <label for="modal-meter-input" class="block text-sm font-medium text-gray-300 mb-1 text-center">
-                        Ketik Nomor Meter Lengkap:
-                    </label>
-                    <input type="text" id="modal-meter-input" class="block w-full rounded-md border-gray-500 bg-gray-700 text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-center text-lg p-2" placeholder="Nomor lengkap...">
+            <div class="absolute top-4 right-4 md:top-6 md:right-6 z-[102] flex space-x-2">
+                <button id="image-viewer-rotate" class="p-2 text-white text-xl opacity-80 hover:opacity-100 rounded-full bg-gray-800/50 hover:bg-gray-700/70 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    <i class="fas fa-redo"></i> </button>
+                <button id="image-viewer-close" class="p-2 text-white text-3xl opacity-80 hover:opacity-100">&times;</button>
+            </div>
+
+            <div class="flex max-w-[95vw] max-h-[95vh] h-full items-center justify-center">
+
+                <div id="image-zoom-area" class="relative flex-shrink-0 h-full flex items-center justify-center">
+                    
+                    <img id="image-viewer-img" 
+                         src="" 
+                         alt="Pratinjau Gambar" 
+                         class="rounded-lg shadow-xl" 
+                         style="display: block; max-width: 100%; max-height: 100%; object-fit: contain; width: auto; height: auto;">
                 </div>
                 
             </div>
-
-            <div id="image-viewer-overlay" class="absolute inset-0 z-[100] cursor-pointer"></div>
-        </div>
-        
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-
-        {{-- ====================================================== --}}
-        {{-- MODAL GLOBAL: Konfirmasi Kustom (Hapus, Invalidate, Promote) --}}
-        {{-- ====================================================== --}}
-        <div id="custom-confirm-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden items-center justify-center p-4 z-50">
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
-                
-                {{-- Header Modal --}}
-                <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                    <h3 id="custom-confirm-title" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Konfirmasi Tindakan</h3>
-                </div>
-
-                {{-- Body Pesan --}}
-                <div class="p-6">
-                    <p id="custom-confirm-message" class="text-sm text-gray-700 dark:text-gray-300">
-                        Apakah Anda yakin ingin melanjutkan tindakan ini?
-                    </p>
-                </div>
-
-                {{-- Footer (Tombol) --}}
-                <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900 flex justify-end space-x-3 rounded-b-lg">
-                    <button id="custom-confirm-cancel" type="button" class="px-4 py-2 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-500">
-                        Batal
-                    </button>
-                    <button id="custom-confirm-ok" type="button" class="px-4 py-2 bg-red-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-red-700">
-                        Ya, Lanjutkan
-                    </button>
+            
+            <div id="draggable-input-wrapper" class="absolute w-[300px] hidden z-[103]" style="top: 10%; right: 10%;"> 
+            
+                <div id="modal-meter-input-container" class="w-full h-auto p-4 bg-gray-900/90 backdrop-blur-sm rounded-lg shadow-2xl"> 
+                    
+                    <h4 class="text-sm font-bold text-indigo-400 mb-4 cursor-move" id="input-drag-handler">
+                        Data Attribute <i class="fas fa-arrows-alt text-gray-500 ml-2"></i>
+                    </h4>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label for="modal-input-meter" class="block text-xs font-medium text-red-400 mb-1">No. Meter **(Wajib)**:</label>
+                            <input type="text" id="modal-input-meter" class="modal-eval-input block w-full rounded-md border-gray-500 bg-gray-700 text-white shadow-sm text-sm p-1.5" placeholder="Nomor lengkap...">
+                        </div>
+                        <div>
+                            <label for="modal-input-mcb" class="block text-xs font-medium text-gray-300 mb-1">Kapasitas MCB:</label>
+                            <input type="text" id="modal-input-mcb" class="modal-eval-input block w-full rounded-md border-gray-500 bg-gray-700 text-white shadow-sm text-sm p-1.5" placeholder="MCB...">
+                        </div>
+                        <div>
+                            <label for="modal-input-pbts" class="block text-xs font-medium text-gray-300 mb-1">Merk MCB:</label>
+                            <input type="text" id="modal-input-pbts" class="modal-eval-input block w-full rounded-md border-gray-500 bg-gray-700 text-white shadow-sm text-sm p-1.5" placeholder="Tipe PB/TS...">
+                        </div>
+                        <div>
+                            <label for="modal-input-merkkwh" class="block text-xs font-medium text-gray-300 mb-1">Merk KWH:</label>
+                            <input type="text" id="modal-input-merkkwh" class="modal-eval-input block w-full rounded-md border-gray-500 bg-gray-700 text-white shadow-sm text-sm p-1.5" placeholder="Merk KWH...">
+                        </div>
+                        <div class="col-span-2 md:col-span-4"> <label for="modal-input-tahun_buat" class="block text-xs font-medium text-gray-300 mb-1">Tahun Buat:</label>
+                            <input type="text" id="modal-input-tahun_buat" class="modal-eval-input block w-full rounded-md border-gray-500 bg-gray-700 text-white shadow-sm text-sm p-1.5" placeholder="Tahun...">
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-4">*Tutup modal untuk menyimpan perubahan data.</p>
                 </div>
             </div>
         </div>
+    
     </body>
 </html>
