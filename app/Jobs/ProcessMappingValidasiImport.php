@@ -91,7 +91,8 @@ class ProcessMappingValidasiImport implements ShouldQueue
                 if ($maxInFile > $currentSequenceMax) {
                     $nextValue = $maxInFile + 1;
                     // Atur AUTO_INCREMENT berikutnya
-                    DB::statement("ALTER TABLE objectid_sequence AUTO_INCREMENT = ?", [$nextValue]);
+                    $sql = "ALTER TABLE objectid_sequence AUTO_INCREMENT = {$nextValue}";
+                    DB::statement($sql);
                     Log::info("Sinkronisasi sequence objectid berhasil. AUTO_INCREMENT diatur ke: " . $nextValue);
                 } else {
                     Log::info("Sinkronisasi tidak diperlukan (Max di file lebih rendah atau sama).");
