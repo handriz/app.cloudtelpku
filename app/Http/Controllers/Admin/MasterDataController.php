@@ -121,6 +121,8 @@ class MasterDataController extends Controller
         $tempDir = 'temp_uploads/' . $fileName;
         $finalPath = 'imports/' . $fileName; // <-- BARIS INI TELAH DIPERBAIKI
 
+        ob_start();
+
         try {
             Storage::makeDirectory('imports'); // Pastikan direktori tujuan ada
             
@@ -148,10 +150,16 @@ class MasterDataController extends Controller
             // Mengirim path file dan ID user yang sedang login ke Job
             ProcessPelangganImport::dispatch($finalPath, auth()->id());
 
+            ob_end_clean();
+
             Log::info("File {$fileName} berhasil digabungkan dan job dikirim oleh user ID: " . auth()->id());
+            
             return response()->json(['message' => 'File berhasil di-upload dan sedang diproses di latar belakang.']);
 
         } catch (\Exception $e) {
+
+            ob_end_clean();
+            
             Log::error("Gagal menggabungkan chunks untuk {$fileName}: " . $e->getMessage());
             // Bersihkan file sisa jika terjadi error
             Storage::deleteDirectory($tempDir);

@@ -661,6 +661,9 @@ class MappingValidationController extends Controller
             'fileName' => 'required|string',
         ]);
 
+        $tempDir = 'temp_uploads/' . $validated['fileName'];
+        Storage::makeDirectory($tempDir);
+        
         $validated['file']->storeAs(
             'temp_uploads/' . $validated['fileName'], 
             $validated['chunkIndex']
