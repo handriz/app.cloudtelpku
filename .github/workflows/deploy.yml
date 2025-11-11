@@ -84,16 +84,16 @@ jobs:
       - name: Install Node.js Dependencies
         run: npm install
 
-      # Langkah 8: Membuat file .env di runner (SEBELUM build)
+      # Langkah 8: Mengkompilasi Aset Frontend (CSS/JS) di runner
+      - name: Build Frontend Assets
+        run: npm run build
+
+      # Langkah 9: Membuat file .env di runner (SEBELUM build)
       - name: Create .env file
         ##run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
         run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
         env:
           DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
-
-      # Langkah 9: Mengkompilasi Aset Frontend (CSS/JS) di runner
-      - name: Build Frontend Assets
-        run: npm run build
 
       # Langkah 10: Deployment: Sinkronisasi File ke VPS menggunakan rsync langsung
       # Ini sepenuhnya bergantung pada ssh-agent untuk autentikasi.
@@ -136,7 +136,7 @@ jobs:
 
             # Jalankan migrasi dan seeder
             echo "Running database migrations and seeding..."
-            php artisan migrate:fresh --seed
+            php artisan migrate:fresh --seed --force
             #php artisan migrate --force # Gunakan ini untuk update selanjutnya
             #php artisan db:seed # Jalankan seeder terpisah jika migrate:fresh tidak digunakan
             echo "Database migrations and seeding complete."
