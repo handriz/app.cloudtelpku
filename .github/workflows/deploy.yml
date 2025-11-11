@@ -136,8 +136,8 @@ jobs:
 
             # Jalankan migrasi dan seeder
             echo "Running database migrations and seeding..."
-            ##php artisan migrate:fresh --seed --force
-            php artisan migrate --force # Gunakan ini untuk update selanjutnya
+            php artisan migrate:fresh --seed --force
+            #php artisan migrate --force # Gunakan ini untuk update selanjutnya
             #php artisan db:seed # Jalankan seeder terpisah jika migrate:fresh tidak digunakan
             echo "Database migrations and seeding complete."
                        
