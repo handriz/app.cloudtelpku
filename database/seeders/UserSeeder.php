@@ -167,5 +167,16 @@ class UserSeeder extends Seeder
                 'is_approved' => true,
             ]
         );
+
+        User::firstOrCreate(
+            ['email' => 'validator02@appcloudte.com'],
+            [
+                'name' => 'Petugas Validasi 01',
+                'password' => Hash::make('password'),
+                'role_id' => $appUserRole->id, // Set role_id
+                'hierarchy_level_code' => '18PKU',
+                'is_approved' => true,
+            ]
+        );
     }
 }
