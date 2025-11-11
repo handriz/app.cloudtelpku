@@ -136,8 +136,8 @@ jobs:
 
             # Jalankan migrasi dan seeder
             echo "Running database migrations and seeding..."
-            php artisan migrate:fresh --seed
-            #php artisan migrate --force # Gunakan ini untuk update selanjutnya
+            #php artisan migrate:fresh --seed
+            php artisan migrate --force # Gunakan ini untuk update selanjutnya
             #php artisan db:seed # Jalankan seeder terpisah jika migrate:fresh tidak digunakan
             echo "Database migrations and seeding complete."
                        
@@ -156,8 +156,8 @@ jobs:
             echo "Storage linked."
             
             # Opsional: Restart layanan web server/php-fpm jika diperlukan
-            # echo "Restarting web server and PHP-FPM..."
+            echo "Restarting web server and PHP-FPM..."
             # sudo systemctl restart nginx
-            # sudo systemctl restart php8.1-fpm # Sesuaikan versi PHP
-            # echo "Web server and PHP-FPM restarted."
+            sudo systemctl restart php8.3-fpm # Sesuaikan versi PHP
+             echo "Web server and PHP-FPM restarted."
 
