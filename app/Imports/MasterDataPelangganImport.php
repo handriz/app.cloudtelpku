@@ -73,7 +73,7 @@ class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkRea
 
     public function chunkSize(): int
     {
-        return 1000; // Proses 1000 baris per putaran (aman untuk file besar)
+        return 2000; // Proses 1000 baris per putaran (aman untuk file besar)
     }
 
     public function getCsvSettings(): array
