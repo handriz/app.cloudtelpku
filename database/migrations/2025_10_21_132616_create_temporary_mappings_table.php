@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('objectid')->unique();
             $table->string('idpel')->nullable();
             $table->string('user_pendataan')->nullable();
+            $table->unsignedBigInteger('user_validasi')->nullable();
             $table->boolean('enabled')->default(true);
             $table->string('nokwhmeter')->nullable();
             $table->string('merkkwhmeter')->nullable();
@@ -37,6 +38,7 @@ return new class extends Migration
             $table->string('ket_validasi')->nullable();
             $table->text('validation_notes')->nullable();
             $table->json('validation_data')->nullable();
+            $table->boolean('is_validated')->default(false);
             $table->unsignedBigInteger('locked_by')->nullable();
             $table->timestamp('locked_at')->nullable();
             $table->string('foto_kwh')->nullable();
@@ -54,6 +56,7 @@ return new class extends Migration
             );
            
             $table->foreign('locked_by')->references('id')->on('users')->onDelete('set null');
+            $table->foreign('user_validasi')->references('id')->on('users')->onDelete('set null');
         });
     }
 
@@ -66,12 +69,20 @@ return new class extends Migration
             Schema::table('temporary_mappings', function (Blueprint $table) {
                 // Drop foreign key dulu
                 $table->dropForeign(['locked_by']);
+                $table->dropForeign(['user_validasi']);
 
                 // Drop semua indeks yang kita buat di 'up'
                 $table->dropIndex('idx_availability_performance');
                 $table->dropIndex(['objectid']);
                 $table->dropIndex(['idpel']);
                 $table->dropIndex(['nokwhmeter']);
+
+                if (Schema::hasColumn('temporary_mappings', 'user_validasi')) {
+                    $table->dropColumn('user_validasi');
+                }
+                if (Schema::hasColumn('temporary_mappings', 'is_validated')) {
+                    $table->dropColumn('is_validated');
+                }
             });
         }
         

@@ -650,6 +650,7 @@ App.Modal = (() => {
             if (modalMeterInputContainer) {
                 
                 const activeTabContent = document.querySelector('.tab-content:not(.hidden)');
+                const validationPanel = activeTabContent?.querySelector('#validation-content');
                 
                 // --- TEMUKAN INPUT DI MODAL ---
                 const modalMeterInput = modalMeterInputContainer.querySelector('#modal-input-meter');
@@ -665,17 +666,32 @@ App.Modal = (() => {
                 const mainMerkKwhInput = activeTabContent?.querySelector('#eval_merkkwhmeter');
                 const mainTahunBuatInput = activeTabContent?.querySelector('#eval_tahun_buat');
                 
-                // Kembalikan Nomor Meter (dan panggil event input untuk validasi)
-                if (mainMeterInput && modalMeterInput) {
-                    mainMeterInput.value = modalMeterInput.value;
-                    mainMeterInput.dispatchEvent(new Event('input', { bubbles: true })); 
+                // Definisikan fungsi helper untuk menyalin nilai dan memicu event
+                const eventInput = new Event('input', { bubbles: true });
+                const syncAndTrigger = (mainInput, modalInput) => {
+                    if (mainInput && modalInput) {
+                        if (mainInput.value !== modalInput.value) {
+                            mainInput.value = modalInput.value;
+                            mainInput.dispatchEvent(eventInput);
+                            mainInput.dispatchEvent(new Event('input', { bubbles: true })); 
+                        }
+                    }
+                };    
+
+                // 1. Sinkronisasi SEMUA INPUT TEKNIS
+                syncAndTrigger(mainMeterInput, modalMeterInput);
+                syncAndTrigger(mainMcbInput, modalMcbInput);
+                syncAndTrigger(mainPbtsInput, modalPbtsInput);
+                syncAndTrigger(mainMerkKwhInput, modalMerkKwhInput);
+                syncAndTrigger(mainTahunBuatInput, modalTahunBuatInput);
+
+                // 2. PAKSA VALIDASI JALAN SETELAH DATA DISELESAIKAN DENGAN NILAI BARU
+                const currentDetails = App.State.currentValidationDetails;
+                if (currentDetails && typeof App.Validation.checkEvaluationForm === 'function') {
+                    App.Validation.checkEvaluationForm(validationPanel, currentDetails);
+                    console.log("DEBUG-MODAL: Validasi dipaksa berjalan setelah close modal.");
                 }
                 
-                if (mainMcbInput && modalMcbInput) mainMcbInput.value = modalMcbInput.value;
-                if (mainPbtsInput && modalPbtsInput) mainPbtsInput.value = modalPbtsInput.value;
-                if (mainMerkKwhInput && modalMerkKwhInput) mainMerkKwhInput.value = modalMerkKwhInput.value;
-                if (mainTahunBuatInput && modalTahunBuatInput) mainTahunBuatInput.value = modalTahunBuatInput.value;
-
                 // --- BERSIHKAN MODAL ---
                 draggableInputWrapper.classList.add('hidden');
             }
@@ -1361,7 +1377,7 @@ App.Validation = (() => {
              if (App.State.validationMapInstance) { App.State.validationMapInstance.remove(); App.State.validationMapInstance = null; App.State.validationMarker = null;}
              return;
         }
-
+        console.log("DEBUG-UI: Item dimuat. details.enabled:", details.enabled, "Tipe:", typeof details.enabled);
         // 1. Update Header
         content.querySelector('#detail-idpel').textContent = details.idpel || 'IDPEL Tidak Tersedia';
         content.querySelector('#detail-user').textContent = details.user_pendataan || 'User Tidak Diketahui';
@@ -1839,6 +1855,8 @@ App.Validation = (() => {
     function checkEvaluationForm(panel, details) {
         if (!panel || !details) return;
 
+        const isEnabled = !!details.enabled;
+        const isMeterValidationRequired = isEnabled === true;
         const meterInput = panel.querySelector('#eval_meter_input');
         const meterStatus = panel.querySelector('#eval_meter_status');
         const petaValue = panel.querySelector('input[name="eval_peta"]:checked')?.value;
@@ -1887,18 +1905,44 @@ App.Validation = (() => {
         let meterNotMatch = false;
         const currentMeter = meterInput ? meterInput.value.trim() : '';
 
-        if (answerKey && currentMeter.length > 0) {
-            if (currentMeter === String(answerKey)) {
-                meterMatch = true;
-                if (meterStatus) { meterStatus.textContent = 'Nomor meter cocok!'; meterStatus.classList.add('text-green-500'); }
-            } else {
-                if (currentMeter.length >= String(answerKey).length) {
-                    meterNotMatch = true;
-                    if (meterStatus) { meterStatus.textContent = 'Nomor meter tidak cocok!'; meterStatus.classList.add('text-red-500'); }
+        if (isMeterValidationRequired) {
+            // A. ENABLED = 1 (Wajib Match Kunci Jawaban)
+            if (answerKey && currentMeter.length > 0) {
+                if (currentMeter === String(answerKey)) {
+                    meterMatch = true;
+                    if (meterStatus) { meterStatus.textContent = 'Nomor meter cocok!'; meterStatus.classList.add('text-green-500'); }
                 } else {
-                    if (meterStatus) { meterStatus.textContent = 'Mengetik...'; }
+                    if (currentMeter.length >= String(answerKey).length) {
+                        meterNotMatch = true;
+                        if (meterStatus) { meterStatus.textContent = 'Nomor meter tidak cocok!'; meterStatus.classList.add('text-red-500'); }
+                    } else {
+                        if (meterStatus) { meterStatus.textContent = 'Mengetik...'; }
+                    }
+                }
+            } else if (!answerKey && currentMeter.length > 0) {
+                // Jika tidak ada kunci jawaban tapi ada input (Dianggap match untuk data lama tanpa kunci)
+                if (meterStatus) { 
+                    meterStatus.textContent = 'Kunci jawaban tidak tersedia. Meter dianggap cocok.'; 
+                    meterStatus.classList.add('text-orange-500'); 
+                }
+                meterMatch = true;
+            } else if (currentMeter.length === 0) {
+                // Jika meter wajib tapi input kosong
+                meterNotMatch = true; // Anggap sebagai penolakan jika wajib
+                if (meterStatus) { meterStatus.textContent = 'Wajib diisi dan dicocokkan.'; meterStatus.classList.add('text-red-500'); }
+            }
+
+        } else {
+            // B. ENABLED != 1 (Tidak Wajib Match, Hanya Wajib Diisi)
+            if (currentMeter.length > 0) {
+                meterMatch = true; // Dianggap match selama diisi (karena akan diperbarui)
+                if (meterStatus) { 
+                    meterStatus.textContent = 'Pastikan Kembali Inputan Sebelum Save'; 
+                    meterStatus.classList.add('text-yellow-500'); 
                 }
             }
+            // Jika kosong, biarkan meterNotMatch=false, tapi akan gagal di basicApprovalCriteria
+            meterNotMatch = false; 
         }
 
         const petaTidakSesuai = petaValue === 'tidak';
@@ -1913,6 +1957,7 @@ App.Validation = (() => {
             else { persilReasonContainer.classList.add('hidden'); if (persilReasonSelect) persilReasonSelect.value = ''; }
         }
 
+        const isMeterRejection = isMeterValidationRequired && meterNotMatch;
         const hasAnyRejection = meterNotMatch || petaTidakSesuai || persilTidakSesuai;
 
         if (hasAnyRejection) {
@@ -1931,9 +1976,23 @@ App.Validation = (() => {
 
         const areNewFieldsFilled = mcbValue.length > 0 && pbtsValue.length > 0 && merkkwhValue.length > 0 && tahunBuatValue.length > 0;
         const areSrFieldsFilled = srValue.length > 0 && latSrValue.length > 0 && lonSrValue.length > 0;
-        if (meterMatch && petaValue === 'sesuai' && persilValue === 'sesuai' && areNewFieldsFilled && areSrFieldsFilled) {
+        
+        let isValidationReady = false;
+        const basicApprovalCriteria = petaValue === 'sesuai' && persilValue === 'sesuai' && areNewFieldsFilled && areSrFieldsFilled;
+
+        if (isMeterValidationRequired) {
+            isValidationReady = meterMatch && basicApprovalCriteria;
+        } else {
+            const isMeterInputProvided = currentMeter.length > 0;
+            isValidationReady = isMeterInputProvided && basicApprovalCriteria;
+        }
+        
+        if (isValidationReady) {
             validateButton.disabled = false;
             validateButton.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            validateButton.disabled = true;
+            validateButton.classList.add('opacity-50', 'cursor-not-allowed');
         }
 
         if (hasAnyRejection) {
@@ -2847,19 +2906,25 @@ App.Listeners = (() => {
         const formData = new FormData(form);
 
         if (panel) {
+            // --- AMBIL NILAI SEMUA INPUT EVALUASI (Termasuk yang DISABLED) ---
             const mcbValue = panel.querySelector('#eval_mcb')?.value || '';
             const pbtsValue = panel.querySelector('#eval_type_pbts')?.value || '';
             const merkkwhValue = panel.querySelector('#eval_merkkwhmeter')?.value || '';
             const tahunBuatValue = panel.querySelector('#eval_tahun_buat')?.value || '';
+            // Input Sambungan yang dinonaktifkan:
             const srValue = panel.querySelector('#eval_sr')?.value || '';
             const latSrValue = panel.querySelector('#eval_latitudey_sr')?.value || '';
             const lonSrValue = panel.querySelector('#eval_longitudex_sr')?.value || '';
+
+            const rejectionReason = panel.querySelector('#eval_rejection_reason')?.value || '';
+
             const evalData = {
                 eval_peta: panel.querySelector('input[name="eval_peta"]:checked')?.value || null,
                 eval_peta_reason: panel.querySelector('#eval_peta_reason')?.value || null,
                 eval_persil: panel.querySelector('input[name="eval_persil"]:checked')?.value || null,
                 eval_persil_reason: panel.querySelector('#eval_persil_reason')?.value || null,
                 eval_meter_input: panel.querySelector('#eval_meter_input')?.value || null,
+
                 eval_mcb: mcbValue,
                 eval_type_pbts: pbtsValue,
                 eval_merkkwhmeter: merkkwhValue,
@@ -2868,13 +2933,16 @@ App.Listeners = (() => {
                 eval_latitudey_sr: latSrValue,
                 eval_longitudex_sr: lonSrValue,
             };
-            const rejectionReason = panel.querySelector('#eval_rejection_reason')?.value || ''; 
+            
             formData.append('validation_data', JSON.stringify(evalData));
             formData.append('validation_notes', rejectionReason);
             formData.append('eval_mcb', mcbValue);
             formData.append('eval_type_pbts', pbtsValue);
             formData.append('eval_merkkwhmeter', merkkwhValue);
             formData.append('eval_tahun_buat', tahunBuatValue);
+            formData.append('eval_sr', srValue); 
+            formData.append('eval_latitudey_sr', latSrValue);
+            formData.append('eval_longitudex_sr', lonSrValue);
         }
 
         fetch(form.action, {
@@ -2942,6 +3010,45 @@ App.Listeners = (() => {
     }
 
     function handleGlobalInput(e) {
+        const target = e.target;
+        if (target.id === 'eval_mcb') {
+            let value = target.value.trim().toUpperCase();
+            
+            value = value.replace(/[^0-9A]/g, ''); 
+            
+            if (value.endsWith('A')) {
+                value = value.slice(0, -1);
+            }
+            value = value.replace(/[^0-9]/g, '');
+
+            if (value.length > 0) {
+                target.value = value + 'A';
+            } else {
+                target.value = '';
+            }
+            
+            App.Validation.handleEvaluationChange(e);
+            return; 
+        }
+
+        if (target.id === 'eval_tahun_buat') {
+            let value = target.value.trim();
+            
+            // Hapus semua non-angka
+            value = value.replace(/[^0-9]/g, ''); 
+            
+            // Batasi panjang input menjadi 4 digit
+            if (value.length > 4) {
+                value = value.slice(0, 4);
+            }
+
+            target.value = value;
+            
+            // Panggil validasi form
+            App.Validation.handleEvaluationChange(e);
+            return; 
+        }
+
         const searchInput = e.target.closest('form[id*="-search-form"] input[name="search"]');
         if (searchInput) {
             const searchForm = searchInput.closest('form');

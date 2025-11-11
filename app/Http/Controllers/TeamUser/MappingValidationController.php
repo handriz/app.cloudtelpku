@@ -252,6 +252,7 @@ class MappingValidationController extends Controller
             'sr'                => $item->sr,
             'latitudey_sr'      => $item->latitudey_sr,
             'longitudex_sr'     => $item->longitudex_sr,
+            'enabled'           => $item->enabled,
         ];
     }
 
@@ -259,18 +260,13 @@ class MappingValidationController extends Controller
     {
         DB::beginTransaction();
         try {
-            // Inisialisasi variabel untuk jangkauan (scope) catch block
-            $objectid = null;
-            $oldKwhPath = null;
-            $oldBangunanPath = null;
-            $newPathKwh = null;
-            $newPathBangunan = null;
-
             // Pastikan user ini yang mengunci item
             $tempData = TemporaryMapping::where('id', $id)
                         ->where('locked_by', Auth::id())
                         ->lockForUpdate()
                         ->firstOrFail(); // Gagal jika ID salah atau di-lock user lain
+
+            // 1. Update SEMUA input evaluasi di tabel temporary
             $tempData->mcb = $request->input('eval_mcb');
             $tempData->type_pbts = $request->input('eval_type_pbts');
             $tempData->merkkwhmeter = $request->input('eval_merkkwhmeter');
@@ -279,57 +275,83 @@ class MappingValidationController extends Controller
             $tempData->latitudey_sr = $request->input('eval_latitudey_sr');
             $tempData->longitudex_sr = $request->input('eval_longitudex_sr');
 
-            $idpel = $tempData->idpel;
-            $objectid = $tempData->objectid;
+            // 2. Tandai item SELESAI validasi (is_validated = true)
+            $tempData->is_validated = true;
+            $tempData->ket_validasi = 'validated';
+            $tempData->user_validasi = Auth::id();
 
-            // 1. Salin data ke array & atur status valid
-            $validatedData = $tempData->toArray();
+            // 3. Simpan data evaluasi
+            $evalData = $request->input('validation_data');
+            $tempData->validation_data = $evalData;
+            $tempData->validation_notes = $request->input('validation_notes');
 
-            $validatedData['ket_validasi'] = 'verified';
-            $validatedData['enabled'] = false;
-            $validatedData['user_validasi']    = Auth::user()->id;
-
-            // 2. Pindahkan foto dari 'unverified' ke 'verified'
-            $newPhotoPaths = [];
-            $oldKwhPath = $tempData->foto_kwh;
-            $oldBangunanPath = $tempData->foto_bangunan;
-            
-            // Pindahkan foto KWH
-            if ($oldKwhPath && Storage::disk('public')->exists($oldKwhPath)) {
-                $newPathKwh = str_replace('unverified', 'verified', $oldKwhPath); // <-- Pastikan $oldKwhPath
-                Storage::disk('public')->move($oldKwhPath, $newPathKwh);
-                $newPhotoPaths['foto_kwh'] = $newPathKwh;
-            }
-            // Pindahkan foto Bangunan
-            if ($oldBangunanPath && Storage::disk('public')->exists($oldBangunanPath)) {
-                $newPathBangunan = str_replace('unverified', 'verified', $oldBangunanPath); // <-- Pastikan $oldBangunanPath
-                Storage::disk('public')->move($oldBangunanPath, $newPathBangunan);
-                $newPhotoPaths['foto_bangunan'] = $newPathBangunan;
-            }
-
-            // 3. Bersihkan data array sebelum pindah ke tabel utama
-            unset(
-                $validatedData['id'], 
-                $validatedData['locked_by'], 
-                $validatedData['locked_at'],
-                $validatedData['validation_data'],
-                $validatedData['validation_notes'],
-                $validatedData['foto_kwh'],     
-                $validatedData['foto_bangunan']  
-            );
-
-            // 5. Buat entri baru di tabel mapping_kddk utama
-            MappingKddk::updateOrCreate(
-                ['objectid' => $objectid], // Kunci pencarian
-                array_merge($validatedData, $newPhotoPaths) // Data baru/update
-            );
-
-            // 6. Hapus entri dari tabel temporary
-            $tempData->delete();
-
+            // 4. Lepaskan lock
+            $tempData->locked_by = null;
+            $tempData->locked_at = null;
+            $tempData->save();
             DB::commit();
 
-            // 7. Kirim respon sukses (untuk AJAX)
+            // 5. Siapkan respon
+            $idpel = $tempData->idpel;
+
+            // $objectid = null;
+            // $oldKwhPath = null;
+            // $oldBangunanPath = null;
+            // $newPathKwh = null;
+            // $newPathBangunan = null;
+
+
+
+            // $idpel = $tempData->idpel;
+            // $objectid = $tempData->objectid;
+
+            // // 1. Salin data ke array & atur status valid
+            // $validatedData = $tempData->toArray();
+
+            // $validatedData['ket_validasi'] = 'verified';
+            // $validatedData['enabled'] = false;
+            // $validatedData['user_validasi']    = Auth::user()->id;
+
+            // // 2. Pindahkan foto dari 'unverified' ke 'verified'
+            // $newPhotoPaths = [];
+            // $oldKwhPath = $tempData->foto_kwh;
+            // $oldBangunanPath = $tempData->foto_bangunan;
+            
+            // // Pindahkan foto KWH
+            // if ($oldKwhPath && Storage::disk('public')->exists($oldKwhPath)) {
+            //     $newPathKwh = str_replace('unverified', 'verified', $oldKwhPath); // <-- Pastikan $oldKwhPath
+            //     Storage::disk('public')->move($oldKwhPath, $newPathKwh);
+            //     $newPhotoPaths['foto_kwh'] = $newPathKwh;
+            // }
+            // // Pindahkan foto Bangunan
+            // if ($oldBangunanPath && Storage::disk('public')->exists($oldBangunanPath)) {
+            //     $newPathBangunan = str_replace('unverified', 'verified', $oldBangunanPath); // <-- Pastikan $oldBangunanPath
+            //     Storage::disk('public')->move($oldBangunanPath, $newPathBangunan);
+            //     $newPhotoPaths['foto_bangunan'] = $newPathBangunan;
+            // }
+
+            // // 3. Bersihkan data array sebelum pindah ke tabel utama
+            // unset(
+            //     $validatedData['id'], 
+            //     $validatedData['locked_by'], 
+            //     $validatedData['locked_at'],
+            //     $validatedData['validation_data'],
+            //     $validatedData['validation_notes'],
+            //     $validatedData['foto_kwh'],     
+            //     $validatedData['foto_bangunan']  
+            // );
+
+            // // 5. Buat entri baru di tabel mapping_kddk utama
+            // MappingKddk::updateOrCreate(
+            //     ['objectid' => $objectid], // Kunci pencarian
+            //     array_merge($validatedData, $newPhotoPaths) // Data baru/update
+            // );
+
+            // // 6. Hapus entri dari tabel temporary
+            // $tempData->delete();
+
+            // DB::commit();
+
             if ($request->expectsJson()) {
                  // Cari item berikutnya yang tersedia untuk divalidasi user ini
                  $nextItem = $this->findNextAvailableItem(Auth::id());
@@ -359,16 +381,6 @@ class MappingValidationController extends Controller
 
             } catch (\Exception $e) {
             DB::rollBack(); // Batalkan semua jika error
-
-            // Kembalikan foto yang mungkin terlanjur dipindah (rollback file)
-            if (isset($newPathKwh) && Storage::disk('public')->exists($newPathKwh)) {
-                Storage::disk('public')->move($newPathKwh, $oldKwhPath); // Kembalikan ke unverified
-            }
-            if (isset($newBangunanPath) && Storage::disk('public')->exists($newBangunanPath)) {
-                 Storage::disk('public')->move($newBangunanPath, $oldBangunanPath); // Kembalikan ke unverified
-            }
-
-            $logObjectId = $objectid ?? 'N/A';
             \Log::error("Gagal validasi item ID {$id} (Object ID: {$logObjectId}): " . $e->getMessage());
             // Kirim error JSON jika AJAX
              if ($request->expectsJson()) {
