@@ -488,12 +488,12 @@ class MappingValidationController extends Controller
                     END ASC
                 ");
 
-                $count = $baseQuery->count();
+                $count = $query->count();
                 if ($count === 0) return null;
 
                 $randomOffset = rand(0, max(0, $count - 1));
 
-                return $baseQuery->skip($randomOffset)->take(1)->first();
+                return $Query->skip($randomOffset)->take(1)->first();
         //  // --- TIER 1: Prioritaskan item BARU (Fresh) ---
         //  $freshItem = (clone $query)
         //     // --- INI PERBAIKANNYA ---
