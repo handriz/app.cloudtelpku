@@ -493,7 +493,7 @@ class MappingValidationController extends Controller
 
                 $randomOffset = rand(0, max(0, $count - 1));
 
-                return $Query->skip($randomOffset)->take(1)->first();
+                return $query->skip($randomOffset)->take(1)->first();
         //  // --- TIER 1: Prioritaskan item BARU (Fresh) ---
         //  $freshItem = (clone $query)
         //     // --- INI PERBAIKANNYA ---
