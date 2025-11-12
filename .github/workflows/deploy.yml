@@ -133,20 +133,26 @@ jobs:
             echo "Installing ACL package..."
             sudo apt-get install -y acl
             
-            # --- PENTING: Lakukan CHOWN/CHMOD di sini, setelah file disalin ---
-            # Pastikan user telpkudev memiliki kepemilikan penuh dan grup www-data dapat menulis.
+            # 2. Atur Ownership: $SSH_USER sebagai owner, $WEB_USER sebagai grup.
             echo "Setting primary ownership..."
-            sudo chown -R $SSH_USER:$WEB_USER . # <--- SESUAIKAN NAMA USER DAN GROUP WEB SERVER
-            
-            sudo chmod -R 755 public # Pastikan public bisa dibaca oleh web server
-            echo "File permissions set."
+
+            # Fokus pada folder yang penting: storage/app dan bootstrap/cache
+            sudo chown -R $SSH_USER:$WEB_USER storage/app bootstrap/cache
+           
+            sudo chown -R $SSH_USER:$WEB_USER storage/app bootstrap/cache
+    
+            # 3. ACL (Solusi Pewarisan Izin)
             echo "Applying ACL for persistent write permissions..."
+            # Terapkan ACL pada storage/app
             sudo setfacl -R -m u:$WEB_USER:rwx storage/app
             sudo setfacl -R -m g:$WEB_USER:rwx storage/app
-            sudo setfacl -d -m u:$WEB_USER:rwx storage/app
+            # Terapkan ACL Default agar folder baru (temp_photo_uploads) mewarisi izin
+            sudo setfacl -d -m u:$WEB_USER:rwx storage/app 
             sudo setfacl -d -m g:$WEB_USER:rwx storage/app
             
+            # 4. Final CHMOD (Sebagai fallback)
             sudo chmod -R 775 storage/app bootstrap/cache
+            
             echo "File permissions set successfully."
 
             # Jalankan migrasi dan seeder
