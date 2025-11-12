@@ -89,11 +89,11 @@ jobs:
         run: npm run build
 
       # Langkah 9: Membuat file .env di runner (SEBELUM build)
-      - name: Create .env file
-        ##run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
-        run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
-        env:
-          DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
+      # - name: Create .env file
+      #   ##run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
+      #   run: printf '%s\n' "${{ secrets.DOT_ENV_CONTENT }}" > .env
+      #   env:
+      #     DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
 
       # Langkah 10: Deployment: Sinkronisasi File ke VPS menggunakan rsync langsung
       # Ini sepenuhnya bergantung pada ssh-agent untuk autentikasi.
@@ -113,7 +113,7 @@ jobs:
           # Jalankan rsync dari runner ke VPS.
           # -e ssh: memberitahu rsync untuk menggunakan SSH sebagai transport.
           # SSH_AUTH_SOCK akan otomatis digunakan oleh SSH karena sudah disiapkan oleh webfactory/ssh-agent.
-           rsync -avz --delete --exclude='.git' --exclude='storage/app/*' --exclude='storage/framework/*' --exclude='bootstrap/cache/*' -e "ssh -o StrictHostKeyChecking=yes" ${{ github.workspace }}/ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
+           rsync -avz --delete --exclude='.git' --exclude='.env' --exclude='storage/app/*' --exclude='storage/framework/*' --exclude='bootstrap/cache/*' -e "ssh -o StrictHostKeyChecking=yes" ${{ github.workspace }}/ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
             
 
       # Langkah 11: Jalankan Perintah Pasca-Deployment di VPS melalui SSH

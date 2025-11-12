@@ -23,11 +23,14 @@ class Kernel extends ConsoleKernel
        
         // 2. Perbaikan sintaks photos:process-inbox
         $schedule->command('photos:process-inbox --limit=200')
-        ->everyFiveMinutes()
-        ->withoutOverlapping();
+        ->everyMinute()
+        ->withoutOverlapping()
+        ->appendOutputTo(storage_path('logs/scheduler-photo.log'));
 
         // 3. Command clean-temp-photos
-         $schedule->command('app:clean-temporary-photos')->daily();
+         $schedule->command('app:clean-temporary-photos')
+         ->daily()
+         >appendOutputTo(storage_path('logs/scheduler-clean.log'));
     }
 
     /**
