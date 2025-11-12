@@ -4,10 +4,10 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\File; // Pastikan ini ada
+use Illuminate\Support\Facades\File; 
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
-use App\Models\TemporaryMapping; // Pastikan ini ada
+use App\Models\TemporaryMapping; 
 
 class ProcessPhotoInbox extends Command
 {
@@ -53,6 +53,7 @@ class ProcessPhotoInbox extends Command
         $totalFailedDbUpdate = 0;
         $totalSkipped = 0;
         $startTime = microtime(true);
+        $diskPublic = Storage::disk('public');
 
         // 1. Dapatkan daftar file di inbox (disk default 'local')
         $files = Storage::files($this->inboxPath);
@@ -118,19 +119,44 @@ class ProcessPhotoInbox extends Command
             if ($dbColumn && $objectId && $idpel && $extension) {
 
                 // Bangun path tujuan fisik (di disk 'public')
-                $destinationDir = $this->destinationBase . '/' . $idpel; // cth: public/mapping_photos/unverified/12345
-                $destinationPathPhysical = $destinationDir . '/' . $filename; // cth: public/mapping_photos/unverified/12345/1_12345_foto_app.jpg
-
-                // Bangun path untuk disimpan ke DB (tanpa 'public/')
-                $destinationPathDb = $this->dbPathBase . '/' . $idpel . '/' . $filename; // cth: mapping_photos/unverified/12345/1_12345_foto_app.jpg
+                $destinationDir = $this->destinationBase . '/' . $idpel; 
+                $destinationPathPhysical = $destinationDir . '/' . $filename; 
+                $destinationPathDb = $destinationDir . '/' . $filename; 
 
                 $mappingRecord = null; // Inisialisasi
 
+                // >>> LOGIKA PERBAIKAN OVERWRITE DENGAN EKSTENSI BERBEDA <<<
+                $baseNameWithoutExt = $objectId . '_' . $idpel . '_' . $fullSuffix; 
+                
+                // 1. Dapatkan daftar file yang ada di folder tujuan (hanya file, bukan direktori)
+                $oldFiles = $diskPublic->files($destinationDir); 
+
+                foreach ($oldFiles as $oldFilePath) {
+                    $oldFilenameInStorage = pathinfo($oldFilePath, PATHINFO_FILENAME);
+                    
+                    // Cek apakah nama file yang sudah ada di folder tujuan DIMULAI dengan pola nama dasar
+                    if (str_starts_with($oldFilenameInStorage, $baseNameWithoutExt)) {
+                        
+                        // Periksa Izin Penghapusan secara eksplisit
+                        try {
+                            $diskPublic->delete($oldFilePath); 
+                            $this->line("<fg=yellow>Overwrite:</> {$oldFilePath} dihapus.");
+                            Log::info("Foto lama dihapus: {$oldFilePath} (Overwrite ID: {$objectId}).");
+                        } catch (\Exception $e) {
+                            Log::error("GAGAL HAPUS file lama {$oldFilePath} di storage: " . $e->getMessage());
+                            $this->error("GAGAL HAPUS FILE LAMA: Cek izin file system untuk {$oldFilePath}");
+                        }
+                    }
+                }
+
                 try {
                     // --- Langkah 1: Pindahkan File Fisik ---
-                    Storage::disk('public')->makeDirectory($destinationDir); // Pastikan folder tujuan ada di disk 'public'
+                    $diskPublic->makeDirectory($destinationDir); 
                     // Pindahkan dari disk 'local' ke disk 'public'
-                    Storage::move($sourcePath, $destinationPathPhysical);
+                    // Hati-hati: Storage::move memerlukan path relatif storage/app/
+                    if (!Storage::move($sourcePath, 'public/' . $destinationPathPhysical)) {
+                        throw new \Exception("Storage::move gagal memindahkan file.");
+                    }
                     $totalSuccessMove++;
                     $this->line("<fg=blue>Dipindah:</> {$filename} -> {$destinationPathPhysical}");
                     Log::debug("Foto dipindahkan: {$filename} -> {$destinationPathPhysical}");
