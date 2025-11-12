@@ -124,15 +124,24 @@ jobs:
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /var/www/app.cloudtelpku # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
+            DEPLOY_PATH="/var/www/app.cloudtelpku"
+            WEB_USER="www-data"
+            SSH_USER="${{ secrets.VPS_USERNAME }}"
+            cd $DEPLOY_PATH # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
             
             # --- PENTING: Lakukan CHOWN/CHMOD di sini, setelah file disalin ---
             # Pastikan user telpkudev memiliki kepemilikan penuh dan grup www-data dapat menulis.
             echo "Setting file permissions..."
-            sudo chown -R telpkudev:www-data . # <--- SESUAIKAN NAMA USER DAN GROUP WEB SERVER
+            sudo chown -R $SSH_USER:$WEB_USER . # <--- SESUAIKAN NAMA USER DAN GROUP WEB SERVER
             sudo chmod -R 775 storage bootstrap/cache
             sudo chmod -R 755 public # Pastikan public bisa dibaca oleh web server
             echo "File permissions set."
+            echo "Applying ACL for persistent write permissions..."
+            sudo setfacl -R -m u:$WEB_USER:rwx storage
+            sudo setfacl -R -m g:$WEB_USER:rwx storage
+            sudo setfacl -d -m u:$WEB_USER:rwx storage
+            sudo setfacl -d -m g:$WEB_USER:rwx storage
+            echo "File permissions set successfully."
 
             # Jalankan migrasi dan seeder
             echo "Running database migrations and seeding..."
