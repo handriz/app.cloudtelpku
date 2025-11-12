@@ -1813,6 +1813,12 @@ App.Validation = (() => {
 
         const meterStatus = panel.querySelector('#eval_meter_status');
         if (meterStatus) meterStatus.textContent = '';
+
+        panel.querySelectorAll('input[name="eval_foto_kwh"]').forEach(radio => { radio.checked = false; });
+        const fotoKwhReasonContainer = panel.querySelector('#eval_foto_kwh_reason_container');
+        const fotoKwhReasonSelect = panel.querySelector('#eval_foto_kwh_reason');
+        if (fotoKwhReasonContainer) fotoKwhReasonContainer.classList.add('hidden');
+        if (fotoKwhReasonSelect) fotoKwhReasonSelect.value = '';
         
         const petaReasonContainer = panel.querySelector('#eval_peta_reason_container');
         const petaReasonSelect = panel.querySelector('#eval_peta_reason');
@@ -1868,6 +1874,7 @@ App.Validation = (() => {
         const srInput = panel.querySelector('#eval_sr'); 
         const latSrInput = panel.querySelector('#eval_latitudey_sr');
         const lonSrInput = panel.querySelector('#eval_longitudex_sr');
+        const fotoKwhValue = panel.querySelector('input[name="eval_foto_kwh"]:checked')?.value;
 
         const mcbValue = mcbInput ? mcbInput.value.trim() : '';
         const pbtsValue = pbtsInput ? pbtsInput.value.trim() : '';
@@ -1885,6 +1892,8 @@ App.Validation = (() => {
         const rejectionPlaceholder = panel.querySelector('#rejection_reason_placeholder');
         const validateButton = panel.querySelector('#detail-button-validate');
         const rejectButton = panel.querySelector('#detail-button-reject');
+        const fotoKwhReasonContainer = panel.querySelector('#eval_foto_kwh_reason_container');
+        const fotoKwhReasonSelect = panel.querySelector('#eval_foto_kwh_reason');
 
         if (!validateButton || !rejectButton) return;
 
@@ -1947,6 +1956,7 @@ App.Validation = (() => {
 
         const petaTidakSesuai = petaValue === 'tidak';
         const persilTidakSesuai = persilValue === 'tidak';
+        const fotoKwhTidakSesuai = fotoKwhValue === 'tidak';
 
         if (petaReasonContainer) {
             if (petaTidakSesuai) petaReasonContainer.classList.remove('hidden');
@@ -1970,15 +1980,17 @@ App.Validation = (() => {
 
         const isPetaSelected = typeof petaValue !== 'undefined';
         const isPersilSelected = typeof persilValue !== 'undefined';
+
         const isPetaReasonSelected = !petaTidakSesuai || (petaTidakSesuai && petaReasonSelect && petaReasonSelect.value.trim() !== '');
         const isPersilReasonSelected = !persilTidakSesuai || (persilTidakSesuai && persilReasonSelect && persilReasonSelect.value.trim() !== '');
+        const isFotoKwhReasonSelected = !fotoKwhTidakSesuai || (fotoKwhReasonSelect && fotoKwhReasonSelect.value.trim() !== '');
         const isRejectionReasonFilled = !hasAnyRejection || (rejectionReason && rejectionReason.value.trim().length >= MIN_REJECTION_CHARS);
 
         const areNewFieldsFilled = mcbValue.length > 0 && pbtsValue.length > 0 && merkkwhValue.length > 0 && tahunBuatValue.length > 0;
         const areSrFieldsFilled = srValue.length > 0 && latSrValue.length > 0 && lonSrValue.length > 0;
         
         let isValidationReady = false;
-        const basicApprovalCriteria = petaValue === 'sesuai' && persilValue === 'sesuai' && areNewFieldsFilled && areSrFieldsFilled;
+        const basicApprovalCriteria = petaValue === 'sesuai' && persilValue === 'sesuai' && fotoKwhValue === 'sesuai' && areNewFieldsFilled && areSrFieldsFilled;
 
         if (isMeterValidationRequired) {
             isValidationReady = meterMatch && basicApprovalCriteria;

@@ -191,6 +191,29 @@
                                 <input type="text" id="eval_meter_input" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Nomor Meter lengkap..." autocomplete="Off">
                                 <div id="eval_meter_status" class="text-xs mt-1 h-4"></div>
                             </div>
+                            <div class="grid grid-cols-1 gap-4 border-t dark:border-gray-700 pt-4 mt-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Apakah Kualitas Foto KWH sudah sesuai?</label>
+                                    <div class="mt-2 space-x-4">
+                                        <label class="inline-flex items-center">
+                                            <input type="radio" name="eval_foto_kwh" value="sesuai" class="eval-radio text-indigo-600 focus:ring-indigo-500">
+                                            <span class="ml-2 text-sm">Sesuai</span>
+                                        </label>
+                                        <label class="inline-flex items-center">
+                                            <input type="radio" name="eval_foto_kwh" value="tidak" class="eval-radio text-red-600 focus:ring-red-500">
+                                            <span class="ml-2 text-sm">Tidak Sesuai</span>
+                                        </label>
+                                    </div>
+                                    <div id="eval_foto_kwh_reason_container" class="mt-3 hidden space-y-1">
+                                        <label for="eval_foto_kwh_reason" class="block text-xs font-medium text-gray-600 dark:text-gray-400">Alasan Foto KWH Tidak Sesuai:</label>
+                                        <select id="eval_foto_kwh_reason" name="eval_foto_kwh_reason" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                                            <option value="">-- Pilih Alasan --</option>
+                                            <option value="buram">Foto App Buram</option>
+                                            <option value="salah">Foto App Salah</option>
+                                        </select>
+                                    </div>                                                
+                                </div>
+                            </div>
                         </div>
 
                         {{-- POSISI BARU: INPUT TEKNIS --}}

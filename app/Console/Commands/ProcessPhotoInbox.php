@@ -189,7 +189,7 @@ class ProcessPhotoInbox extends Command
                     } catch (\Exception $dbError) {
                         $totalFailedDbUpdate++;
                         Log::error("DB Update Error untuk objectid {$objectId} (File: {$filename}): " . $dbError->getMessage());
-                        $this->error("DB Update Error: objectid {$objectId} - " . $dbError.getMessage());
+                        $this->error("DB Update Error: objectid {$objectId} - " . $dbError->getMessage());
                         // Pertimbangkan: Rollback pemindahan file jika DB gagal?
                         // try { Storage::disk('public')->move($destinationPathPhysical, $sourcePath); } catch (\Exception $e) {}
                     }
@@ -198,7 +198,7 @@ class ProcessPhotoInbox extends Command
                 } catch (\Exception $moveError) {
                     $totalFailedMove++;
                     Log::error("Gagal pindah foto {$filename} dari {$sourcePath}: " . $moveError->getMessage());
-                    $this->error("Gagal pindah foto {$filename}: " . $moveError.getMessage());
+                    $this->error("Gagal pindah foto {$filename}: " . $moveError->getMessage());
                     // File masih ada di inbox, akan dicoba lagi nanti
                 }
             } else {
