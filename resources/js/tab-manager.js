@@ -1789,21 +1789,23 @@ App.Validation = (() => {
         if (!panel) return;
         panel.querySelectorAll('.eval-radio').forEach(radio => { radio.checked = false; });
 
+        // Reset Input Meter
         const meterInput = panel.querySelector('#eval_meter_input');
         if (meterInput) meterInput.value = '';
+        const meterStatus = panel.querySelector('#eval_meter_status');
+        if (meterStatus) meterStatus.textContent = '';
 
+        // Reset Input Teknis
         const mcbInput = panel.querySelector('#eval_mcb');
         if (mcbInput) mcbInput.value = '';
-        
         const pbtsInput = panel.querySelector('#eval_type_pbts');
         if (pbtsInput) pbtsInput.value = '';
-
         const merkkwhInput = panel.querySelector('#eval_merkkwhmeter');
         if (merkkwhInput) merkkwhInput.value = '';
-
         const tahunBuatInput = panel.querySelector('#eval_tahun_buat');
         if (tahunBuatInput) tahunBuatInput.value = '';
 
+        // Reset Input Sambungan
         const srInput = panel.querySelector('#eval_sr'); 
         if (srInput) srInput.value = '';
         const latSrInput = panel.querySelector('#eval_latitudey_sr');
@@ -1811,25 +1813,25 @@ App.Validation = (() => {
         const lonSrInput = panel.querySelector('#eval_longitudex_sr');
         if (lonSrInput) lonSrInput.value = '';
 
-        const meterStatus = panel.querySelector('#eval_meter_status');
-        if (meterStatus) meterStatus.textContent = '';
-
-        panel.querySelectorAll('input[name="eval_foto_kwh"]').forEach(radio => { radio.checked = false; });
-        const fotoKwhReasonContainer = panel.querySelector('#eval_foto_kwh_reason_container');
-        const fotoKwhReasonSelect = panel.querySelector('#eval_foto_kwh_reason');
-        if (fotoKwhReasonContainer) fotoKwhReasonContainer.classList.add('hidden');
-        if (fotoKwhReasonSelect) fotoKwhReasonSelect.value = '';
-        
+        // Reset Alasan Peta
         const petaReasonContainer = panel.querySelector('#eval_peta_reason_container');
         const petaReasonSelect = panel.querySelector('#eval_peta_reason');
         if (petaReasonContainer) petaReasonContainer.classList.add('hidden');
         if (petaReasonSelect) petaReasonSelect.value = '';
 
+        // Reset Alasan Persil
         const persilReasonContainer = panel.querySelector('#eval_persil_reason_container');
         const persilReasonSelect = panel.querySelector('#eval_persil_reason');
         if (persilReasonContainer) persilReasonContainer.classList.add('hidden');
         if (persilReasonSelect) persilReasonSelect.value = '';
 
+        // Reset Alasan Kualitas Foto KWH (Baru)
+        const fotoKwhReasonContainer = panel.querySelector('#eval_foto_kwh_reason_container');
+        const fotoKwhReasonSelect = panel.querySelector('#eval_foto_kwh_reason');
+        if (fotoKwhReasonContainer) fotoKwhReasonContainer.classList.add('hidden');
+        if (fotoKwhReasonSelect) fotoKwhReasonSelect.value = '';
+        
+        // Reset Alasan Penolakan Umum
         const rejectionContainer = panel.querySelector('#rejection_reason_container');
         if (rejectionContainer) rejectionContainer.classList.add('hidden');
         const rejectionReason = panel.querySelector('#eval_rejection_reason');
@@ -1837,6 +1839,7 @@ App.Validation = (() => {
         const rejectionPlaceholder = panel.querySelector('#rejection_reason_placeholder');
         if (rejectionPlaceholder) rejectionPlaceholder.classList.remove('hidden');
 
+        // Reset Tombol Aksi
         const validateButton = panel.querySelector('#detail-button-validate');
         const rejectButton = panel.querySelector('#detail-button-reject');
         if (validateButton) { validateButton.disabled = true; validateButton.classList.add('opacity-50', 'cursor-not-allowed'); }
@@ -1861,12 +1864,16 @@ App.Validation = (() => {
     function checkEvaluationForm(panel, details) {
         if (!panel || !details) return;
 
+        // --- 1. AMBIL SEMUA NILAI INPUT ---
         const isEnabled = !!details.enabled;
         const isMeterValidationRequired = isEnabled === true;
+
         const meterInput = panel.querySelector('#eval_meter_input');
-        const meterStatus = panel.querySelector('#eval_meter_status');
         const petaValue = panel.querySelector('input[name="eval_peta"]:checked')?.value;
         const persilValue = panel.querySelector('input[name="eval_persil"]:checked')?.value;
+        const fotoKwhValue = panel.querySelector('input[name="eval_foto_kwh"]:checked')?.value;
+
+        // Input Teknis & Sambungan
         const mcbInput = panel.querySelector('#eval_mcb');
         const pbtsInput = panel.querySelector('#eval_type_pbts');
         const merkkwhInput = panel.querySelector('#eval_merkkwhmeter');
@@ -1874,7 +1881,23 @@ App.Validation = (() => {
         const srInput = panel.querySelector('#eval_sr'); 
         const latSrInput = panel.querySelector('#eval_latitudey_sr');
         const lonSrInput = panel.querySelector('#eval_longitudex_sr');
-        const fotoKwhValue = panel.querySelector('input[name="eval_foto_kwh"]:checked')?.value;
+        
+        // Elemen Alasan
+        const petaReasonContainer = panel.querySelector('#eval_peta_reason_container');
+        const petaReasonSelect = panel.querySelector('#eval_peta_reason');
+        const persilReasonContainer = panel.querySelector('#eval_persil_reason_container');
+        const persilReasonSelect = panel.querySelector('#eval_persil_reason');
+        const fotoKwhReasonContainer = panel.querySelector('#eval_foto_kwh_reason_container');
+        const fotoKwhReasonSelect = panel.querySelector('#eval_foto_kwh_reason');
+
+        // Elemen Tombol & Status
+        const meterStatus = panel.querySelector('#eval_meter_status');
+        const rejectionContainer = panel.querySelector('#rejection_reason_container');
+        const rejectionReason = panel.querySelector('#eval_rejection_reason');
+        const rejectionPlaceholder = panel.querySelector('#rejection_reason_placeholder');
+        const validateButton = panel.querySelector('#detail-button-validate');
+        const rejectButton = panel.querySelector('#detail-button-reject');
+
 
         const mcbValue = mcbInput ? mcbInput.value.trim() : '';
         const pbtsValue = pbtsInput ? pbtsInput.value.trim() : '';
@@ -1883,20 +1906,10 @@ App.Validation = (() => {
         const srValue = srInput ? srInput.value.trim() : ''; 
         const latSrValue = latSrInput ? latSrInput.value.trim() : '';
         const lonSrValue = lonSrInput ? lonSrInput.value.trim() : '';
-        const petaReasonContainer = panel.querySelector('#eval_peta_reason_container');
-        const petaReasonSelect = panel.querySelector('#eval_peta_reason');
-        const persilReasonContainer = panel.querySelector('#eval_persil_reason_container');
-        const persilReasonSelect = panel.querySelector('#eval_persil_reason');
-        const rejectionContainer = panel.querySelector('#rejection_reason_container');
-        const rejectionReason = panel.querySelector('#eval_rejection_reason');
-        const rejectionPlaceholder = panel.querySelector('#rejection_reason_placeholder');
-        const validateButton = panel.querySelector('#detail-button-validate');
-        const rejectButton = panel.querySelector('#detail-button-reject');
-        const fotoKwhReasonContainer = panel.querySelector('#eval_foto_kwh_reason_container');
-        const fotoKwhReasonSelect = panel.querySelector('#eval_foto_kwh_reason');
 
         if (!validateButton || !rejectButton) return;
 
+        // --- 2. RESET STATUS TOMBOL & ALASAN ---
         validateButton.disabled = true;
         rejectButton.disabled = true;
         validateButton.classList.add('opacity-50', 'cursor-not-allowed');
@@ -1909,13 +1922,13 @@ App.Validation = (() => {
         if (rejectionContainer) rejectionContainer.classList.add('hidden');
         if (rejectionPlaceholder) rejectionPlaceholder.classList.remove('hidden');
         
+        // --- 3. LOGIKA VALIDASI METER (Berdasarkan 'enabled') ---
         const answerKey = details.full_meter_number || details.no_meter || details.meter_number || details.nomor_meter || '';
         let meterMatch = false;
         let meterNotMatch = false;
         const currentMeter = meterInput ? meterInput.value.trim() : '';
 
-        if (isMeterValidationRequired) {
-            // A. ENABLED = 1 (Wajib Match Kunci Jawaban)
+        if (isMeterValidationRequired) { // A. ENABLED = 1 (Wajib Match Kunci Jawaban)            
             if (answerKey && currentMeter.length > 0) {
                 if (currentMeter === String(answerKey)) {
                     meterMatch = true;
@@ -1928,20 +1941,11 @@ App.Validation = (() => {
                         if (meterStatus) { meterStatus.textContent = 'Mengetik...'; }
                     }
                 }
-            } else if (!answerKey && currentMeter.length > 0) {
-                // Jika tidak ada kunci jawaban tapi ada input (Dianggap match untuk data lama tanpa kunci)
-                if (meterStatus) { 
-                    meterStatus.textContent = 'Kunci jawaban tidak tersedia. Meter dianggap cocok.'; 
-                    meterStatus.classList.add('text-orange-500'); 
+                } else if (currentMeter.length === 0) {
+                    meterNotMatch = true; // Jika meter wajib tapi input kosong
+                    if (meterStatus) { meterStatus.textContent = 'Wajib diisi dan dicocokkan.'; meterStatus.classList.add('text-red-500'); }
                 }
-                meterMatch = true;
-            } else if (currentMeter.length === 0) {
-                // Jika meter wajib tapi input kosong
-                meterNotMatch = true; // Anggap sebagai penolakan jika wajib
-                if (meterStatus) { meterStatus.textContent = 'Wajib diisi dan dicocokkan.'; meterStatus.classList.add('text-red-500'); }
-            }
-
-        } else {
+            } else {
             // B. ENABLED != 1 (Tidak Wajib Match, Hanya Wajib Diisi)
             if (currentMeter.length > 0) {
                 meterMatch = true; // Dianggap match selama diisi (karena akan diperbarui)
@@ -1954,6 +1958,7 @@ App.Validation = (() => {
             meterNotMatch = false; 
         }
 
+        // --- 4. TAMPILKAN/SEMBUNYIKAN ALASAN PENOLAKAN (Peta, Persil, Foto KWH) ---
         const petaTidakSesuai = petaValue === 'tidak';
         const persilTidakSesuai = persilValue === 'tidak';
         const fotoKwhTidakSesuai = fotoKwhValue === 'tidak';
@@ -1966,9 +1971,14 @@ App.Validation = (() => {
             if (persilTidakSesuai) persilReasonContainer.classList.remove('hidden');
             else { persilReasonContainer.classList.add('hidden'); if (persilReasonSelect) persilReasonSelect.value = ''; }
         }
+        if (fotoKwhReasonContainer) {
+            if (fotoKwhTidakSesuai) fotoKwhReasonContainer.classList.remove('hidden');
+            else { fotoKwhReasonContainer.classList.add('hidden'); if (fotoKwhReasonSelect) fotoKwhReasonSelect.value = ''; }
+        }
 
+        // --- 5. LOGIKA TOMBOL REJECT ---
         const isMeterRejection = isMeterValidationRequired && meterNotMatch;
-        const hasAnyRejection = meterNotMatch || petaTidakSesuai || persilTidakSesuai;
+        const hasAnyRejection = isMeterRejection || petaTidakSesuai || persilTidakSesuai || fotoKwhTidakSesuai;
 
         if (hasAnyRejection) {
             if (rejectionContainer) rejectionContainer.classList.remove('hidden');
@@ -1980,6 +1990,7 @@ App.Validation = (() => {
 
         const isPetaSelected = typeof petaValue !== 'undefined';
         const isPersilSelected = typeof persilValue !== 'undefined';
+        const isFotoKwhSelected = typeof fotoKwhValue !== 'undefined';
 
         const isPetaReasonSelected = !petaTidakSesuai || (petaTidakSesuai && petaReasonSelect && petaReasonSelect.value.trim() !== '');
         const isPersilReasonSelected = !persilTidakSesuai || (persilTidakSesuai && persilReasonSelect && persilReasonSelect.value.trim() !== '');
@@ -1998,17 +2009,13 @@ App.Validation = (() => {
             const isMeterInputProvided = currentMeter.length > 0;
             isValidationReady = isMeterInputProvided && basicApprovalCriteria;
         }
-        
         if (isValidationReady) {
             validateButton.disabled = false;
             validateButton.classList.remove('opacity-50', 'cursor-not-allowed');
-        } else {
-            validateButton.disabled = true;
-            validateButton.classList.add('opacity-50', 'cursor-not-allowed');
-        }
+        } 
 
         if (hasAnyRejection) {
-            if (isPetaSelected && isPersilSelected && isPetaReasonSelected && isPersilReasonSelected && isRejectionReasonFilled) {
+            if ( isPetaReasonSelected && isPersilReasonSelected && isFotoKwhReasonSelected && isRejectionReasonFilled) {
                 rejectButton.disabled = false;
                 rejectButton.classList.remove('opacity-50', 'cursor-not-allowed');
             }
@@ -2923,20 +2930,24 @@ App.Listeners = (() => {
             const pbtsValue = panel.querySelector('#eval_type_pbts')?.value || '';
             const merkkwhValue = panel.querySelector('#eval_merkkwhmeter')?.value || '';
             const tahunBuatValue = panel.querySelector('#eval_tahun_buat')?.value || '';
-            // Input Sambungan yang dinonaktifkan:
+            const meterInputValue = panel.querySelector('#eval_meter_input')?.value || '';
+            const rejectionReason = panel.querySelector('#eval_rejection_reason')?.value || '';
+            // --- AMBIL NILAI SEMUA INPUT Input Sambungan yang dinonaktifkan:
             const srValue = panel.querySelector('#eval_sr')?.value || '';
             const latSrValue = panel.querySelector('#eval_latitudey_sr')?.value || '';
             const lonSrValue = panel.querySelector('#eval_longitudex_sr')?.value || '';
 
-            const rejectionReason = panel.querySelector('#eval_rejection_reason')?.value || '';
-
             const evalData = {
                 eval_peta: panel.querySelector('input[name="eval_peta"]:checked')?.value || null,
                 eval_peta_reason: panel.querySelector('#eval_peta_reason')?.value || null,
+
                 eval_persil: panel.querySelector('input[name="eval_persil"]:checked')?.value || null,
                 eval_persil_reason: panel.querySelector('#eval_persil_reason')?.value || null,
-                eval_meter_input: panel.querySelector('#eval_meter_input')?.value || null,
 
+                eval_foto_kwh: panel.querySelector('input[name="eval_foto_kwh"]:checked')?.value || null,
+                eval_foto_kwh_reason: panel.querySelector('#eval_foto_kwh_reason')?.value || null,
+
+                eval_meter_input: meterInputValue,
                 eval_mcb: mcbValue,
                 eval_type_pbts: pbtsValue,
                 eval_merkkwhmeter: merkkwhValue,
@@ -3015,7 +3026,7 @@ App.Listeners = (() => {
         .catch(error => {
             originalButton.textContent = originalText;
             originalButton.disabled = false;
-            originalButton.classList.add('opacity-50', 'cursor-not-allowed');
+            originalButton.classList.remove('opacity-50', 'cursor-not-allowed');
             console.error('Validation/Rejection Error:', error);
             App.Utils.displayNotification('error', error.message || 'Terjadi kesalahan.');
         });

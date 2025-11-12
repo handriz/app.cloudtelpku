@@ -288,7 +288,7 @@
                       <textarea id="eval_rejection_reason" rows="2" class="eval-input mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Contoh: Pin peta di jalan, foto persil beda rumah..."></textarea>
                  </div>
                  <div id="rejection_reason_placeholder" class="">
-                     <p class="text-sm text-gray-500 italic">Formulir alasan penolakan akan muncul di sini jika Anda memilih <b>'Tidak Sesuai'</b> pada salah satu item di atas.</p>
+                     <p class="text-sm text-gray-500 italic text-red-500">Formulir alasan penolakan akan muncul di sini jika Anda memilih <b>'Tidak Sesuai'</b> pada salah satu item di atas. Wajib Isi !!</p>
                  </div>
             </div>
             <div class="p-5 bg-gray-50 dark:bg-gray-900 border-t dark:border-gray-700 flex justify-end space-x-3">

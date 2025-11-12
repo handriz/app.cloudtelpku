@@ -129,7 +129,7 @@ class MappingValidationController extends Controller
         // 5. Siapkan data untuk view
         $totalAvailable = (clone $baseAvailableQuery)->count() + ($userLockedItem ? 1 : 0);
         $currentItem = $userLockedItem ?: $availableItems->first();
-        $details = $currentItem ? $this->prepareItemDetails($currentItem) : null;
+        $details = $currentItem ? $this->prepareItemDetails($currentItem, Auth::user()) : null;
         $viewData = compact('availableItems', 'totalAvailable', 'currentItem', 'details');
 
         if ($request->has('is_ajax_list')) {
@@ -187,8 +187,8 @@ class MappingValidationController extends Controller
 
             DB::commit(); // Simpan perubahan lock
 
-            // Siapkan detail untuk dikirim ke JS
-            $details = $this->prepareItemDetails($item);
+            // Siapkan detail untuk dikirim ke JS dengan ***jika bukan user admin atau TL
+            $details = $this->prepareItemDetails($item, Auth::user());
             return response()->json([
                 'currentItemId' => $item->id, // Kirim ID item yg berhasil di-lock
                 'details' => $details,
@@ -201,12 +201,23 @@ class MappingValidationController extends Controller
         }
     }
 
-    private function prepareItemDetails(TemporaryMapping $item): array
+    private function prepareItemDetails(TemporaryMapping $item, \Illuminate\Contracts\Auth\Authenticatable $user): array    
     {
         $fotoKwhUrl = $item->foto_kwh ? Storage::disk('public')->url($item->foto_kwh) : null;
         $fotoBangunanUrl = $item->foto_bangunan ? Storage::disk('public')->url($item->foto_bangunan) : null;
         $lat = (float) $item->latitudey;
         $lon = (float) $item->longitudex;
+
+        // --- LOGIKA MASKING IDPEL (BARU) ---
+        $idpel = $item->idpel;
+        $isAuthorized = $user && ($user->hasRole('admin') || $user->hasRole('team'));
+        
+        if ($idpel && strlen($idpel) > 3 && !$isAuthorized) {
+            $maskedIdpel = substr($idpel, 0, -3) . '***';
+        } else {
+            $maskedIdpel = $idpel; 
+        }
+        // --- AKHIR LOGIKA MASKING ---
 
         $rejectionHistory = [];
         // Cek apakah item ini pernah ditolak
@@ -235,7 +246,7 @@ class MappingValidationController extends Controller
             );
         }
         return [
-            'idpel'             => $item->idpel,
+            'idpel'             => $maskedIdpel,
             'user_pendataan'    => $item->user_pendataan,
             'keterangan'        => $item->ket_survey,
             'lat'               => $lat,
@@ -554,6 +565,11 @@ class MappingValidationController extends Controller
             'tidak_valid' => 'Foto diragukan dari kegiatan lapangan',
         ];
 
+        $fotoKwhReasons = [
+            'buram' => 'Foto App Buram',
+            'salah' => 'Foto App Salah',
+        ];
+
         // 1. Cek Peta
         if (isset($data['eval_peta']) && $data['eval_peta'] === 'tidak') {
             $history[] = [
@@ -588,6 +604,19 @@ class MappingValidationController extends Controller
                 'label' => 'Input No. Meter (Saat Ditolak)',
                 'value' => htmlspecialchars($data['eval_meter_input']) // Keamanan
             ];
+        }
+
+        if (isset($data['eval_foto_kwh']) && $data['eval_foto_kwh'] === 'tidak') {
+            $history[] = [
+                'label' => 'Evaluasi Kualitas Foto KWH',
+                'value' => 'Tidak Sesuai'
+            ];
+            if (!empty($data['eval_foto_kwh_reason'])) {
+                $history[] = [
+                    'label' => 'Alasan Kualitas Foto KWH',
+                    'value' => $fotoKwhReasons[$data['eval_foto_kwh_reason']] ?? $data['eval_foto_kwh_reason']
+                ];
+            }
         }
 
         if (!empty($data['eval_mcb'])) {

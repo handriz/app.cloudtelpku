@@ -31,42 +31,34 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       # --- START: Caching Dependensi untuk Mempercepat Build ---
-
-      # Cache Composer dependencies (vendor folder)
       - name: Cache Composer dependencies
         uses: actions/cache@v3
         with:
           path: vendor # Direktori yang akan di-cache
-          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }} # Kunci cache berdasarkan OS dan hash composer.lock
+          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
           restore-keys: |
-            ${{ runner.os }}-php- # Fallback key
+            ${{ runner.os }}-php-
 
-      # Cache Node.js modules (node_modules folder)
       - name: Cache Node.js modules
         uses: actions/cache@v3
         with:
           path: node_modules # Direktori yang akan di-cache
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }} # Kunci cache berdasarkan OS dan hash package-lock.json
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }} 
           restore-keys: |
-            ${{ runner.os }}-node- # Fallback key
+            ${{ runner.os }}-node-
 
       # --- END: Caching Dependensi ---
 
       # Langkah 4: Instalasi PHP Manual di runner GitHub Actions
       - name: Manual Setup PHP
         run: |
-          # Perbarui daftar paket dan instal software-properties-common
           sudo apt-get update
           sudo apt-get install -y software-properties-common
-          # Tambahkan repository PPA untuk PHP (menyediakan versi PHP terbaru)
           sudo add-apt-repository -y ppa:ondrej/php
           sudo apt-get update
-          # Instal PHP 8.1 dan ekstensi yang dibutuhkan untuk Laravel
-          ##sudo apt-get install -y php8.1-cli php8.1-common php8.1-mysql php8.1-xml php8.1-curl php8.1-mbstring php8.1-zip php8.1-bcmath php8.1-gd
+          # Instal PHP 8.3 dan ekstensi yang dibutuhkan untuk Laravel
           sudo apt-get install -y php8.3-cli php8.3-common php8.3-mysql php8.3-xml php8.3-curl php8.3-mbstring php8.3-zip php8.3-bcmath php8.3-gd
-          # Instal Composer
           sudo apt-get install -y composer
-          # Verifikasi instalasi PHP dan Composer
           php -v
           composer -V
 
@@ -78,7 +70,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18' # <--- SESUAIKAN DENGAN VERSI Node.js YANG ANDA INGINKAN UNTUK BUILD
+          node-version: '18'
 
       # Langkah 7: Menginstal Dependensi Node.js (npm) di runner
       - name: Install Node.js Dependencies
@@ -95,28 +87,29 @@ jobs:
       #   env:
       #     DOT_ENV_CONTENT: ${{ secrets.DOT_ENV_CONTENT }}
 
-      # Langkah 10: Deployment: Sinkronisasi File ke VPS menggunakan rsync langsung
-      # Ini sepenuhnya bergantung pada ssh-agent untuk autentikasi.
-      # Tambahan: Perintah `sudo chown` awal untuk memastikan izin direktori target.
+      # Langkah 9: Deployment: Sinkronisasi File ke VPS menggunakan rsync
       - name: Sync Files to VPS using rsync directly
         run: |
           # Pastikan rsync terinstal di VPS Anda. Jika belum:
           ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "sudo apt-get update && sudo apt-get install -y rsync"
-
-          # Pastikan direktori target ada dan dimiliki oleh user yang benar sebelum rsync
-          # Ini mengatasi `rsync error: code 23` yang terkait dengan izin.
           ssh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "\
             sudo mkdir -p /var/www/app.cloudtelpku && \
             sudo chown -R ${{ secrets.VPS_USERNAME }}:www-data /var/www/app.cloudtelpku \
           "
 
-          # Jalankan rsync dari runner ke VPS.
-          # -e ssh: memberitahu rsync untuk menggunakan SSH sebagai transport.
-          # SSH_AUTH_SOCK akan otomatis digunakan oleh SSH karena sudah disiapkan oleh webfactory/ssh-agent.
-           rsync -avz --delete --exclude='.git' --exclude='.env' --exclude='storage/app/*' --exclude='storage/framework/*' --exclude='bootstrap/cache/*' -e "ssh -o StrictHostKeyChecking=yes" ${{ github.workspace }}/ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
-            
+          # ✅ versi aman: tidak menimpa izin dan ACL
+          # rsync -avz --delete --exclude='.git' --exclude='.env' --exclude='storage/app/*' --exclude='storage/framework/*' --exclude='bootstrap/cache/*' -e "ssh -o StrictHostKeyChecking=yes" ${{ github.workspace }}/ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
+          rsync -az --delete-delay --no-perms --no-owner --no-group \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='storage/app/*' \
+            --exclude='storage/framework/*' \
+            --exclude='bootstrap/cache/*' \
+            -e "ssh -o StrictHostKeyChecking=yes" \
+            ${{ github.workspace }}/ \
+            ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/app.cloudtelpku/
 
-      # Langkah 11: Jalankan Perintah Pasca-Deployment di VPS melalui SSH
+      # Langkah 11: Jalankan Perintah Pasca-Deployment di VPS
       - name: Run Post-Deployment Commands on VPS
         uses: appleboy/ssh-action@master
         with:
@@ -127,57 +120,46 @@ jobs:
             DEPLOY_PATH="/var/www/app.cloudtelpku"
             WEB_USER="www-data"
             SSH_USER="${{ secrets.VPS_USERNAME }}"
-            cd $DEPLOY_PATH # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
+            cd $DEPLOY_PATH
 
-            # 1. Pastikan paket ACL terinstal
             echo "Installing ACL package..."
             sudo apt-get install -y acl
             
-            # 2. Atur Ownership: $SSH_USER sebagai owner, $WEB_USER sebagai grup.
             echo "Setting primary ownership..."
+            sudo chown -R $SSH_USER:$WEB_USER storage bootstrap/cache
 
-            # Fokus pada folder yang penting: storage/app dan bootstrap/cache
-            sudo chown -R $SSH_USER:$WEB_USER storage/app bootstrap/cache
-           
-            sudo chown -R $SSH_USER:$WEB_USER storage/app bootstrap/cache
-    
-            # 3. ACL (Solusi Pewarisan Izin)
             echo "Applying ACL for persistent write permissions..."
-            # Terapkan ACL pada storage/app
-            sudo setfacl -R -m u:$WEB_USER:rwx storage/app
-            sudo setfacl -R -m g:$WEB_USER:rwx storage/app
-            # Terapkan ACL Default agar folder baru (temp_photo_uploads) mewarisi izin
-            sudo setfacl -d -m u:$WEB_USER:rwx storage/app 
-            sudo setfacl -d -m g:$WEB_USER:rwx storage/app
-            
-            # 4. Final CHMOD (Sebagai fallback)
-            sudo chmod -R 775 storage/app bootstrap/cache
+            sudo setfacl -R -m u:$WEB_USER:rwx storage bootstrap/cache
+            sudo setfacl -R -m g:$WEB_USER:rwx storage bootstrap/cache
+            sudo setfacl -d -m u:$WEB_USER:rwx storage bootstrap/cache
+            sudo setfacl -d -m g:$WEB_USER:rwx storage/bootstrap/cache
+            sudo chmod -R 775 storage bootstrap/cache
+            sudo chmod -R 755 public
 
             echo "File permissions set successfully."
 
-            # Jalankan migrasi dan seeder
             echo "Running database migrations and seeding..."
             php artisan migrate --force # Gunakan ini untuk update selanjutnya
             #php artisan db:seed --force # Jalankan seeder terpisah jika migrate:fresh tidak digunakan
             echo "Database migrations and seeding complete."
                        
-            # Bersihkan cache Laravel
             echo "Clearing Laravel cache..."
             php artisan config:clear
             php artisan cache:clear
             php artisan view:clear
             php artisan route:clear
             php artisan optimize:clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
             echo "Laravel cache cleared."
             
-            # Buat atau perbarui storage link (jika menggunakan)
             echo "Linking storage..."
-            php artisan storage:link
+            php artisan storage:link || true
             echo "Storage linked."
             
-            # Opsional: Restart layanan web server/php-fpm jika diperlukan
             echo "Restarting web server and PHP-FPM..."
             # sudo systemctl restart nginx
-            sudo systemctl restart php8.3-fpm # Sesuaikan versi PHP
-             echo "Web server and PHP-FPM restarted."
+            sudo systemctl restart php8.3-fpm
+            echo "Deployment completed successfully."
 
