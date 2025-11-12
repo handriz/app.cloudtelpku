@@ -135,17 +135,18 @@ jobs:
             
             # --- PENTING: Lakukan CHOWN/CHMOD di sini, setelah file disalin ---
             # Pastikan user telpkudev memiliki kepemilikan penuh dan grup www-data dapat menulis.
-            echo "Setting file permissions..."
+            echo "Setting primary ownership..."
             sudo chown -R $SSH_USER:$WEB_USER . # <--- SESUAIKAN NAMA USER DAN GROUP WEB SERVER
-            sudo chmod -R 775 storage bootstrap/cache
+            
             sudo chmod -R 755 public # Pastikan public bisa dibaca oleh web server
             echo "File permissions set."
             echo "Applying ACL for persistent write permissions..."
-            sudo setfacl -R -m u:$WEB_USER:rwx storage
-            sudo setfacl -R -m g:$WEB_USER:rwx storage
-            sudo setfacl -d -m u:$WEB_USER:rwx storage
-            sudo setfacl -d -m g:$WEB_USER:rwx storage
+            sudo setfacl -R -m u:$WEB_USER:rwx storage/app
+            sudo setfacl -R -m g:$WEB_USER:rwx storage/app
+            sudo setfacl -d -m u:$WEB_USER:rwx storage/app
+            sudo setfacl -d -m g:$WEB_USER:rwx storage/app
             
+            sudo chmod -R 775 storage/app bootstrap/cache
             echo "File permissions set successfully."
 
             # Jalankan migrasi dan seeder
