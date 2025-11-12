@@ -392,6 +392,7 @@ class MappingValidationController extends Controller
 
             } catch (\Exception $e) {
             DB::rollBack(); // Batalkan semua jika error
+            $logObjectId = $tempData->objectid ?? 'N/A';
             \Log::error("Gagal validasi item ID {$id} (Object ID: {$logObjectId}): " . $e->getMessage());
             // Kirim error JSON jika AJAX
              if ($request->expectsJson()) {

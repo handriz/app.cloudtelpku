@@ -1858,6 +1858,27 @@ App.Validation = (() => {
             console.warn("### Data detail global (App.State.currentValidationDetails) kosong, tidak bisa cek form.");
             return;
         }
+
+        const rejectionTextarea = panel.querySelector('#eval_rejection_reason');
+        
+        // Cek apakah yang diubah adalah salah satu dropdown alasan
+        const isReasonDropdown = (
+            evalElement.id === 'eval_peta_reason' || 
+            evalElement.id === 'eval_persil_reason' || 
+            evalElement.id === 'eval_foto_kwh_reason'
+        );
+
+        if (isReasonDropdown && evalElement.value.trim() !== '' && rejectionTextarea) {
+            // Langsung fokuskan user ke textarea
+            rejectionTextarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            rejectionTextarea.focus();
+            
+            // Tambahkan kelas 'menyala' jika teksnya masih kurang
+            if (rejectionTextarea.value.trim().length < MIN_REJECTION_CHARS) {
+                rejectionTextarea.classList.add('pulse-glow-red');
+            }
+        }
+        
         checkEvaluationForm(panel, currentDetails);
     }
 
@@ -3034,6 +3055,7 @@ App.Listeners = (() => {
 
     function handleGlobalInput(e) {
         const target = e.target;
+
         if (target.id === 'eval_mcb') {
             let value = target.value.trim().toUpperCase();
             
@@ -3070,6 +3092,16 @@ App.Listeners = (() => {
             // Panggil validasi form
             App.Validation.handleEvaluationChange(e);
             return; 
+        }
+
+        if (target.id === 'eval_rejection_reason') {
+            const MIN_REJECTION_CHARS = 10;
+            
+            if (target.value.trim().length >= MIN_REJECTION_CHARS) {
+                target.classList.remove('pulse-glow-red'); // Hapus glow
+            }
+            App.Validation.handleEvaluationChange(e); 
+            return;
         }
 
         const searchInput = e.target.closest('form[id*="-search-form"] input[name="search"]');

@@ -86,10 +86,10 @@
                 <h3 id="detail-idpel" class="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3"></h3>
                 
                 {{-- Baris 2: Informasi Detail Survey (Grid 4 Kolom) --}}
-                <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 text-sm">
+                <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 text-sm">
                     
                     {{-- Kolom 1: Didata oleh (1 Span) --}}
-                    <div class="lg:col-span-1">
+                    <div class="lg:col-span-2">
                         <p class="text-gray-500 font-semibold mb-1">Didata oleh:</p>
                         <p id="detail-user" class="text-gray-700 dark:text-gray-300 font-semibold"></p>
                     </div>
@@ -284,7 +284,7 @@
             <div id="evaluation-form" class="p-5 border-t dark:border-gray-700 space-y-4">
                  <h4 class="font-semibold text-lg">Alasan Penolakan Khusus (Jika Ada)</h4>
                  <div id="rejection_reason_container" class="hidden space-y-1">
-                      <label for="eval_rejection_reason" class="block text-sm font-medium text-gray-700 dark:text-gray-300"> Alasan Penolakan (Wajib diisi jika ada yang 'Tidak Sesuai' Minimal 10 Karakter): </label>
+                      <label for="eval_rejection_reason" class="block text-sm font-medium text-gray-700 dark:text-gray-300"> <p class="text-sm text-gray-500 italic text-red-500">Alasan Penolakan (Wajib diisi jika ada yang 'Tidak Sesuai' Minimal 10 Karakter):</p> </label>
                       <textarea id="eval_rejection_reason" rows="2" class="eval-input mt-1 block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm" placeholder="Contoh: Pin peta di jalan, foto persil beda rumah..."></textarea>
                  </div>
                  <div id="rejection_reason_placeholder" class="">
