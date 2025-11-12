@@ -22,12 +22,12 @@ class Kernel extends ConsoleKernel
         $schedule->command('supervisor:status-check')->everyMinute();
        
         // 2. Perbaikan sintaks photos:process-inbox
-        $schedule->command('photos:process-inbox --limit=200')
+        $schedule->command('photos:process-inbox')
         ->everyFiveMinutes()
         ->withoutOverlapping();
-        
+
         // 3. Command clean-temp-photos
-         $schedule->command('app:clean-temp-photos')->daily();
+         $schedule->command('app:clean-temporary-photos')->daily();
     }
 
     /**

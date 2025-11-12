@@ -17,7 +17,7 @@ class ProcessPhotoInbox extends Command
      * @var string
      */
     // Signature: nama command dan opsi --limit
-    protected $signature = 'photos:process-inbox {--limit=100 : Jumlah foto yang diproses per run}';
+    protected $signature = 'photos:process-inbox';
 
     /**
      * The console command description.
