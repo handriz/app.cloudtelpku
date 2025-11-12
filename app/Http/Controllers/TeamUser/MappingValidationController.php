@@ -68,66 +68,44 @@ class MappingValidationController extends Controller
 
         // 3. Ambil item acak lainnya (max 10), prioritaskan item BARU
         
-        // --- TIER 1: Ambil item BARU (Fresh Items) ---
-        $freshItemsQuery = (clone $baseAvailableQuery)
-            ->when($userLockedItem, function ($query) use ($userLockedItem) {
-                $query->where('temporary_mappings.id', '!=', $userLockedItem->id);
-            })
-            ->when($justRejectedId, function ($query) use ($justRejectedId) {
-                $query->where('temporary_mappings.id', '!=', $justRejectedId);
-            })
-            // --- INI PERBAIKANNYA ---
-            // Secara eksplisit cari status: NULL, pending, atau recalled
-            ->where(function ($query) {
-                $query->whereNull('temporary_mappings.ket_validasi')
-                      ->orWhere('temporary_mappings.ket_validasi', 'pending')
-                      ->orWhere('temporary_mappings.ket_validasi', 'LIKE', 'recalled_%');
-            });
+        $baseAvailableQuery = (clone $baseAvailableQuery)
+        ->orderByRaw("
+            CASE
+                WHEN temporary_mappings.ket_validasi LIKE 'rejected%' THEN 2
+                ELSE 1
+            END ASC
+        ");
 
-        // Ambil 6 item baru, acak dari 200 tertua
-        $otherAvailableItems = (clone $freshItemsQuery)
-            ->orderBy('temporary_mappings.created_at', 'asc')
-            ->take(200)
-            ->get()
-            ->shuffle()
-            ->take(6); // Ambil 6 item
-
-        // Cek berapa slot lagi yang perlu diisi
-        $neededMore = 10 - ($userLockedItem ? 1 : 0) - $otherAvailableItems->count();
-        $neededMore = max(0, $neededMore); // Pastikan tidak negatif
-
-        // --- TIER 2: Jika slot masih ada, ambil item REJECTED ---
-        if ($neededMore > 0) {
-            $rejectedItemsQuery = (clone $baseAvailableQuery)
-                ->when($userLockedItem, function ($query) use ($userLockedItem) {
-                    $query->where('temporary_mappings.id', '!=', $userLockedItem->id);
-                })
-                ->when($justRejectedId, function ($query) use ($justRejectedId) {
-                    $query->where('temporary_mappings.id', '!=', $justRejectedId);
-                })
-                // Filter hanya item yang pernah di-reject
-                ->where('temporary_mappings.ket_validasi', 'LIKE', 'rejected%');
-            
-            $rejectedItems = (clone $rejectedItemsQuery)
-                ->orderBy('temporary_mappings.created_at', 'asc') // Ambil item rejected tertua
-                ->take(200)
-                ->get()
-                ->shuffle()
-                ->take($neededMore); // Ambil sisanya
-
-            // Gabungkan item baru dengan item rejected
-            $otherAvailableItems = $otherAvailableItems->merge($rejectedItems);
-        }
+        // Hitung total yang bisa diambil    
+        $totalCount = $baseAvailableQuery->count();
 
         // 4. Gabungkan: item yg di-lock user (jika ada) + item acak lainnya
         $availableItems = collect();
+
         if ($userLockedItem) {
             $availableItems->push($userLockedItem); // Tambahkan item user di awal
         }
-        $availableItems = $availableItems->merge($otherAvailableItems);
+
+        if ($totalCount > 0) {
+            // Tentukan berapa item tambahan yang dibutuhkan
+            $needed = 10 - $availableItems->count();
+            $needed = max(0, $needed);
+
+            // Ambil acak tanpa ORDER BY RAND() agar cepat
+            for ($i = 0; $i < $needed; $i++) {
+                $offset = rand(0, max(0, $totalCount - 1));
+                $item = (clone $baseAvailableQuery)->skip($offset)->take(1)->first();
+                if ($item) {
+                    // Hindari duplikat
+                    if (!$availableItems->contains('id', $item->id)) {
+                        $availableItems->push($item);
+                    }
+                }
+            }
+        }
 
         // 5. Siapkan data untuk view
-        $totalAvailable = (clone $baseAvailableQuery)->count() + ($userLockedItem ? 1 : 0);
+        $totalAvailable = $totalCount + ($userLockedItem ? 1 : 0);
         $currentItem = $userLockedItem ?: $availableItems->first();
         $details = $currentItem ? $this->prepareItemDetails($currentItem, Auth::user()) : null;
         $viewData = compact('availableItems', 'totalAvailable', 'currentItem', 'details');
@@ -304,7 +282,7 @@ class MappingValidationController extends Controller
 
             // 5. Siapkan respon
             $idpel = $tempData->idpel;
-
+            $objectid = $tempData->objectid ?? 'N/A';
             // $objectid = null;
             // $oldKwhPath = null;
             // $oldBangunanPath = null;
@@ -486,47 +464,56 @@ class MappingValidationController extends Controller
          $lockExpirationTime = Carbon::now()->subMinutes(self::LOCK_TIMEOUT_MINUTES);
          $hierarchyFilter = $this->getHierarchyFilterForJoin(Auth::user());
          
-         // Query dasar untuk item yang tersedia (bukan 'verified')
+         // Query dasar: hanya ambil data yang belum validasi & belum dikunci user lain
          $query = TemporaryMapping::where(function ($query) use ($lockExpirationTime) {
-            
-            // Filter 1: Kriteria Lock
             $query->where(function($q) use ($lockExpirationTime) {
                 $q->whereNull('locked_by')
                   ->orWhere('locked_at', '<', $lockExpirationTime);
             });
-            
-            // Filter 2: Kriteria Status
             $query->where(function($q) {
                 $q->whereNull('ket_validasi')
                   ->orWhere('ket_validasi', 'NOT LIKE', 'verified%');
             });
          })
+
          ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
              return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                  ->select('temporary_mappings.*')
                  ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
-          });
+          })
+            ->orderByRaw("
+                    CASE
+                        WHEN temporary_mappings.ket_validasi LIKE 'rejected%' THEN 2
+                        ELSE 1
+                    END ASC
+                ");
 
-         // --- TIER 1: Prioritaskan item BARU (Fresh) ---
-         $freshItem = (clone $query)
-            // --- INI PERBAIKANNYA ---
-            ->where(function ($q) {
-                $q->whereNull('temporary_mappings.ket_validasi')
-                  ->orWhere('temporary_mappings.ket_validasi', 'pending')
-                  ->orWhere('temporary_mappings.ket_validasi', 'LIKE', 'recalled_%');
-            })
-            ->orderBy('temporary_mappings.created_at', 'asc')
-            ->first();
+                $count = $baseQuery->count();
+                if ($count === 0) return null;
 
-        if ($freshItem) {
-            return $freshItem; // Kembalikan item baru jika ada
-        }
+                $randomOffset = rand(0, max(0, $count - 1));
 
-        // --- TIER 2: Jika item baru habis, baru ambil item REJECTED ---
-        return (clone $query)
-            ->where('temporary_mappings.ket_validasi', 'LIKE', 'rejected%')
-            ->orderBy('temporary_mappings.created_at', 'asc') // Ambil item rejected tertua
-            ->first();
+                return $baseQuery->skip($randomOffset)->take(1)->first();
+        //  // --- TIER 1: Prioritaskan item BARU (Fresh) ---
+        //  $freshItem = (clone $query)
+        //     // --- INI PERBAIKANNYA ---
+        //     ->where(function ($q) {
+        //         $q->whereNull('temporary_mappings.ket_validasi')
+        //           ->orWhere('temporary_mappings.ket_validasi', 'pending')
+        //           ->orWhere('temporary_mappings.ket_validasi', 'LIKE', 'recalled_%');
+        //     })
+        //     ->orderBy('temporary_mappings.created_at', 'asc')
+        //     ->first();
+
+        // if ($freshItem) {
+        //     return $freshItem; // Kembalikan item baru jika ada
+        // }
+
+        // // --- TIER 2: Jika item baru habis, baru ambil item REJECTED ---
+        // return (clone $query)
+        //     ->where('temporary_mappings.ket_validasi', 'LIKE', 'rejected%')
+        //     ->orderBy('temporary_mappings.created_at', 'asc') // Ambil item rejected tertua
+        //     ->first();
     }
 
     private function getHierarchyFilterForJoin($user): ?array
