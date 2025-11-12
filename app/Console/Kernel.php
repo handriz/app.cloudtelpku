@@ -30,7 +30,7 @@ class Kernel extends ConsoleKernel
         // 3. Command clean-temp-photos
          $schedule->command('app:clean-temporary-photos')
          ->daily()
-         >appendOutputTo(storage_path('logs/scheduler-clean.log'));
+         ->appendOutputTo(storage_path('logs/scheduler-clean.log'));
     }
 
     /**
