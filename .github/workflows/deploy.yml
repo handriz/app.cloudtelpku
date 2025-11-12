@@ -128,6 +128,10 @@ jobs:
             WEB_USER="www-data"
             SSH_USER="${{ secrets.VPS_USERNAME }}"
             cd $DEPLOY_PATH # <--- SESUAIKAN DENGAN PATH FOLDER PROYEK DI VPS
+
+            # 1. Pastikan paket ACL terinstal
+            echo "Installing ACL package..."
+            sudo apt-get install -y acl
             
             # --- PENTING: Lakukan CHOWN/CHMOD di sini, setelah file disalin ---
             # Pastikan user telpkudev memiliki kepemilikan penuh dan grup www-data dapat menulis.
@@ -141,6 +145,7 @@ jobs:
             sudo setfacl -R -m g:$WEB_USER:rwx storage
             sudo setfacl -d -m u:$WEB_USER:rwx storage
             sudo setfacl -d -m g:$WEB_USER:rwx storage
+            
             echo "File permissions set successfully."
 
             # Jalankan migrasi dan seeder

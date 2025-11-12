@@ -17,13 +17,17 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // 1. Command bawaan tetap setiap menit
         $schedule->command('queue:heartbeat')->everyMinute();
         $schedule->command('supervisor:status-check')->everyMinute();
-        $schedule->command('app:clean-temp-photos')->daily();
+       
+        // 2. Perbaikan sintaks photos:process-inbox
         $schedule->command('photos:process-inbox --limit=200')
-             ->everyFiveMinutes()
-                ->withoutOverlapping();
+        ->everyFiveMinutes()
+        ->withoutOverlapping();
+        
+        // 3. Command clean-temp-photos
+         $schedule->command('app:clean-temp-photos')->daily();
     }
 
     /**
