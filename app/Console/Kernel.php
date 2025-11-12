@@ -22,7 +22,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('supervisor:status-check')->everyMinute();
        
         // 2. Perbaikan sintaks photos:process-inbox
-        $schedule->command('photos:process-inbox')
+        $schedule->command('photos:process-inbox --limit=200')
         ->everyFiveMinutes()
         ->withoutOverlapping();
 
