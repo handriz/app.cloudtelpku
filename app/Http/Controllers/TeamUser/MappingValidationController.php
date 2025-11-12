@@ -844,13 +844,13 @@ class MappingValidationController extends Controller
                 'required',
                 'image',
                 'mimes:jpg,jpeg,png',
-                'min:120', // Ukuran minimum dalam Kilobytes (100KB)
-                'max:500'  // Ukuran maksimum dalam Kilobytes (300KB)
+                'min:5', // Ukuran minimum dalam Kilobytes (100KB)
+                'max:250'  // Ukuran maksimum dalam Kilobytes (300KB)
             ]
         ], [
             // Pesan error kustom agar lebih jelas
-            'photos.*.min' => 'Ukuran file :attribute terlalu kecil (minimal 120KB).',
-            'photos.*.max' => 'Ukuran file :attribute terlalu besar (maksimal 500KB).',
+            'photos.*.min' => 'Ukuran file :attribute terlalu kecil (minimal 5KB).',
+            'photos.*.max' => 'Ukuran file :attribute terlalu besar (maksimal 250KB).',
             'photos.*.mimes' => 'File :attribute harus berformat jpg, jpeg, atau png.',
             'photos.*.image' => 'File :attribute harus berupa gambar.',
         ]);

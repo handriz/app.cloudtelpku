@@ -216,8 +216,8 @@ function initializeBatchPhotoUploadForm() {
 
     // --- [LOGIKA BARU] ---
     let filesToUpload = [];
-    const MIN_SIZE_KB = 120;
-    const MAX_SIZE_KB = 500;
+    const MIN_SIZE_KB = 5;
+    const MAX_SIZE_KB = 250;
 
     /**
      * [FUNGSI BARU] Memfilter file berdasarkan ukuran dan memperbarui UI
