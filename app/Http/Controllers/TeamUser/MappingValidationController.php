@@ -19,19 +19,6 @@ class MappingValidationController extends Controller
     // Konstanta waktu timeout lock (dalam menit)
     const LOCK_TIMEOUT_MINUTES = 10;
 
-    /**
-     * Menampilkan halaman validasi.
-     * Prioritaskan item yang sedang di-lock user, lalu ambil item acak lainnya.
-     */
-    /**
-     * Menampilkan halaman validasi.
-     * Prioritaskan item yang sedang di-lock user, lalu ambil item acak lainnya.
-     *
-     * VERSI OPTIMASI: 
-     * - Menghilangkan inRandomOrder()
-     * - Menerapkan antrian 2-Tier (Fresh > Rejected)
-     * - Secara eksplisit membaca status 'pending'
-     */
     public function index(Request $request)
     {
         $justRejectedId = $request->session()->pull('just_rejected_id', null);
@@ -60,6 +47,7 @@ class MappingValidationController extends Controller
             });
 
         })
+
         ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
             return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                 ->select('temporary_mappings.*')
@@ -266,7 +254,7 @@ class MappingValidationController extends Controller
 
             // 2. Tandai item SELESAI validasi (is_validated = true)
             $tempData->is_validated = true;
-            $tempData->ket_validasi = 'validated';
+            $tempData->ket_validasi = 'verified_by_appuser';
             $tempData->user_validasi = Auth::id();
 
             // 3. Simpan data evaluasi
@@ -551,6 +539,7 @@ class MappingValidationController extends Controller
             'bukan_persil' => 'Bukan foto persil / bangunan',
             'diragukan' => 'Foto App tidak ada pada persil',
             'tidak_valid' => 'Foto diragukan dari kegiatan lapangan',
+            'streetview_tidak_tersedia' => 'Streetview tidak tersedia pada lokasi ',
         ];
 
         $fotoKwhReasons = [

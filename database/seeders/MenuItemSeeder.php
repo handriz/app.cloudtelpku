@@ -88,7 +88,7 @@ class MenuItemSeeder extends Seeder
             'name' => 'Dashboard Rekap Dil',
             'route_name' => 'admin.manajemen_data.dashboard',
             'icon' => 'fas fa-chart-bar',
-            'permission_name' => 'view-dashboard-master-data',
+            'permission_name' => 'view-dashboard-rekap-dil',
             'parent_id' => $manajemenData->id,
             'order' => 31,
             'is_active' => true,

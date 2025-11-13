@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\User;
 
 class TemporaryMapping extends Model
 {
@@ -20,4 +21,9 @@ class TemporaryMapping extends Model
         'validation_data' => 'array',
         'is_validated' => 'boolean',
     ];
+
+    public function validator()
+    {
+        return $this->belongsTo(User::class, 'user_validasi');
+    }
 }

@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\MasterDataController;
 use App\Http\Controllers\TeamUser\SmartTargetController; 
 use App\Http\Controllers\TeamUser\MappingKddkController;
 use App\Http\Controllers\TeamUser\MappingValidationController;
+use App\Http\Controllers\TeamUser\ValidationRecapController;
 
 
 /*
@@ -143,6 +144,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
             // Rute Aksi (tetap sama)
             Route::post('/{id}/approve', [MappingValidationController::class, 'approve'])->name('approve');
             Route::delete('/{id}/reject', [MappingValidationController::class, 'reject'])->name('reject');
+        });
+
+        Route::prefix('validation-recap')->name('validation_recap.')->group(function () {
+            
+            Route::get('/', [ValidationRecapController::class, 'index'])->name('index');
+            
+            // Aksi Promote (Hanya bisa dilakukan oleh team/admin)
+            Route::post('/{id}/promote', [ValidationRecapController::class, 'promote'])
+                 ->name('promote')
+                 ->middleware('role:admin,team');
+
+            // Aksi Reject (Hanya bisa dilakukan oleh team/admin)
+            Route::post('/{id}/reject', [ValidationRecapController::class, 'rejectReview'])
+                 ->name('reject_review')
+                 ->middleware('role:admin,team');
         });
 
     });

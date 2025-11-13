@@ -573,12 +573,15 @@ App.Modal = (() => {
                         initializeUploadFormChecks(modalContent);
                         initializeUploadLogic(uploadFormCheck);
                     }
+                    const iconInput = modalContent.querySelector('#icon_input');
+                    if (iconInput) {
+                        App.FormCreate.initializeIconPicker(modalContent);
+                    }
                     if (window.UploadInitializers && typeof window.UploadInitializers.initializeUploadForm === 'function') {
                         if (modalContent.querySelector('#upload-form')) {
                             window.UploadInitializers.initializeUploadForm();
                         }   
                     }
-                    
                     if (window.UploadInitializers && typeof window.UploadInitializers.initializeBatchPhotoUploadForm === 'function') {
                         if (modalContent.querySelector('#batch-photo-upload-form')) { 
                             window.UploadInitializers.initializeBatchPhotoUploadForm();
@@ -2297,10 +2300,75 @@ App.FormCreate = (() => {
         updateIdpelStatusUI(false, null, null, '');
     }
 
+    function initializeIconPicker(modalContent) {
+        // Daftar ikon yang umum digunakan (Anda bisa menambah/mengurangi daftar ini)
+        const commonIcons = [
+            'fas fa-tachometer-alt', 'fas fa-map-marked-alt', 'fas fa-users', 'fas fa-cogs',
+            'fas fa-list', 'fas fa-table', 'fas fa-upload', 'fas fa-file-alt', 'fas fa-key',
+            'fas fa-bars', 'fas fa-sign-out-alt', 'fas fa-folder-open', 'fas fa-chart-bar',
+            'fas fa-user-shield', 'fas fa-check-circle', 'fas fa-times-circle', 'fas fa-info-circle',
+            'fas fa-exclamation-triangle', 'fas fa-plus', 'fas fa-edit', 'fas fa-trash', 
+            'fas fa-search', 'fas fa-sync', 'fas fa-home', 'fas fa-user', 'fas fa-cog',
+            'fas fa-envelope', 'fas fa-bell', 'fas fa-link', 'fas fa-camera', 'fas fa-map-pin',
+            'fas fa-arrow-left', 'fas fa-arrow-right', 'fas fa-chevron-down', 'fas fa-chevron-up'
+        ];
+
+        const input = modalContent.querySelector('#icon_input');
+        const previewIcon = modalContent.querySelector('#icon-preview-box i');
+        const trigger = modalContent.querySelector('#icon-picker-trigger');
+        const gridContainer = modalContent.querySelector('#icon-picker-grid');
+        const gridDiv = gridContainer.querySelector('div'); // Target grid internal
+
+        if (!input || !previewIcon || !trigger || !gridContainer || !gridDiv) {
+            console.error("Elemen Icon Picker tidak ditemukan.");
+            return;
+        }
+
+        // 1. Isi Grid dengan Ikon
+        gridDiv.innerHTML = ''; // Kosongkan spinner
+        commonIcons.forEach(iconClass => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500';
+            button.dataset.iconClass = iconClass;
+            button.innerHTML = `<i class="${iconClass}" style="pointer-events: none;"></i>`; // style untuk mencegah <i> menangkap klik
+            gridDiv.appendChild(button);
+        });
+
+        // 2. Listener Trigger (Toggle Grid)
+        trigger.addEventListener('click', () => {
+            gridContainer.classList.toggle('hidden');
+        });
+
+        // 3. Listener Input (Update Preview saat ketik manual)
+        input.addEventListener('input', () => {
+            // Jika diketik, ganti preview. Jika kosong, ganti ke default.
+            previewIcon.className = input.value || 'fas fa-grip-horizontal';
+        });
+
+        // 4. Listener Grid (Pilih Ikon)
+        gridDiv.addEventListener('click', (e) => {
+            const iconButton = e.target.closest('button');
+            if (!iconButton || !iconButton.dataset.iconClass) return;
+
+            const selectedIcon = iconButton.dataset.iconClass;
+            
+            // Set nilai input
+            input.value = selectedIcon;
+            
+            // Set preview
+            previewIcon.className = selectedIcon;
+            
+            // Tutup grid
+            gridContainer.classList.add('hidden');
+        });
+    }
+
     return {
         initializePreviewMap,
         initializePhotoUpload,
-        initializeCreateFormValidation
+        initializeCreateFormValidation,
+        initializeIconPicker
     };
 })();
 

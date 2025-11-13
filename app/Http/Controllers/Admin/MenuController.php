@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\MenuItem;
 use App\Models\Permission;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class MenuController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $menuItems = MenuItem::with('children') // Eager load children untuk tampilan hierarki
                              ->whereNull('parent_id') // Hanya ambil menu level 1
@@ -19,19 +21,25 @@ class MenuController extends Controller
 
         // Mengambil semua izin untuk dropdown saat menambah/mengedit menu
         $permissions = Permission::all();
-        return view('admin.menu.index', compact('menuItems', 'permissions'));
+        $viewData = compact('menuItems', 'permissions');
+
+        if ($request->has('is_ajax')) {
+            // Jika AJAX, kembalikan HANYA partial 'index_content'
+            return view('admin.menu.partials.index_content', $viewData);
+        }
+        return view('admin.menu.index', $viewData);
     }
 
     public function create()
     {
         $parentMenus = MenuItem::whereNull('parent_id')->orderBy('order')->get(); // Untuk dropdown parent
         $permissions = Permission::all(); // Untuk dropdown permission
-        return view('admin.menu.create', compact('parentMenus', 'permissions'));
+        return view('admin.menu.partials.create', compact('parentMenus', 'permissions'));
     }
 
     public function store(Request $request)
     {
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'route_name' => 'nullable|string|max:255',
             'icon' => 'nullable|string|max:255',
@@ -41,25 +49,40 @@ class MenuController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        MenuItem::create($request->all());
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
 
-        return redirect()->route('admin.menu.index')->with('success', 'Menu item berhasil ditambahkan!');
+        try {
+
+            $data = $request->except('is_active');
+            $data['is_active'] = $request->has('is_active');
+
+            MenuItem::create($data->all());
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Menu item berhasil ditambahkan!'
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Gagal menyimpan menu: " . $e->getMessage());
+            return response()->json(['errors' => ['server' => ['Gagal menyimpan data ke database.']]], 500);
+        }
     }
 
     public function edit(MenuItem $menu)
     {
-
         $parentMenus = MenuItem::whereNull('parent_id')
                                 ->where('id', '!=', $menu->id) // Hindari memilih diri sendiri sebagai parent
                                 ->orderBy('order')
                                 ->get();
         $permissions = Permission::all();
-        return view('admin.menu.edit', compact('menu', 'parentMenus', 'permissions'));
+        return view('admin.menu.partials.edit', compact('menu', 'parentMenus', 'permissions'));
     }
 
    public function update(Request $request, MenuItem $menu)
     {
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'route_name' => 'nullable|string|max:255',
             'icon' => 'nullable|string|max:255',
@@ -69,17 +92,42 @@ class MenuController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $menu->update($request->all());
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+        try {
+            $data = $request->except('is_active');
+            $data['is_active'] = $request->has('is_active');
 
-        return redirect()->route('admin.menu.index')->with('success', 'Menu item berhasil diperbarui!');
+            $menu->update($data);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Menu item berhasil diperbarui!'
+            ]);
+        
+        }catch (\Exception $e) {
+            Log::error("Gagal memperbarui menu: " . $e->getMessage());
+            return response()->json(['errors' => ['server' => ['Gagal memperbarui data.']]], 500);
+        }
     }
 
     public function destroy(MenuItem $menuItem)
     {
         // Saat menghapus menu induk, semua sub-menu (children) akan ikut terhapus
         // karena onDelete('cascade') pada foreignId('parent_id') di migrasi.
-        $menuItem->delete();
 
-        return redirect()->route('admin.menu.index')->with('success', 'Menu item berhasil dihapus!');
+        try {
+
+            $menuItem->delete();
+
+            return response()->json([
+                'message' => 'Menu item berhasil dihapus!'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Gagal menghapus menu: " . $e->getMessage());
+            return response()->json(['message' => 'Gagal menghapus data.'], 500);
+        }
     }
 }

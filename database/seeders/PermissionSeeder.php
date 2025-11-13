@@ -43,7 +43,7 @@ class PermissionSeeder extends Seeder
             ['name' => 'manage-user-delete', 'description' => 'Menghapus pengguna aplikasi'],
 
             // Manajemen Bank Data TE
-            ['name' => 'view-dashboard-master-data', 'description' => 'Melihat dashboard rekapan Master Data'],
+            ['name' => 'view-dashboard-rekap-dil', 'description' => 'Melihat dashboard rekapan Master Data'],
             ['name' => 'manage-data-bank', 'description' => 'Akses Modul Bank Data TE'],
             ['name' => 'view-master-data', 'description' => 'Melihat Data Pelanggan'],
             ['name' => 'view-queue-monitor', 'description' => 'Monitoring Antrian Upload'],
@@ -136,7 +136,7 @@ class PermissionSeeder extends Seeder
             'access-executive-dashboard',
             'view-user-list',
             'view-master-data',
-            'view-dashboard-master-data'
+            'view-dashboard-rekap-dil'
         ])->pluck('id');
         $executiveUserRole->permissions()->sync($executiveUserPermissions);
     }
