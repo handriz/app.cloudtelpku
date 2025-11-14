@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class ValidationRecapController extends Controller 
 {
@@ -24,14 +25,56 @@ public function index(Request $request)
         $hierarchyFilter = $this->getHierarchyFilterForJoin($user); //
 
         // ==================================================================
-        // 1. QUERY REKAP ANGKA (STATISTIK PERFORMA TINGGI)
+        // 1. MEMBUAT QUERY DASAR UNTUK HIRARKI (PERFORMA)
         // ==================================================================
+        // Query ini akan kita 'clone' untuk semua perhitungan statistik
+        $baseHierarchyQuery = TemporaryMapping::query();
         
+        if (!$user->hasRole('admin')) {
+            // Filter untuk 'team' atau 'appuser' (siapapun yang bukan admin)
+            $baseHierarchyQuery
+                ->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
+                ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+        }
+
+        // ==================================================================
+        // 2. QUERY STATISTIK SISTEM (KARTU ANGKA)
+        // ==================================================================
+        $lockExpirationTime = Carbon::now()->subMinutes(MappingValidationController::LOCK_TIMEOUT_MINUTES);
+
+        $totalSystemData = (clone $baseHierarchyQuery)->count();
+        
+        $totalDataToValidate = (clone $baseHierarchyQuery)
+            ->where('is_validated', false) //
+            ->where(function($q) use ($lockExpirationTime) {
+                // Sesuai logika di MappingValidationController@index
+                $q->whereNull('locked_by')->orWhere('locked_at', '<', $lockExpirationTime);
+            })
+            ->count();
+            
+        $totalDataIsValidated = (clone $baseHierarchyQuery)
+            ->where('is_validated', true)
+            ->count();
+
+        // Kumpulkan dalam satu objek untuk dikirim ke view
+        $systemStats = (object) [
+            'total_data_in_system' => $totalSystemData,
+            'total_data_to_validate' => $totalDataToValidate,
+            'total_data_is_validated' => $totalDataIsValidated,
+        ];
+
+        // ==================================================================
+        // 3. QUERY REKAP PER-VALIDATOR (Tabel 1)
+        // ==================================================================
         // Mulai query dasar (join users dan temporary_mappings)
         $validatorStatsQuery = DB::table('users')
             ->join('temporary_mappings', 'users.id', '=', 'temporary_mappings.user_validasi')
             ->select(
                 'users.name',
+
+                // Hitung total data beban kerja
+                DB::raw("COUNT(temporary_mappings.id) as total_data"),
+
                 // Hitung total data yang divalidasi
                 DB::raw("COUNT(CASE WHEN temporary_mappings.is_validated = 1 THEN 1 END) as total_validated"),
                 
@@ -106,7 +149,7 @@ public function index(Request $request)
         // ==================================================================
         
         // Kirim kedua set data (Statistik dan Daftar Baris) ke view
-        $viewData = compact('reviewItems', 'validatorStats');
+        $viewData = compact('systemStats', 'validatorStats', 'reviewItems');
 
          if ($request->has('is_ajax')) {
             return view('team.validation_recap.partials.index_content', $viewData); //
@@ -202,7 +245,6 @@ public function index(Request $request)
 
             // Kembalikan status ke Rejected_X dan reset flag
             $tempData->is_validated = false;
-            $tempData->user_validasi = null;
             $tempData->ket_validasi = 'review_rejected'; 
             $tempData->validation_notes = "Review Ditolak oleh Supervisor: " . $request->input('reason');
             $tempData->locked_by = null;

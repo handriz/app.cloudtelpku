@@ -172,7 +172,7 @@
                                         <option value="bukan_persil">Bukan foto persil / bangunan</option>
                                         <option value="diragukan">Foto App tidak ada pada persil</option>
                                         <option value="tidak_valid">Foto diragukan dari kegiatan lapangan</option>
-                                        <option value="streetview_tidak_tersedia">Streetview tidak tersedia pada lokasi</option>
+                                        <option value="streetview_persil_tidak_tersedia">Streetview tidak tersedia, Validasi Gagal Dilakukan</option>
                                         streetview_tidak_tersedia
                                     </select>
                                 </div>

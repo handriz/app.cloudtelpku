@@ -258,7 +258,7 @@ class MappingValidationController extends Controller
             $tempData->user_validasi = Auth::id();
 
             // 3. Simpan data evaluasi
-            $evalData = $request->input('validation_data');
+            $evalData = json_decode($request->input('validation_data'), true);
             $tempData->validation_data = $evalData;
             $tempData->validation_notes = $request->input('validation_notes');
 
@@ -331,7 +331,7 @@ class MappingValidationController extends Controller
 
             if ($request->expectsJson()) {
                  // Cari item berikutnya yang tersedia untuk divalidasi user ini
-                 $nextItem = $this->findNextAvailableItem(Auth::id());
+                 $nextItem = $this->findNextAvailableItem(Auth::id(), $id);
 
                  if ($nextItem) {
                     // 1. Panggil fungsi lockAndGetDetails, TAPI simpan responsenya
@@ -398,10 +398,11 @@ class MappingValidationController extends Controller
             $newStatus = 'rejected_' . ($rejectCount + 1);
 
             // Update status, simpan alasan (jika ada), dan reset lock
-            $validationData = $request->input('validation_data');
+            $validationData = json_decode($request->input('validation_data'), true);
             $validationNotes = $request->input('validation_notes');
 
             \Log::info('Validation Data Received:', ['data' => $validationData, 'notes' => $validationNotes]);
+            $tempData->user_validasi = Auth::id();
             $tempData->ket_validasi = $newStatus;
             $tempData->validation_data = $validationData;
             $tempData->validation_notes = $validationNotes;
@@ -417,7 +418,7 @@ class MappingValidationController extends Controller
             // Kirim respon sukses (untuk AJAX)
             if ($request->expectsJson()) {
                  // Cari item berikutnya yang tersedia
-                 $nextItem = $this->findNextAvailableItem(Auth::id());
+                 $nextItem = $this->findNextAvailableItem(Auth::id(), $id);
                  if ($nextItem) {
                     $response = $this->lockAndGetDetails($request, $nextItem->id);
                     $data = $response->getData(true);
@@ -447,7 +448,7 @@ class MappingValidationController extends Controller
         }
     }
 
-    private function findNextAvailableItem($userId)
+    private function findNextAvailableItem($userId, $excludeId = null)
     {
          $lockExpirationTime = Carbon::now()->subMinutes(self::LOCK_TIMEOUT_MINUTES);
          $hierarchyFilter = $this->getHierarchyFilterForJoin(Auth::user());
@@ -463,8 +464,11 @@ class MappingValidationController extends Controller
                   ->orWhere('ket_validasi', 'NOT LIKE', 'verified%');
             });
          })
+        ->when($excludeId, function($q) use ($excludeId) {
+            $q->where('temporary_mappings.id', '!=', $excludeId);
+        })
 
-         ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
+        ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
              return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                  ->select('temporary_mappings.*')
                  ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
@@ -539,7 +543,7 @@ class MappingValidationController extends Controller
             'bukan_persil' => 'Bukan foto persil / bangunan',
             'diragukan' => 'Foto App tidak ada pada persil',
             'tidak_valid' => 'Foto diragukan dari kegiatan lapangan',
-            'streetview_tidak_tersedia' => 'Streetview tidak tersedia pada lokasi ',
+            'streetview_persil_tidak_tersedia' => 'Streetview tidak tersedia, Validasi Gagal Dilakukan',
         ];
 
         $fotoKwhReasons = [

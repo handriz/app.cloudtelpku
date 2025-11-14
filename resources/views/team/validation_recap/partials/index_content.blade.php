@@ -9,6 +9,48 @@
 
 <div class="mb-4 bg-white dark:bg-gray-800 rounded-lg shadow p-4">
     <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-3">
+        Informasi Statistik Validasi
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        {{-- Kartu 1: Total Data --}}
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex items-center">
+            <div class="bg-blue-100 dark:bg-blue-900 rounded-full p-3 mr-4">
+                <i class="fas fa-database text-blue-500 dark:text-blue-300 fa-lg"></i>
+            </div>
+            <div>
+                <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Data (di Hirarki Anda)</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($systemStats->total_data_in_system) }}</div>
+            </div>
+        </div>
+
+        {{-- Kartu 2: Antrian Validasi --}}
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex items-center">
+            <div class="bg-yellow-100 dark:bg-yellow-900 rounded-full p-3 mr-4">
+                <i class="fas fa-tasks text-yellow-500 dark:text-yellow-300 fa-lg"></i>
+            </div>
+            <div>
+                <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Antrian Validasi (Backlog)</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($systemStats->total_data_to_validate) }}</div>
+            </div>
+        </div>
+
+        {{-- Kartu 3: Total Tervalidasi --}}
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex items-center">
+            <div class="bg-green-100 dark:bg-green-900 rounded-full p-3 mr-4">
+                <i class="fas fa-check-circle text-green-500 dark:text-green-300 fa-lg"></i>
+            </div>
+            <div>
+                <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Tervalidasi (Progress)</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ number_format($systemStats->total_data_is_validated) }}</div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="mb-4 bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+    <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-3">
         Rekap Performa Validator
     </h3>
     <div class="overflow-x-auto">
@@ -18,11 +60,12 @@
                 <tr>
                     {{-- MODIFIKASI: py-3 -> py-2 dan text-center --}}
                     <th rowspan="2" class="px-6 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300 dark:border-gray-600">Validator</th>
+                    <th rowspan="2" class="px-6 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300 dark:border-gray-600">Total Beban Kerja</th>
                     <th rowspan="2" class="px-6 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300 dark:border-gray-600">Total Divalidasi</th>
-                    <th rowspan="2" class="px-6 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300 dark:border-gray-600">Menunggu Review</th>
+                    <th rowspan="2" class="px-6 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300 dark:border-gray-600">Menunggu Review Pengesahan</th>
                     
                     <th colspan="3" class="px-6 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300 dark:border-gray-600">
-                        Detail Tolak Data
+                        Resume Detail Tolak Data
                     </th>
                     
                     <th rowspan="2" class="px-6 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300 dark:border-gray-600">Total Ditolak</th>
@@ -41,6 +84,7 @@
                     <tr>
                         {{-- MODIFIKASI: Tambahkan text-center --}}
                         <td class="px-6 py-4 text-center font-medium text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600">{{ $stat->name }}</td>
+                        <td class="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-bold border border-gray-300 dark:border-gray-600">{{ $stat->total_data }}</td>
                         <td class="px-6 py-4 text-center text-gray-500 border border-gray-300 dark:border-gray-600">{{ $stat->total_validated }}</td>
                         <td class="px-6 py-4 text-center text-blue-500 font-medium border border-gray-300 dark:border-gray-600">{{ $stat->pending_review }}</td>
 
@@ -62,7 +106,7 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow mt-4">
     <div class="p-4 border-b dark:border-gray-700">
         <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100">
-            Daftar Menunggu Review ({{ $reviewItems->total() }})
+            Daftar Menunggu Review Pengesahan ({{ $reviewItems->total() }})
         </h3>
         <p class="text-sm text-gray-500">
             @if (Auth::check() && (Auth::user()->hasRole('admin') || Auth::user()->hasRole('team')))
