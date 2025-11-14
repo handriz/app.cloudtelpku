@@ -192,7 +192,7 @@
     
     {{-- Paginasi --}}
     <div class="p-4">
-        {{ $reviewItems->appends(['review_page' => $reviewItems->currentPage()])->links('pagination::tailwind') }}
+        {{ $reviewItems->appends(request()->query())->links('pagination::tailwind') }}
     </div>
 </div>
 {{-- Script popup alasan reject (jika diperlukan) --}}
