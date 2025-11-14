@@ -226,11 +226,11 @@ App.Tabs = (() => {
         if (!tabContent) return;
 
         // Jika sudah punya konten (pernah dimuat), tidak perlu fetch ulang
-        if (tabContent.dataset.loaded === "true") {
-            console.log(`[TAB MANAGER] ${tabName} sudah dimuat sebelumnya, lewati reload.`);
-            if (callback && typeof callback === 'function') callback();
-            return;
-        }
+        // if (tabContent.dataset.loaded === "true") {
+        //     console.log(`[TAB MANAGER] ${tabName} sudah dimuat sebelumnya, lewati reload.`);
+        //     if (callback && typeof callback === 'function') callback();
+        //     return;
+        // }
 
         // Bersihkan isi tab dan tampilkan spinner loading
         if (App.State.mapInstance) {
@@ -1633,8 +1633,10 @@ App.Validation = (() => {
                 streetViewModal.style.right = ''; 
 
                 try {
-                    const { StreetViewService, StreetViewPanorama } = await google.maps.importLibrary("streetView");
-                    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+                    // const { StreetViewService, StreetViewPanorama } = await google.maps.importLibrary("streetView");
+                    const { StreetViewService, StreetViewPanorama } = await google.maps.importLibrary("streetView", { key: GOOGLE_API_KEY });
+                    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker", { key: GOOGLE_API_KEY });
+                    // const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
                     
                     console.log("--- DEBUG: Library StreetView dan Marker berhasil di-await ---");
 

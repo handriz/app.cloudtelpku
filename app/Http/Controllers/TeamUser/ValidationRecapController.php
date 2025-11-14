@@ -133,8 +133,7 @@ public function index(Request $request)
             // Team Leader lihat daftar review di wilayahnya
             $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                   ->select('temporary_mappings.*') //
-                  ->where($hierarchyFilter['column'], $hierarchyFilter['code']) //
-                  ->groupBy('temporary_mappings.id');
+                  ->where($hierarchyFilter['column'], $hierarchyFilter['code']) ;              
                   
         } elseif (!$user->hasRole('admin')) {
              // Role lain tidak melihat apa-apa

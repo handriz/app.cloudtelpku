@@ -543,7 +543,7 @@ class MappingValidationController extends Controller
             'bukan_persil' => 'Bukan foto persil / bangunan',
             'diragukan' => 'Foto App tidak ada pada persil',
             'tidak_valid' => 'Foto diragukan dari kegiatan lapangan',
-            'streetview_persil_tidak_tersedia' => 'Streetview tidak tersedia, Validasi Gagal Dilakukan',
+            'streetview_persil_tidak_tersedia' => 'Streetview tidak tersedia, Validasi Persil Gagal Dilakukan',
         ];
 
         $fotoKwhReasons = [

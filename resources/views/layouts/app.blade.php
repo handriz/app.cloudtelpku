@@ -17,13 +17,45 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     
-    <script>
-            function initMap() {
-                // Biarkan kosong.
-            }
-    </script>
 
-    <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google-maps.key') }}&libraries=streetView&callback=initMap" async></script>
+<script>
+        (g => {
+            var h, a, k, p = "The Google Maps JavaScript API",
+                c = "google",
+                l = "importLibrary",
+                q = "__ib__",
+                m = document,
+                b = window;
+            b[c] || (b[c] = {});
+            var d = b[c];
+            d[l] || (d[l] = function() {
+                (d[q] || (d[q] = [])).push(arguments)
+            });
+            var e = d[l];
+            Object.defineProperty(d, l, {
+                value: function() {
+                    e.apply(null, arguments)
+                }
+            });
+            
+            // Di sinilah kita menyisipkan kunci API dari PHP
+            var f = new URLSearchParams;
+            f.append("key", @json(config('services.google-maps.key')));
+            f.append("libraries", "streetView"); // Muat library yang Anda butuhkan
+            f.append("callback", "initMap"); // Tetap gunakan initMap
+
+            var g = m.createElement("script");
+            g.async = !0;
+            g.src = "https://maps.googleapis.com/maps/api/js?" + f.toString();
+            h = m.getElementsByTagName("script")[0];
+            h.parentNode.insertBefore(g, h)
+        })(window);
+
+        // Fungsi initMap tetap dibutuhkan, biarkan kosong
+        function initMap() {
+            // Biarkan kosong
+        }
+    </script>
     <style>
         .sidebar-collapsed { width: 70px !important; }
         .sidebar-collapsed .menu-text { display: none; }
