@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use App\Http\Controllers\TeamUser\MappingValidationController;
 
 class ValidationRecapController extends Controller 
 {
@@ -56,7 +57,6 @@ public function index(Request $request)
             ->where('is_validated', true)
             ->count();
 
-        // Kumpulkan dalam satu objek untuk dikirim ke view
         $systemStats = (object) [
             'total_data_in_system' => $totalSystemData,
             'total_data_to_validate' => $totalDataToValidate,
@@ -67,11 +67,15 @@ public function index(Request $request)
         // 3. QUERY REKAP PER-VALIDATOR (Tabel 1)
         // ==================================================================
         // Mulai query dasar (join users dan temporary_mappings)
-        $validatorStatsQuery = DB::table('users')
-            ->join('temporary_mappings', 'users.id', '=', 'temporary_mappings.user_validasi')
+        $validatorStatsQuery = DB::table('temporary_mappings')
+            ->leftJoin('users', 'temporary_mappings.user_validasi', '=', 'users.id')
+            ->where(function ($query) {
+                $query->where('temporary_mappings.is_validated', true)
+                      ->orWhere('temporary_mappings.ket_validasi', 'LIKE', 'rejected_%');
+            })
             ->select(
-                'users.name',
-
+                DB::raw("COALESCE(users.name, 'Validator Tidak Dikenal') as name"),
+                'temporary_mappings.user_validasi as user_id',
                 // Hitung total data beban kerja
                 DB::raw("COUNT(temporary_mappings.id) as total_data"),
 
@@ -89,10 +93,11 @@ public function index(Request $request)
                 DB::raw("COUNT(CASE WHEN temporary_mappings.validation_data->>'$.eval_persil' = 'tidak' THEN 1 END) as rejected_persil"),
                 DB::raw("COUNT(CASE WHEN temporary_mappings.validation_data->>'$.eval_foto_kwh' = 'tidak' THEN 1 END) as rejected_foto_kwh")
             )
-            ->groupBy('users.id', 'users.name')
-            ->orderBy('total_validated', 'desc');
+            ->groupBy('temporary_mappings.user_validasi', 'users.name')
+            ->orderBy('total_validated', 'asc');
 
-        // Terapkan filter hirarki/role pada query REKAP ANGKA
+        
+            // Terapkan filter hirarki/role pada query REKAP ANGKA
         if ($user->hasRole('appuser')) {
             // Appuser hanya lihat statistiknya sendiri
             $validatorStatsQuery->where('temporary_mappings.user_validasi', $user->id);
@@ -158,6 +163,110 @@ public function index(Request $request)
            return view('team.validation_recap.index', $viewData); //
    }
 
+   public function downloadValidatorReport(Request $request)
+    {
+        $request->validate([
+            'metric' => 'required|string',
+            'user_id' => 'nullable', // Bisa 'NULL' (string) atau ID
+        ]);
+
+        $metric = $request->input('metric');
+        $userId = $request->input('user_id'); 
+        $user = Auth::user();
+        $hierarchyFilter = $this->getHierarchyFilterForJoin($user);
+
+        // 1. Buat Query dasar untuk mengambil DATA BARIS
+        // Query ini harus mereplikasi filter hirarki dari 'index'
+        $query = TemporaryMapping::query()
+            ->with('validator'); // Load relasi validator
+
+        // Filter berdasarkan Validator
+        if ($userId === 'NULL' || $userId === null) {
+            $query->whereNull('user_validasi');
+        } else {
+            $query->where('user_validasi', $userId);
+        }
+
+        // Filter berdasarkan Hirarki Supervisor
+        if ($user->hasRole('team')) {
+            $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
+                  ->select('temporary_mappings.*') //
+                  ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+        } elseif ($user->hasRole('appuser')) {
+             $query->where('temporary_mappings.user_validasi', $user->id);
+        } elseif (!$user->hasRole('admin')) {
+             $query->where('temporary_mappings.id', 0); //
+        }
+
+        // 2. Terapkan filter METRIK (harus cocok dengan query 'index')
+        switch ($metric) {
+            case 'total_data':
+                // Tidak perlu filter tambahan
+                break;
+            case 'total_validated':
+                $query->where('is_validated', true);
+                break;
+            case 'pending_review':
+                $query->where('is_validated', true)->whereNull('locked_by');
+                break;
+            case 'total_rejected':
+                $query->where('ket_validasi', 'LIKE', 'rejected_%');
+                break;
+            case 'rejected_peta':
+                $query->where('validation_data->eval_peta', 'tidak');
+                break;
+            case 'rejected_persil':
+                $query->where('validation_data->eval_persil', 'tidak');
+                break;
+            case 'rejected_foto_kwh':
+                $query->where('validation_data->eval_foto_kwh', 'tidak');
+                break;
+            default:
+                // Jika metrik tidak dikenal, batalkan.
+                return redirect()->back()->with('error', 'Metrik unduhan tidak dikenal.');
+        }
+
+        // 3. Siapkan File CSV untuk di-stream
+        $fileName = "rekap_{$metric}_user_{$userId}_" . Carbon::now()->format('YmdHi') . ".csv";
+        $headers = [
+            "Content-type"        => "text/csv",
+            "Content-Disposition" => "attachment; filename=$fileName",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Expires"             => "0"
+        ];
+
+        // Tentukan kolom-kolom CSV Anda
+        $columns = ['Objectid', 'Idpel', 'User Validasi', 'Status', 'Tgl Update', 'Catatan Validasi', 'Reason Peta', 'Reason Foto Persil', 'Reason Foto KWH'];
+
+        $callback = function() use($query, $columns) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns);
+
+            // Proses data per 500 baris agar hemat memori
+            $query->chunk(500, function($items) use ($file) {
+                foreach ($items as $item) {
+                    $row = [
+                        $item->objectid,
+                        $item->idpel,
+                        $item->validator->name ?? 'TIDAK DIKENAL',
+                        $item->ket_validasi,
+                        $item->updated_at->format('Y-m-d H:i:s'),
+                        $item->validation_notes,
+                        $item->validation_data['eval_peta_reason'] ?? ($item->validation_data['eval_peta'] ?? ''),
+                        $item->validation_data['eval_persil_reason'] ?? ($item->validation_data['eval_persil'] ?? ''),
+                        $item->validation_data['eval_foto_kwh_reason'] ?? ($item->validation_data['eval_foto_kwh'] ?? '')
+                    ];
+                    fputcsv($file, $row);
+                }
+            });
+            fclose($file);
+        };
+
+        // Mulai streaming download
+        return response()->stream($callback, 200, $headers);
+    }
+    
     /**
      * Menyetujui (Promote) data dari temporary_mappings ke mapping_kddk.
      */

@@ -82,17 +82,63 @@
                 
                 @forelse ($validatorStats as $stat)
                     <tr>
-                        {{-- MODIFIKASI: Tambahkan text-center --}}
-                        <td class="px-6 py-4 text-center font-medium text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600">{{ $stat->name }}</td>
-                        <td class="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-bold border border-gray-300 dark:border-gray-600">{{ $stat->total_data }}</td>
-                        <td class="px-6 py-4 text-center text-gray-500 border border-gray-300 dark:border-gray-600">{{ $stat->total_validated }}</td>
-                        <td class="px-6 py-4 text-center text-blue-500 font-medium border border-gray-300 dark:border-gray-600">{{ $stat->pending_review }}</td>
+                        @php $userIdParam = $stat->user_id ?? 'NULL'; @endphp
 
-                        <td class="px-6 py-4 text-center text-red-500 border border-gray-300 dark:border-gray-600">{{ $stat->rejected_peta }}</td>
-                        <td class="px-6 py-4 text-center text-red-500 border border-gray-300 dark:border-gray-600">{{ $stat->rejected_persil }}</td>
-                        <td class="px-6 py-4 text-center text-red-500 border border-gray-300 dark:border-gray-600">{{ $stat->rejected_foto_kwh }}</td>
+                        <td class="px-6 py-4 text-center font-medium text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600">{{ $stat->name }}</td>
                         
-                        <td class="px-6 py-4 text-center text-red-500 font-bold border border-gray-300 dark:border-gray-600">{{ $stat->total_rejected }}</td>
+                        <td class="px-6 py-4 text-center text-gray-700 dark:text-gray-300 font-bold border border-gray-300 dark:border-gray-600">
+                            @if (Auth::check() && (Auth::user()->hasRole('admin') || Auth::user()->hasRole('team')))
+                            <a href="{{ route('team.validation_recap.download', ['metric' => 'total_data', 'user_id' => $userIdParam]) }}" class="text-blue-600 hover:text-blue-800 hover:underline" title="Unduh data CSV" data-download-link>
+                                {{ $stat->total_data }}
+                            </a>
+                            @else
+                                {{ $stat->total_data }}
+                            @endif
+                        </td>
+                        <td class="px-6 py-4 text-center text-gray-500 border border-gray-300 dark:border-gray-600">
+                            @if (Auth::check() && (Auth::user()->hasRole('admin') || Auth::user()->hasRole('team')))
+                            <a href="{{ route('team.validation_recap.download', ['metric' => 'total_validated', 'user_id' => $userIdParam]) }}" class="text-blue-600 hover:text-blue-800 hover:underline" title="Unduh data CSV" data-download-link>
+                                {{ $stat->total_validated }}
+                            </a>
+                            @else
+                                {{ $stat->total_data }}
+                            @endif
+                        </td>
+                        <td class="px-6 py-4 text-center text-blue-500 font-medium border border-gray-300 dark:border-gray-600">
+                            @if (Auth::check() && (Auth::user()->hasRole('admin') || Auth::user()->hasRole('team')))
+                            <a href="{{ route('team.validation_recap.download', ['metric' => 'pending_review', 'user_id' => $userIdParam]) }}" class="text-blue-600 hover:text-blue-800 hover:underline" title="Unduh data CSV" data-download-link>
+                                {{ $stat->pending_review }}
+                            </a>
+                            @else
+                                {{ $stat->total_data }}
+                            @endif
+                        </td>
+
+                        <td class="px-6 py-4 text-center text-red-500 border border-gray-300 dark:border-gray-600">
+                            <a href="{{ route('team.validation_recap.download', ['metric' => 'rejected_peta', 'user_id' => $userIdParam]) }}" class="text-red-600 hover:text-red-800 hover:underline" title="Unduh data CSV" data-download-link>
+                                {{ $stat->rejected_peta }}
+                            </a>
+                        </td>
+                        <td class="px-6 py-4 text-center text-red-500 border border-gray-300 dark:border-gray-600">
+                            <a href="{{ route('team.validation_recap.download', ['metric' => 'rejected_persil', 'user_id' => $userIdParam]) }}" class="text-red-600 hover:text-red-800 hover:underline" title="Unduh data CSV" data-download-link>
+                                {{ $stat->rejected_persil }}
+                            </a>
+                        </td>
+                        <td class="px-6 py-4 text-center text-red-500 border border-gray-300 dark:border-gray-600">
+                            <a href="{{ route('team.validation_recap.download', ['metric' => 'rejected_foto_kwh', 'user_id' => $userIdParam]) }}" class="text-red-600 hover:text-red-800 hover:underline" title="Unduh data CSV" data-download-link>
+                                {{ $stat->rejected_foto_kwh }}
+                            </a>
+                        </td>
+                        
+                        <td class="px-6 py-4 text-center text-red-500 font-bold border border-gray-300 dark:border-gray-600">
+                            @if (Auth::check() && (Auth::user()->hasRole('admin') || Auth::user()->hasRole('team')))
+                            <a href="{{ route('team.validation_recap.download', ['metric' => 'total_rejected', 'user_id' => $userIdParam]) }}" class="text-red-600 hover:text-red-800 hover:underline" title="Unduh data CSV" data-download-link>
+                                {{ $stat->total_rejected }}
+                            </a>
+                             @else
+                                {{ $stat->total_rejected }}
+                            @endif
+                        </td>
                     </tr>
                 @empty
                     <tr>

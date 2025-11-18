@@ -21,17 +21,27 @@ class MappingValidationController extends Controller
 
     public function index(Request $request)
     {
+        // hindari ID item yang baru saja ditolak (jika ada), agar tidak langsung muncul lagi.
         $justRejectedId = $request->session()->pull('just_rejected_id', null);
+        // Dapatkan ID user yang sedang login.
         $userId = Auth::id();
+        // Tentukan batas waktu kedaluwarsa kunci (10 menit yang lalu).
         $lockExpirationTime = Carbon::now()->subMinutes(self::LOCK_TIMEOUT_MINUTES);
-
-        // 1. Cari item yang di-lock user ini (belum expired)
-        $userLockedItem = TemporaryMapping::where('locked_by', $userId)
-                            ->where('locked_at', '>=', $lockExpirationTime)
-                            ->first();
+        // 1. Ambil filter wilayah (hirarki) Anda terlebih dahulu.
+        $hierarchyFilter = $this->getHierarchyFilterForJoin(Auth::user());
+        // 2. Buat query dasar untuk mencari item yang terkunci oleh ANDA.
+        $userLockedItemQuery = TemporaryMapping::where('locked_by', $userId)
+                            ->where('locked_at', '>=', $lockExpirationTime);
+        // 3. Terapkan filter hirarki ke query item terkunci
+        if (!Auth::user()->hasRole('admin')) {
+            $userLockedItemQuery->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
+                ->select('temporary_mappings.*') // Hindari ambiguitas kolom
+                ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+        }
+        // 4. Eksekusi query. $userLockedItem berisi 1 item (atau null).
+        $userLockedItem = $userLockedItemQuery->first();
 
         // 2. Query dasar untuk SEMUA item yang BISA Divalidasi (belum 'verified')
-        $hierarchyFilter = $this->getHierarchyFilterForJoin(Auth::user());
         $baseAvailableQuery = TemporaryMapping::where(function ($query) use ($lockExpirationTime) {
             
             // Filter 1: Kriteria Lock (Tidak terkunci ATAU expired)
@@ -40,22 +50,24 @@ class MappingValidationController extends Controller
                   ->orWhere('locked_at', '<', $lockExpirationTime);
             });
             
-            // Filter 2: Kriteria Status (BUKAN 'verified')
+            // Filter 2: Status pekerjaan BUKAN 'verified' (bisa NULL, rejected, dll).
             $query->where(function($q) {
                 $q->whereNull('ket_validasi') // Item baru (NULL)
                   ->orWhere('ket_validasi', 'NOT LIKE', 'verified%'); // Item yg belum di-approve
             });
 
         })
+        // Filter 3: Item BELUM divalidasi (is_validated = false).
+        ->where('temporary_mappings.is_validated', false)
 
+        // Filter 4: Terapkan filter Hirarki (wilayah) jika bukan Admin.
         ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
             return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                 ->select('temporary_mappings.*')
                 ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
         });
 
-        // 3. Ambil item acak lainnya (max 10), prioritaskan item BARU
-        
+        // 3. Prioritaskan urutan Backlog: Item baru (1) didahulukan, item ditolak (2) belakangan.
         $baseAvailableQuery = (clone $baseAvailableQuery)
         ->orderByRaw("
             CASE
@@ -64,22 +76,24 @@ class MappingValidationController extends Controller
             END ASC
         ");
 
-        // Hitung total yang bisa diambil    
+        // Hitung total yang bisa diambil untuk divalidasi   
         $totalCount = $baseAvailableQuery->count();
 
-        // 4. Gabungkan: item yg di-lock user (jika ada) + item acak lainnya
+        // 4. Siapkan daftar 10 item yang akan ditampilkan.
         $availableItems = collect();
 
+        // Masukkan item prioritas Anda (jika ada) ke dalam daftar.
         if ($userLockedItem) {
             $availableItems->push($userLockedItem); // Tambahkan item user di awal
         }
 
+        // Jika masih ada sisa di backlog...
         if ($totalCount > 0) {
-            // Tentukan berapa item tambahan yang dibutuhkan
+            // Tentukan berapa banyak lagi item acak yang kita butuhkan (misal: 10 - 1 = 9).
             $needed = 10 - $availableItems->count();
             $needed = max(0, $needed);
 
-            // Ambil acak tanpa ORDER BY RAND() agar cepat
+            // Ambil 9 item acak.
             for ($i = 0; $i < $needed; $i++) {
                 $offset = rand(0, max(0, $totalCount - 1));
                 $item = (clone $baseAvailableQuery)->skip($offset)->take(1)->first();
@@ -536,13 +550,13 @@ class MappingValidationController extends Controller
 
         // Definisikan terjemahan untuk kode alasan
         $petaReasons = [
-            'posisi_bangunan' => 'Posisi titik tagging tidak berada di bangunan',
-            'luar_wilayah' => 'Titik tagging berada diluar wilayah ULP / UP3 Pekanbaru',
+            'koordinat_not_valid' => 'Posisi titik tagging tidak berada di bangunan',
+            'koordinat_luar_wilayah' => 'Titik tagging berada diluar wilayah ULP / UP3 Pekanbaru',
         ];
         $persilReasons = [
-            'bukan_persil' => 'Bukan foto persil / bangunan',
+            'bukan_foto_persil' => 'Bukan foto persil / bangunan',
             'diragukan' => 'Foto App tidak ada pada persil',
-            'tidak_valid' => 'Foto diragukan dari kegiatan lapangan',
+            'tidak_valid_lapangan' => 'Foto diragukan dari kegiatan lapangan',
             'streetview_persil_tidak_tersedia' => 'Streetview tidak tersedia, Validasi Persil Gagal Dilakukan',
         ];
 

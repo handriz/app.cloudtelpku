@@ -142,8 +142,8 @@
                                     <label for="eval_peta_reason" class="block text-xs font-medium text-gray-600 dark:text-gray-400">Alasan Peta Tidak Sesuai:</label>
                                     <select id="eval_peta_reason" name="eval_peta_reason" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                                         <option value="">-- Pilih Alasan --</option>
-                                        <option value="posisi_bangunan">Posisi titik tagging tidak berada di bangunan</option>
-                                        <option value="luar_wilayah">Titik koordinat tidak valid atau berada diluar wilayah ULP / UP3</option>
+                                        <option value="koordinat_not_valid">Posisi titik tagging tidak berada di bangunan</option>
+                                        <option value="koordinat_luar_wilayah">Titik koordinat tidak valid atau berada diluar wilayah</option>
                                     </select>
                                 </div>                                                
                             </div>
@@ -169,9 +169,9 @@
                                     <label for="eval_persil_reason" class="block text-xs font-medium text-gray-600 dark:text-gray-400">Alasan Foto Persil Tidak Sesuai:</label>
                                     <select id="eval_persil_reason" name="eval_persil_reason" class="eval-input block w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                                         <option value="">-- Pilih Alasan --</option>
-                                        <option value="bukan_persil">Bukan foto persil / bangunan</option>
+                                        <option value="bukan_foto_persil">Bukan foto persil / bangunan</option>
                                         <option value="diragukan">Foto App tidak ada pada persil</option>
-                                        <option value="tidak_valid">Foto diragukan dari kegiatan lapangan</option>
+                                        <option value="tidak_valid_lapangan">Foto diragukan dari kegiatan lapangan</option>
                                         <option value="streetview_persil_tidak_tersedia">Streetview tidak tersedia, Validasi Persil Gagal Dilakukan</option>
                                         streetview_tidak_tersedia
                                     </select>

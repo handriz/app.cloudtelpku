@@ -2639,8 +2639,6 @@ App.Listeners = (() => {
     }
 
     function handleGlobalClick(e, elements) {
-        // --- Urutan Prioritas Pengecekan Klik ---
-
         // 1. Link Modal (data-modal-link)
         const modalLink = e.target.closest('[data-modal-link]');
         if (modalLink) {
@@ -2733,6 +2731,7 @@ App.Listeners = (() => {
         if (targetLink.closest('#tabs-content') &&
             !targetLink.hasAttribute('data-tab-link') && 
             targetLink.getAttribute('target') !== '_blank' &&
+            !targetLink.hasAttribute('data-download-link') &&
             targetLink.id !== 'google-street-view-link' &&
             targetLink.id !== 'validation-street-view-link')
         {

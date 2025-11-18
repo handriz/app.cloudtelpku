@@ -159,6 +159,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{id}/reject', [ValidationRecapController::class, 'rejectReview'])
                  ->name('reject_review')
                  ->middleware('role:admin,team');
+
+            Route::get('/download', [ValidationRecapController::class, 'downloadValidatorReport'])
+                 ->name('download');
         });
 
     });
