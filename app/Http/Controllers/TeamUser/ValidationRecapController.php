@@ -118,6 +118,15 @@ public function index(Request $request)
         // Eksekusi query statistik
         $validatorStats = $validatorStatsQuery->get();
         
+        $grandTotals = [
+            'total_data'       => $validatorStats->sum('total_data'),
+            'total_validated'  => $validatorStats->sum('total_validated'),
+            'pending_review'   => $validatorStats->sum('pending_review'),
+            'total_rejected'   => $validatorStats->sum('total_rejected'),
+            'rejected_peta'    => $validatorStats->sum('rejected_peta'),
+            'rejected_persil'  => $validatorStats->sum('rejected_persil'),
+            'rejected_foto_kwh'=> $validatorStats->sum('rejected_foto_kwh'),
+        ];
 
         // ==================================================================
         // 2. QUERY DAFTAR TUGAS PER BARIS (UNTUK DI-REVIEW)
@@ -154,7 +163,7 @@ public function index(Request $request)
         // ==================================================================
         
         // Kirim kedua set data (Statistik dan Daftar Baris) ke view
-        $viewData = compact('systemStats', 'validatorStats', 'reviewItems');
+        $viewData = compact('systemStats', 'validatorStats', 'reviewItems','grandTotals');
 
          if ($request->has('is_ajax')) {
             return view('team.validation_recap.partials.index_content', $viewData); //
@@ -515,6 +524,7 @@ public function index(Request $request)
         ]);
 
         $currentUser = Auth::user();
+        $isAdminOrTeam = $currentUser->hasRole('admin') || $currentUser->hasRole('team');
         $model = null;
 
         if ($validated['source_table'] === 'temporary_mappings') {
@@ -530,13 +540,20 @@ public function index(Request $request)
         // Cek Status Awal (digunakan untuk logika update status)
         $isAlreadyValidated = $model->is_validated;
 
-        // --- CEK KEAMANAN (Redundant, tapi wajib) ---
-        $isAdminOrTeam = $currentUser->hasRole('admin') || $currentUser->hasRole('team');
+        // --- CHECK KEAMANAN SERVER (REDUNDAN TAPI WAJIB) ---
         $isOwner = $model->user_validasi == $currentUser->id;
-        
+
+        // 1. Cek otorisasi akses secara umum
         if (!$isAdminOrTeam && !$isOwner) {
             return response()->json(['message' => 'Akses Ditolak: Anda tidak memiliki izin untuk mengedit data.'], 403);
         }
+
+        // 2. Cek izin ganti foto (ATURAN BARU: HANYA Admin/TL yang bisa ganti foto)
+        if (!$isAdminOrTeam && ($request->hasFile('foto_kwh_new') || $request->hasFile('foto_bangunan_new'))) {
+             return response()->json(['message' => 'Akses Ditolak: Hanya Admin atau Team Leader yang diizinkan mengganti foto.'], 403);
+        }
+
+        // 3. Cek data final (MappingKddk hanya bisa diubah Admin/TL)
         if ($validated['source_table'] === 'mapping_kddk' && !$isAdminOrTeam) {
             return response()->json(['message' => 'Akses Ditolak: Data final hanya bisa diubah Admin/TL.'], 403);
         }
@@ -588,8 +605,10 @@ public function index(Request $request)
                 }
             };
 
-            $handlePhotoReplacement('foto_kwh_new', 'foto_kwh', 'foto_app');
-            $handlePhotoReplacement('foto_bangunan_new', 'foto_bangunan', 'foto_persil');
+            if ($isAdminOrTeam) {
+                $handlePhotoReplacement('foto_kwh_new', 'foto_kwh', 'foto_app');
+                $handlePhotoReplacement('foto_bangunan_new', 'foto_bangunan', 'foto_persil');
+            }
 
             $model->save();
             DB::commit();

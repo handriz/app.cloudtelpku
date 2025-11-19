@@ -26,13 +26,19 @@
             {{-- ================================================== --}}
             <div class="space-y-6">
                 
+                @php 
+                    $isAdminOrTeam = Auth::check() && (Auth::user()->hasRole('admin') || Auth::user()->hasRole('team'));
+                    $photoClickAction = $isAdminOrTeam ? 'onclick="document.getElementById(\'input_foto_kwh\').click()"' : '';
+                    $photoClickAction2 = $isAdminOrTeam ? 'onclick="document.getElementById(\'input_foto_bangunan\').click()"' : '';
+                @endphp
+
                 {{-- FOTO KWH --}}
                 <div>
                     <h5 class="font-medium text-gray-700 dark:text-gray-300 mb-2">Foto KWH</h5>
                     
-                    {{-- Wrapper Relative untuk Overlay --}}
-                    <div class="relative group w-full rounded-lg overflow-hidden shadow-md cursor-pointer" 
-                         onclick="document.getElementById('input_foto_kwh').click()">
+                    {{-- Wrapper Conditional --}}
+                    <div class="relative group w-full rounded-lg overflow-hidden shadow-md {{ $isAdminOrTeam ? 'cursor-pointer' : 'cursor-not-allowed' }}" 
+                         {!! $photoClickAction !!}>
                         
                         {{-- Gambar Utama (Preview) --}}
                         @if ($item->foto_kwh)
@@ -46,25 +52,38 @@
                         @endif
 
                         {{-- Overlay "Ganti Foto" --}}
-                        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black bg-opacity-40">
-                            <span class="px-3 py-1 bg-white text-gray-800 text-xs font-bold rounded-full shadow-lg">
-                                <i class="fas fa-edit mr-1"></i> Ganti Foto
-                            </span>
+                        <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-300 bg-black bg-opacity-40 
+                            {{ $isAdminOrTeam ? 'opacity-0 group-hover:opacity-100' : 'opacity-100' }}">
+                            
+                            @if ($isAdminOrTeam)
+                                <span class="px-3 py-1 bg-white text-gray-800 text-xs font-bold rounded-full shadow-lg">
+                                    <i class="fas fa-edit mr-1"></i> Ganti Foto
+                                </span>
+                            @else
+                                <span class="px-3 py-1 bg-white text-red-600 text-xs font-bold rounded-full shadow-lg">
+                                    Hanya Admin/TL yang boleh ganti
+                                </span>
+                            @endif
                         </div>
                     </div>
                     
-                    {{-- Input File Tersembunyi (Memanggil window.previewImage) --}}
-                    <input type="file" name="foto_kwh_new" id="input_foto_kwh" class="hidden" accept="image/*" 
-                           onchange="previewImage(this, 'preview_foto_kwh', 'placeholder_foto_kwh')">
+                    {{-- Input File Tersembunyi (Hanya dimasukkan jika berhak) --}}
+                    @if ($isAdminOrTeam)
+                        <input type="file" name="foto_kwh_new" id="input_foto_kwh" class="hidden" accept="image/*" 
+                               onchange="previewImage(this, 'preview_foto_kwh', 'placeholder_foto_kwh')">
+                    @else
+                        {{-- Kirim input kosong jika tidak berhak agar FormData tidak error --}}
+                        <input type="hidden" name="foto_kwh_new" value="">
+                    @endif
                     <p class="text-xs text-gray-400 mt-1 text-center">Klik gambar untuk mengganti.</p>
                 </div>
 
-                {{-- FOTO PERSIL --}}
+                {{-- FOTO PERSIL (Struktur sama dengan KWH) --}}
                 <div>
                     <h5 class="font-medium text-gray-700 dark:text-gray-300 mb-2">Foto Persil</h5>
                     
-                    <div class="relative group w-full rounded-lg overflow-hidden shadow-md cursor-pointer" 
-                         onclick="document.getElementById('input_foto_bangunan').click()">
+                    <div class="relative group w-full rounded-lg overflow-hidden shadow-md {{ $isAdminOrTeam ? 'cursor-pointer' : 'cursor-not-allowed' }}" 
+                         {!! $photoClickAction2 !!}>
                         
                         @if ($item->foto_bangunan)
                             <img id="preview_foto_bangunan" src="{{ Storage::disk('public')->url($item->foto_bangunan) }}" 
@@ -76,17 +95,30 @@
                             <img id="preview_foto_bangunan" src="" class="hidden w-full h-48 object-cover transition-opacity group-hover:opacity-75">
                         @endif
 
-                        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black bg-opacity-40">
-                            <span class="px-3 py-1 bg-white text-gray-800 text-xs font-bold rounded-full shadow-lg">
-                                <i class="fas fa-edit mr-1"></i> Ganti Foto
-                            </span>
+                        <div class="absolute inset-0 flex items-center justify-center transition-opacity duration-300 bg-black bg-opacity-40 
+                            {{ $isAdminOrTeam ? 'opacity-0 group-hover:opacity-100' : 'opacity-100' }}">
+                            
+                            @if ($isAdminOrTeam)
+                                <span class="px-3 py-1 bg-white text-gray-800 text-xs font-bold rounded-full shadow-lg">
+                                    <i class="fas fa-edit mr-1"></i> Ganti Foto
+                                </span>
+                            @else
+                                <span class="px-3 py-1 bg-white text-red-600 text-xs font-bold rounded-full shadow-lg">
+                                    Hanya Admin/TL yang boleh ganti
+                                </span>
+                            @endif
                         </div>
                     </div>
 
-                    <input type="file" name="foto_bangunan_new" id="input_foto_bangunan" class="hidden" accept="image/*" 
-                           onchange="previewImage(this, 'preview_foto_bangunan', 'placeholder_foto_bangunan')">
+                    @if ($isAdminOrTeam)
+                        <input type="file" name="foto_bangunan_new" id="input_foto_bangunan" class="hidden" accept="image/*" 
+                               onchange="previewImage(this, 'preview_foto_bangunan', 'placeholder_foto_bangunan')">
+                    @else
+                        <input type="hidden" name="foto_bangunan_new" value="">
+                    @endif
                     <p class="text-xs text-gray-400 mt-1 text-center">Klik gambar untuk mengganti.</p>
                 </div>
+
             </div>
 
 

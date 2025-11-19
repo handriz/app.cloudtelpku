@@ -155,6 +155,49 @@
                     </tr>
                 @endforelse
             </tbody>
+            <tfoot>
+                <tr class="bg-gray-50 dark:bg-gray-700 font-extrabold text-sm border-t border-gray-400 dark:border-gray-600">
+                    {{-- Judul Total --}}
+                    <td class="px-6 py-2 text-center text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600">
+                        GRAND TOTAL
+                    </td>
+                    
+                    {{-- Total Beban Kerja --}}
+                    <td class="px-6 py-2 text-center text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600">
+                        {{ number_format($grandTotals['total_data']) }}
+                    </td>
+                    
+                    {{-- Total Divalidasi --}}
+                    <td class="px-6 py-2 text-center text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600">
+                        {{ number_format($grandTotals['total_validated']) }}
+                    </td>
+                    
+                    {{-- Menunggu Review --}}
+                    <td class="px-6 py-2 text-center text-blue-700 dark:text-blue-300 border border-gray-300 dark:border-gray-600">
+                        {{ number_format($grandTotals['pending_review']) }}
+                    </td>
+
+                    {{-- Tolak Peta --}}
+                    <td class="px-6 py-2 text-center text-red-700 dark:text-red-300 border border-gray-300 dark:border-gray-600">
+                        {{ number_format($grandTotals['rejected_peta']) }}
+                    </td>
+
+                    {{-- Tolak Persil --}}
+                    <td class="px-6 py-2 text-center text-red-700 dark:text-red-300 border border-gray-300 dark:border-gray-600">
+                        {{ number_format($grandTotals['rejected_persil']) }}
+                    </td>
+
+                    {{-- Tolak Foto KWH --}}
+                    <td class="px-6 py-2 text-center text-red-700 dark:text-red-300 border border-gray-300 dark:border-gray-600">
+                        {{ number_format($grandTotals['rejected_foto_kwh']) }}
+                    </td>
+                    
+                    {{-- Total Ditolak --}}
+                    <td class="px-6 py-2 text-center text-red-700 dark:text-red-300 border border-gray-300 dark:border-gray-600">
+                        {{ number_format($grandTotals['total_rejected']) }}
+                    </td>
+                </tr>
+            </tfoot>
         </table>
     </div>
 </div>
