@@ -2727,6 +2727,19 @@ App.Listeners = (() => {
         const targetLink = e.target.closest('a');
         if (!targetLink) return;
 
+        // 10.1 Cek Link Download. Jika ada, biarkan 'onclick' menangani, dan hentikan skrip di sini.
+        if (targetLink.hasAttribute('data-is-download') || 
+            targetLink.getAttribute('href') === '#') 
+        {
+            e.preventDefault();
+            if (targetLink.hasAttribute('onclick')) {
+                return; // Keluar setelah mencegah default action.
+            }
+
+            // Jika href="#" dan tidak ada onclick, kita biarkan saja (tidak melakukan apa-apa)
+            return;
+        }
+
         // Paginasi / Link Internal di dalam Tab
         if (targetLink.closest('#tabs-content') &&
             !targetLink.hasAttribute('data-tab-link') && 
@@ -2740,6 +2753,8 @@ App.Listeners = (() => {
             if (activeTabName) App.Tabs.loadTabContent(activeTabName, targetLink.href);
             return;
         }
+
+        
 
         // Link Sidebar (Buka Tab Baru)
         if (targetLink.hasAttribute('data-tab-link')) {
@@ -2817,6 +2832,40 @@ App.Listeners = (() => {
         const formElement = e.target; // e.target adalah <form> itu sendiri
 
         // 1. Cek Form Pencarian
+        if (formElement.id === 'repair-search-form') {
+            e.preventDefault();
+            
+            const resultsContainer = document.getElementById('repair-results-container');
+            const searchButton = formElement.querySelector('button[type="submit"]');
+            searchButton.disabled = true;
+            resultsContainer.innerHTML = '<div class="text-center p-4"><i class="fas fa-spinner fa-spin text-gray-400"></i> Mencari data...</div>';
+
+            fetch(formElement.action, {
+                method: 'POST',
+                body: new FormData(formElement),
+                headers: { 
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Accept': 'text/html' // Kita mengharapkan HTML (form edit)
+                }
+            })
+            .then(response => response.text())
+            .then(html => {
+                resultsContainer.innerHTML = html;
+                searchButton.disabled = false;
+            }).catch(err => {
+                resultsContainer.innerHTML = '<div class="p-4 text-red-500">Gagal mencari data. Silakan coba lagi.</div>';
+                searchButton.disabled = false;
+            });
+            return; 
+        }
+        
+        if (formElement.id === 'repair-edit-form') {
+            e.preventDefault();
+            // Kita gunakan handler AJAX global yang sudah ada
+            handleModalFormSubmit(formElement); 
+            return;
+        }
+
         if (formElement.id.includes('-search-form')) {
             e.preventDefault();
             clearTimeout(App.State.searchDebounceTimer);
@@ -2825,7 +2874,7 @@ App.Listeners = (() => {
             App.Tabs.loadTabContent(App.Utils.getActiveTabName(document.getElementById('tabs-header')), url);
             return;
         }
-
+        
         // 2. Cek Form Custom Handler di dalam Tab Content (Invalidate/Promote)
         if (formElement.hasAttribute('data-custom-handler')) {
             if (formElement.dataset.customHandler === 'invalidate-action') {

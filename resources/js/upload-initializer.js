@@ -1,6 +1,51 @@
 // File: resources/js/upload-initializer.js
 // VERSI FINAL DENGAN VALIDASI FORMAT FILE CSV
 
+window.previewImage = function(input, imgId, placeholderId) {
+    if (input.files && input.files[0]) {
+        var reader = new FileReader();
+        
+        reader.onload = function(e) {
+            var img = document.getElementById(imgId);
+            var placeholder = document.getElementById(placeholderId);
+            
+            // Tampilkan gambar baru
+            if (img) {
+                img.src = e.target.result;
+                img.classList.remove('hidden');
+            }
+            
+            // Sembunyikan placeholder ikon kamera
+            if (placeholder) {
+                placeholder.classList.add('hidden');
+            }
+        }
+        
+        reader.readAsDataURL(input.files[0]);
+    }
+};
+
+window.openDownloadModal = function(url) {
+    document.getElementById('download-base-url').value = url;
+    document.getElementById('download-choice-modal').classList.remove('hidden');
+}
+
+window.closeDownloadModal = function() {
+    document.getElementById('download-choice-modal').classList.add('hidden');
+}
+
+window.processDownload = function(format) {
+    const baseUrl = document.getElementById('download-base-url').value;
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    const finalUrl = `${baseUrl}${separator}format=${format}`;
+    
+    // Trigger download (Ini adalah navigasi normal yang disengaja)
+    window.location.href = finalUrl;
+    
+    // Tutup modal
+    window.closeDownloadModal();
+}
+
 function initializeUploadForm() {
     const uploadForm = document.getElementById('upload-form');
     // Keluar jika form tidak ditemukan, untuk mencegah error

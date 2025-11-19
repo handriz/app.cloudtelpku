@@ -162,6 +162,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
             Route::get('/download', [ValidationRecapController::class, 'downloadValidatorReport'])
                  ->name('download');
+
+            Route::get('/repair', [ValidationRecapController::class, 'showRepairModal'])
+                 ->name('repair.show');
+
+            Route::post('/repair/search', [ValidationRecapController::class, 'findRepairData'])
+                 ->name('repair.search');
+
+            Route::post('/repair/update', [ValidationRecapController::class, 'updateRepairData'])
+                 ->name('repair.update');
         });
 
     });
