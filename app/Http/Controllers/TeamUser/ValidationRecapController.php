@@ -28,27 +28,24 @@ public function index(Request $request)
         // ==================================================================
         // 1. MEMBUAT QUERY DASAR UNTUK HIRARKI (PERFORMA)
         // ==================================================================
-        // Query ini akan kita 'clone' untuk semua perhitungan statistik
+        $lockExpirationTime = Carbon::now()->subMinutes(MappingValidationController::LOCK_TIMEOUT_MINUTES);
         $baseHierarchyQuery = TemporaryMapping::query();
         
         if (!$user->hasRole('admin')) {
             // Filter untuk 'team' atau 'appuser' (siapapun yang bukan admin)
             $baseHierarchyQuery
-                ->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
+                ->leftJoin('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                 ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
         }
 
         // ==================================================================
         // 2. QUERY STATISTIK SISTEM (KARTU ANGKA)
         // ==================================================================
-        $lockExpirationTime = Carbon::now()->subMinutes(MappingValidationController::LOCK_TIMEOUT_MINUTES);
 
         $totalSystemData = (clone $baseHierarchyQuery)->count();
-        
         $totalDataToValidate = (clone $baseHierarchyQuery)
-            ->where('is_validated', false) //
+            ->where('is_validated', false) 
             ->where(function($q) use ($lockExpirationTime) {
-                // Sesuai logika di MappingValidationController@index
                 $q->whereNull('locked_by')->orWhere('locked_at', '<', $lockExpirationTime);
             })
             ->count();
@@ -64,9 +61,8 @@ public function index(Request $request)
         ];
 
         // ==================================================================
-        // 3. QUERY REKAP PER-VALIDATOR (Tabel 1)
+        // 2. QUERY REKAP PER-VALIDATOR (Tabel 1: Angka Kinerja)
         // ==================================================================
-        // Mulai query dasar (join users dan temporary_mappings)
         $validatorStatsQuery = DB::table('temporary_mappings')
             ->leftJoin('users', 'temporary_mappings.user_validasi', '=', 'users.id')
             ->where(function ($query) {
@@ -76,17 +72,18 @@ public function index(Request $request)
             ->select(
                 DB::raw("COALESCE(users.name, 'Validator Tidak Dikenal') as name"),
                 'temporary_mappings.user_validasi as user_id',
-                // Hitung total data beban kerja
+
+                // Total Beban Kerja (Total Event Validated/Rejected)
                 DB::raw("COUNT(temporary_mappings.id) as total_data"),
 
-                // Hitung total data yang divalidasi
-                DB::raw("COUNT(CASE WHEN temporary_mappings.is_validated = 1 THEN 1 END) as total_validated"),
-                
-                // Hitung yang menunggu review (sesuai query rekap)
+                // Total Divalidasi (Hanya hitung jika final statusnya 'verified')
+                DB::raw("COUNT(CASE WHEN temporary_mappings.is_validated = 1 AND temporary_mappings.ket_validasi LIKE 'verified_%' THEN 1 END) as total_validated"),
+
+                // Hitung yang menunggu review (is_validated=true dan tidak terkunci)
                 DB::raw("COUNT(CASE WHEN temporary_mappings.is_validated = 1 AND temporary_mappings.locked_by IS NULL THEN 1 END) as pending_review"),
                 
                 // Hitung total yang pernah ditolak
-                DB::raw("COUNT(CASE WHEN temporary_mappings.ket_validasi LIKE 'rejected_%' THEN 1 END) as total_rejected"),
+                DB::raw("COUNT(CASE WHEN temporary_mappings.ket_validasi LIKE 'rejected_%' OR temporary_mappings.ket_validasi = 'review_rejected' THEN 1 END) as total_rejected"),
                 
                 // Bedah alasan penolakan dari kolom JSON 'validation_data'
                 DB::raw("COUNT(CASE WHEN temporary_mappings.validation_data->>'$.eval_peta' = 'tidak' THEN 1 END) as rejected_peta"),
@@ -106,7 +103,7 @@ public function index(Request $request)
             // Team Leader lihat statistik validator di wilayahnya
             // Kita perlu join ke master_data_pelanggan untuk filter wilayah
             $validatorStatsQuery
-                ->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
+                ->leftJoin('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                 ->where($hierarchyFilter['column'], $hierarchyFilter['code']); //
                 
         } elseif (!$user->hasRole('admin')) {
@@ -115,9 +112,10 @@ public function index(Request $request)
         }
         // Jika 'admin', tidak ada filter tambahan (melihat semua)
 
-        // Eksekusi query statistik
+        // Ambil hasil query (ini yang digunakan untuk tabel dan Grand Total)
         $validatorStats = $validatorStatsQuery->get();
         
+        // Perhitungan Grand Total (FIX 2: Menjumlahkan hasil dari query yang sudah difilter)
         $grandTotals = [
             'total_data'       => $validatorStats->sum('total_data'),
             'total_validated'  => $validatorStats->sum('total_validated'),
@@ -145,9 +143,9 @@ public function index(Request $request)
             
         } elseif ($user->hasRole('team')) {
             // Team Leader lihat daftar review di wilayahnya
-            $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
-                  ->select('temporary_mappings.*') //
-                  ->where($hierarchyFilter['column'], $hierarchyFilter['code']) ;              
+            $query->leftJoin('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
+                ->select('temporary_mappings.*') //
+                ->where($hierarchyFilter['column'], $hierarchyFilter['code']) ;              
                   
         } elseif (!$user->hasRole('admin')) {
              // Role lain tidak melihat apa-apa
