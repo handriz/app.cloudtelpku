@@ -27,12 +27,15 @@ class MappingValidationController extends Controller
         $userId = Auth::id();
         // Tentukan batas waktu kedaluwarsa kunci (10 menit yang lalu).
         $lockExpirationTime = Carbon::now()->subMinutes(self::LOCK_TIMEOUT_MINUTES);
+        
         // 1. Ambil filter wilayah (hirarki) Anda terlebih dahulu.
         $hierarchyFilter = $this->getHierarchyFilterForJoin(Auth::user());
-        // 2. Buat query dasar untuk mencari item yang terkunci oleh ANDA.
+
+        // 2. Cari item yang di-lock user ini (belum expired)
         $userLockedItemQuery = TemporaryMapping::where('locked_by', $userId)
                             ->where('locked_at', '>=', $lockExpirationTime);
-        // 3. Terapkan filter hirarki ke query item terkunci
+
+        // 3. Terapkan filter hirarki ke query item terkunci (Perbaikan Bug 1 Data)
         if (!Auth::user()->hasRole('admin')) {
             $userLockedItemQuery->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                 ->select('temporary_mappings.*') // Hindari ambiguitas kolom
@@ -41,7 +44,7 @@ class MappingValidationController extends Controller
         // 4. Eksekusi query. $userLockedItem berisi 1 item (atau null).
         $userLockedItem = $userLockedItemQuery->first();
 
-        // 2. Query dasar untuk SEMUA item yang BISA Divalidasi (belum 'verified')
+        // 5. Query dasar untuk SEMUA item yang BISA Divalidasi (belum 'verified')
         $baseAvailableQuery = TemporaryMapping::where(function ($query) use ($lockExpirationTime) {
             
             // Filter 1: Kriteria Lock (Tidak terkunci ATAU expired)
@@ -66,6 +69,26 @@ class MappingValidationController extends Controller
                 ->select('temporary_mappings.*')
                 ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
         });
+
+        // Jika user adalah AppUser biasa (bukan Admin/Team Leader), terapkan pembatasan data reject
+        if (!Auth::user()->hasRole('admin') && !Auth::user()->hasRole('team')) {
+            $baseAvailableQuery->where(function ($query) use ($userId) {
+                
+                // KATEGORI A: Data Fresh/Unassigned (user_validasi = NULL), available to anyone (in their hierarchy)
+                $query->whereNull('user_validasi') 
+                      
+                // KATEGORI B: Data Ditolak/Dikembalikan (HANYA milik user ini)
+                      ->orWhere(function($q) use ($userId) {
+                          // Item harus milik validator yang login
+                          $q->where('user_validasi', $userId) 
+                            // Dan harus memiliki status yang menandakan ditolak/perlu perbaikan
+                            ->where(function($subQ) {
+                                $subQ->where('ket_validasi', 'LIKE', 'rejected_%')       // Ditolak oleh AppUser
+                                     ->orWhere('ket_validasi', 'review_rejected');      // Ditolak oleh Supervisor
+                            });
+                      });
+            });
+        }
 
         // 3. Prioritaskan urutan Backlog: Item baru (1) didahulukan, item ditolak (2) belakangan.
         $baseAvailableQuery = (clone $baseAvailableQuery)
@@ -478,48 +501,52 @@ class MappingValidationController extends Controller
                   ->orWhere('ket_validasi', 'NOT LIKE', 'verified%');
             });
          })
+        ->where('is_validated', false)
+        
+        // Filter untuk mengecualikan item yang baru di reject/approve
         ->when($excludeId, function($q) use ($excludeId) {
             $q->where('temporary_mappings.id', '!=', $excludeId);
         })
 
+        // Filter Hirarki (JOIN)
         ->when(!Auth::user()->hasRole('admin'), function ($query) use ($hierarchyFilter) {
              return $query->join('master_data_pelanggan', 'temporary_mappings.idpel', '=', 'master_data_pelanggan.idpel')
                  ->select('temporary_mappings.*')
                  ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
-          })
-            ->orderByRaw("
-                    CASE
-                        WHEN temporary_mappings.ket_validasi LIKE 'rejected%' THEN 2
-                        ELSE 1
-                    END ASC
-                ");
+        });
 
-                $count = $query->count();
-                if ($count === 0) return null;
+        // Terapkan Fairness Rule di findNextAvailableItem juga
+        if (!$user->hasRole('admin') && !$user->hasRole('team')) {
+            $query->where(function ($q) use ($userId) {
+                // KATEGORI A: Data Fresh
+                $q->whereNull('user_validasi') 
+                      
+                // KATEGORI B: Data Ditolak/Dikembalikan (HANYA milik user ini)
+                      ->orWhere(function($qq) use ($userId) {
+                          $qq->where('user_validasi', $userId) 
+                            ->where(function($subQ) {
+                                $subQ->where('ket_validasi', 'LIKE', 'rejected_%')       
+                                     ->orWhere('ket_validasi', 'review_rejected');      
+                            });
+                      });
+            });
+        }
+        
+        // Prioritas
+        $query->orderByRaw("
+                CASE
+                    WHEN temporary_mappings.ket_validasi LIKE 'rejected%' THEN 2
+                    ELSE 1
+                END ASC
+            ");
 
-                $randomOffset = rand(0, max(0, $count - 1));
+        $count = $query->count();
+        if ($count === 0) return null;
 
-                return $query->skip($randomOffset)->take(1)->first();
-        //  // --- TIER 1: Prioritaskan item BARU (Fresh) ---
-        //  $freshItem = (clone $query)
-        //     // --- INI PERBAIKANNYA ---
-        //     ->where(function ($q) {
-        //         $q->whereNull('temporary_mappings.ket_validasi')
-        //           ->orWhere('temporary_mappings.ket_validasi', 'pending')
-        //           ->orWhere('temporary_mappings.ket_validasi', 'LIKE', 'recalled_%');
-        //     })
-        //     ->orderBy('temporary_mappings.created_at', 'asc')
-        //     ->first();
+        // Ambil item secara acak dari total yang tersedia
+        $randomOffset = rand(0, max(0, $count - 1));
 
-        // if ($freshItem) {
-        //     return $freshItem; // Kembalikan item baru jika ada
-        // }
-
-        // // --- TIER 2: Jika item baru habis, baru ambil item REJECTED ---
-        // return (clone $query)
-        //     ->where('temporary_mappings.ket_validasi', 'LIKE', 'rejected%')
-        //     ->orderBy('temporary_mappings.created_at', 'asc') // Ambil item rejected tertua
-        //     ->first();
+        return $query->skip($randomOffset)->take(1)->first();
     }
 
     private function getHierarchyFilterForJoin($user): ?array
