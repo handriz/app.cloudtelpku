@@ -77,7 +77,7 @@ public function index(Request $request)
                 DB::raw("COUNT(temporary_mappings.id) as total_data"),
 
                 // Total Divalidasi (Hanya hitung jika final statusnya 'verified')
-                DB::raw("COUNT(CASE WHEN temporary_mappings.is_validated = 1 AND temporary_mappings.ket_validasi LIKE 'verified_%' THEN 1 END) as total_validated"),
+                DB::raw("COUNT(CASE WHEN temporary_mappings.is_validated = 1 THEN 1 END) as total_validated"),
 
                 // Hitung yang menunggu review (is_validated=true dan tidak terkunci)
                 DB::raw("COUNT(CASE WHEN temporary_mappings.is_validated = 1 AND temporary_mappings.locked_by IS NULL THEN 1 END) as pending_review"),
