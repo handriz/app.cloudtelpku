@@ -90,41 +90,65 @@ class MappingValidationController extends Controller
             });
         }
 
-        // 3. Prioritaskan urutan Backlog: Item baru (1) didahulukan, item ditolak (2) belakangan.
-        $baseAvailableQuery = (clone $baseAvailableQuery)
-        ->orderByRaw("
-            CASE
-                WHEN temporary_mappings.ket_validasi LIKE 'rejected%' THEN 2
-                ELSE 1
-            END ASC
-        ");
-
         // Hitung total yang bisa diambil untuk divalidasi   
         $totalCount = $baseAvailableQuery->count();
-
+        
         // 4. Siapkan daftar 10 item yang akan ditampilkan.
         $availableItems = collect();
+        $needed = 10;
 
-        // Masukkan item prioritas Anda (jika ada) ke dalam daftar.
+        // --- FASE 1: Ambil Item Terkunci (Prioritas Tertinggi) ---
         if ($userLockedItem) {
             $availableItems->push($userLockedItem); // Tambahkan item user di awal
+            $needed--;
         }
 
-        // Jika masih ada sisa di backlog...
-        if ($totalCount > 0) {
-            // Tentukan berapa banyak lagi item acak yang kita butuhkan (misal: 10 - 1 = 9).
-            $needed = 10 - $availableItems->count();
-            $needed = max(0, $needed);
+        // --- FASE 2: Ambil Item FRESH (user_validasi = NULL) ---
+        $freshQuery = (clone $baseAvailableQuery)
+            // Filter hanya data fresh yang belum dikaitkan dengan validator manapun
+            ->whereNull('temporary_mappings.user_validasi');
 
-            // Ambil 9 item acak.
-            for ($i = 0; $i < $needed; $i++) {
-                $offset = rand(0, max(0, $totalCount - 1));
-                $item = (clone $baseAvailableQuery)->skip($offset)->take(1)->first();
+        $freshCount = $freshQuery->count();
+        $freshToTake = min($needed, $freshCount); // Ambil maks 10 atau sebanyak fresh yang ada
+
+        // Lakukan random sampling hanya dari pool Fresh
+        for ($i = 0; $i < $freshToTake; $i++) {
+            $offset = rand(0, max(0, $freshCount - 1));
+            
+            // Ambil item fresh acak yang belum ada di daftar
+            $item = (clone $freshQuery)
+                    ->whereNotIn('temporary_mappings.id', $availableItems->pluck('id'))
+                    ->skip($offset)->take(1)->first();
+
+            if ($item) {
+                $availableItems->push($item);
+                $needed--; // Kurangi kebutuhan item
+            }
+        }
+
+        // --- FASE 3: Ambil Item REJECTED (Jika masih perlu item) ---
+        if ($needed > 0) {
+            $rejectedQuery = (clone $baseAvailableQuery)
+                // Filter hanya data Rejected/Di-assign (yang dimiliki AppUser ini)
+                // Catatan: Filter 'Fairness Rule' di baseAvailableQuery sudah memastikan 
+                // data rejected ini HANYA milik user yang login.
+                ->whereNotNull('temporary_mappings.user_validasi'); 
+            
+            $rejectedCount = $rejectedQuery->count();
+            $rejectedToTake = min($needed, $rejectedCount); // Ambil sisa kebutuhan dari pool rejected
+
+            // Lakukan random sampling hanya dari pool Rejected
+            for ($i = 0; $i < $rejectedToTake; $i++) {
+                $offset = rand(0, max(0, $rejectedCount - 1));
+
+                 // Ambil item rejected acak yang belum ada di daftar
+                $item = (clone $rejectedQuery)
+                    ->whereNotIn('temporary_mappings.id', $availableItems->pluck('id'))
+                    ->skip($offset)->take(1)->first();
+
                 if ($item) {
-                    // Hindari duplikat
-                    if (!$availableItems->contains('id', $item->id)) {
-                        $availableItems->push($item);
-                    }
+                    $availableItems->push($item);
+                    // $needed tidak perlu dikurangi lagi di sini
                 }
             }
         }
