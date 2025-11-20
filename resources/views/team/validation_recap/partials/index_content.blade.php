@@ -110,7 +110,7 @@
                                 {{ $stat->total_validated }}
                             </a>
                             @else
-                                {{ $stat->total_data }}
+                                {{ $stat->total_validated }}
                             @endif
                         </td>
                         <td class="px-6 py-4 text-center text-blue-500 font-medium border border-gray-300 dark:border-gray-600">
@@ -119,7 +119,7 @@
                                 {{ $stat->pending_review }}
                             </a>
                             @else
-                                {{ $stat->total_data }}
+                                {{ $stat->pending_review }}
                             @endif
                         </td>
 
