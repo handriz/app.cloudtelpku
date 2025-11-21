@@ -78,15 +78,15 @@ class MappingValidationController extends Controller
                 $query->whereNull('user_validasi') 
                       
                 // KATEGORI B: Data Ditolak/Dikembalikan (HANYA milik user ini)
-                      ->orWhere(function($q) use ($userId) {
+                    ->orWhere(function($q) use ($userId) {
                           // Item harus milik validator yang login
-                          $q->where('user_validasi', $userId) 
+                        $q->where('user_validasi', $userId) 
                             // Dan harus memiliki status yang menandakan ditolak/perlu perbaikan
                             ->where(function($subQ) {
                                 $subQ->where('ket_validasi', 'LIKE', 'rejected_%')       // Ditolak oleh AppUser
                                      ->orWhere('ket_validasi', 'review_rejected');      // Ditolak oleh Supervisor
-                            });
-                      });
+                        });
+                    });
             });
         }
 
@@ -512,6 +512,7 @@ class MappingValidationController extends Controller
     private function findNextAvailableItem($userId, $excludeId = null)
     {
          $lockExpirationTime = Carbon::now()->subMinutes(self::LOCK_TIMEOUT_MINUTES);
+         $user = Auth::user();
          $hierarchyFilter = $this->getHierarchyFilterForJoin(Auth::user());
          
          // Query dasar: hanya ambil data yang belum validasi & belum dikunci user lain
