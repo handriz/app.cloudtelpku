@@ -17,7 +17,7 @@
 ===================================================================
 */
 
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const GOOGLE_API_KEY = window.googleMapsApiKey || import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 import homeblueIconUrl from '../images/home-icon-blue.png';
 import homeredIconUrl from '../images/home-icon-red.png';
 
@@ -1186,7 +1186,7 @@ App.Kddk = (() => {
             if (data.lat && data.lon && parseFloat(data.lat) !== 0 && parseFloat(data.lon) !== 0) {
                 const lat = parseFloat(data.lat);
                 const lon = parseFloat(data.lon);
-                const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
+                const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?key=${GOOGLE_API_KEY}&location=${lat},${lon}`;
                 streetViewIframe.src = streetViewUrl; 
                 streetViewModal.classList.remove('hidden');
             } else {
@@ -2164,7 +2164,7 @@ App.FormCreate = (() => {
                 previewMarker = L.marker([lat, lon], { icon: App.Icons.blue }).addTo(previewMap);
                 previewMap.setView([lat, lon], 17);
                 
-                const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
+                const streetViewUrl = `https://www.google.com/maps/embed/v1/streetview?key=${GOOGLE_API_KEY}&location=${lat},${lon}`;
                 streetViewIframe.src = streetViewUrl;
                 streetViewIframe.classList.remove('hidden');
                 streetViewPlaceholder.classList.add('hidden');

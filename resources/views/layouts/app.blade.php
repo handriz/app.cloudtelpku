@@ -43,6 +43,8 @@
             f.append("key", @json(config('services.google-maps.key')));
             f.append("libraries", "streetView"); // Muat library yang Anda butuhkan
             f.append("callback", "initMap"); // Tetap gunakan initMap
+            f.append("loading", "async"); 
+            f.append("callback", "initMap");
 
             var g = m.createElement("script");
             g.async = !0;
