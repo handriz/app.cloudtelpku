@@ -1463,6 +1463,24 @@ App.Validation = (() => {
         
         // 6. Logika Street View
         handleValidationStreetView(content, container, details);
+        const latSrContainer = content.querySelector('#eval_latitudey_sr')?.closest('div');
+        const lonSrContainer = content.querySelector('#eval_longitudex_sr')?.closest('div');
+
+        if (window.currentUserRole === 'admin') {
+            // Admin: Tampilkan Input Koordinat SR
+            if (latSrContainer) latSrContainer.classList.remove('hidden');
+            if (lonSrContainer) lonSrContainer.classList.remove('hidden');
+        } else {
+            // User Biasa: Sembunyikan Input Koordinat SR
+            if (latSrContainer) latSrContainer.classList.add('hidden');
+            if (lonSrContainer) lonSrContainer.classList.add('hidden');
+            
+            // Opsional: Reset nilai jika disembunyikan agar tidak mengirim data sampah
+            const latSrInput = content.querySelector('#eval_latitudey_sr');
+            const lonSrInput = content.querySelector('#eval_longitudex_sr');
+            if(latSrInput) latSrInput.value = '';
+            if(lonSrInput) lonSrInput.value = '';
+        }
 
         // 7. Tampilkan Konten
         content.classList.remove('hidden');
@@ -1506,25 +1524,29 @@ App.Validation = (() => {
         
 
     function handleValidationStreetView(content, container, details) {
+            // 1. Definisi Elemen DOM
         const latLonEl = content.querySelector('#validation-lat-lon');
         const streetViewLinkEl = content.querySelector('#validation-street-view-link');
+        
+        // Mencari Modal dan Elemen di dalamnya
         const validationTabPanel = container.closest('.tab-content'); 
         const streetViewModal = validationTabPanel ? validationTabPanel.querySelector('#street-view-modal') : null;
         
-        // PERBAIKAN PENCARIAN DOM: Cari kontainer dan overlay langsung di dalam modal yang statis
+        // Container untuk Admin (JS API) & User Biasa (Iframe)
         const streetViewContainer = streetViewModal ? streetViewModal.querySelector('#street-view-js-container') : null;
-        const streetViewOverlay = streetViewModal ? streetViewModal.querySelector('#street-view-overlay') : null;
+        const streetViewIframe = streetViewModal ? streetViewModal.querySelector('#street-view-iframe') : null;
         
+        // Elemen Kontrol
+        const streetViewOverlay = streetViewModal ? streetViewModal.querySelector('#street-view-overlay') : null;
         const streetViewHeader = streetViewModal ? streetViewModal.querySelector('#street-view-header') : null;
         const streetViewCloseButton = streetViewModal ? streetViewModal.querySelector('#street-view-close-button') : null;
-        
-        // Ambil tombol toggle baru
         const toggleCaptureModeButton = streetViewModal ? streetViewModal.querySelector('#toggle-capture-mode') : null; 
 
+        // Input target untuk diisi koordinatnya
         const srLatInput = content.querySelector('#eval_latitudey_sr');
         const srLonInput = content.querySelector('#eval_longitudex_sr');
         
-        // 1. Update Koordinat Tampilan
+        // 2. Update Teks Koordinat di Panel Validasi
         if (latLonEl && streetViewLinkEl) {
             if (details.lat && details.lon && parseFloat(details.lat) !== 0) {
                 latLonEl.textContent = `${details.lat.toFixed(6)}, ${details.lon.toFixed(6)}`;
@@ -1535,59 +1557,77 @@ App.Validation = (() => {
             }
         }
         
-        // 2. Inisialisasi Modal
-        if (streetViewLinkEl && streetViewModal && streetViewContainer && streetViewOverlay && streetViewHeader && streetViewCloseButton && toggleCaptureModeButton) {
+        // 3. Inisialisasi Logika Modal (Jika elemen lengkap)
+        if (streetViewLinkEl && streetViewModal && streetViewHeader && streetViewCloseButton) {
             
+            // --- A. Fungsi Menutup Modal ---
             const closeValidationStreetView = () => {
                 streetViewModal.classList.add('hidden');
+                
+                // Bersihkan Container JS (Admin)
                 if (streetViewContainer) streetViewContainer.innerHTML = ""; 
                 App.State.streetViewPanoramaInstance = null;
+
+                // Bersihkan Iframe (User Biasa) agar hemat resource
+                if (streetViewIframe) {
+                    streetViewIframe.src = "about:blank";
+                    streetViewIframe.classList.add('hidden');
+                }
+
+                // Reset Posisi Modal
                 streetViewModal.style.left = '';
                 streetViewModal.style.top = '';
                 streetViewModal.style.right = '';
                 
-                // Pastikan overlay dikembalikan ke mode pasif saat ditutup
-                streetViewOverlay.style.pointerEvents = 'none';
+                // Reset Mode Tombol Capture
+                if (streetViewOverlay) streetViewOverlay.style.pointerEvents = 'none';
                 if (toggleCaptureModeButton) {
                     toggleCaptureModeButton.textContent = 'Aktifkan Mode Klik';
                     toggleCaptureModeButton.classList.remove('bg-red-600', 'hover:bg-red-700');
                     toggleCaptureModeButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                    // Hapus listener khusus overlay jika ada
+                    if(streetViewOverlay.__boundHandler) {
+                        streetViewOverlay.removeEventListener('click', streetViewOverlay.__boundHandler);
+                    }
                 }
             };
 
-            // FUNGSI INTI: Logic saat overlay diklik
+            // --- B. Fungsi Handle Klik pada Overlay (Hanya Admin) ---
             const handleOverlayClick = (e, panorama) => {
-                if (e.button !== 0) return; 
+                if (e.button !== 0) return; // Hanya klik kiri
                 
-                console.log("DEBUG-FINAL: 💥 KLIK PADA OVERLAY DOM terdeteksi."); 
+                console.log("DEBUG: Klik Overlay Terdeteksi."); 
 
-                // Ambil posisi LatLng dari Pano ID saat ini
+                // Ambil posisi dari Panorama (Pano ID)
                 const latLng = panorama.getPosition();
 
                 if (!latLng) {
-                    console.log("DEBUG-FINAL: GAGAL mendapatkan LatLng dari Panorama.");
-                    alert('Gagal mengambil koordinat. Silakan coba klik tombol Street View lagi.');
+                    alert('Gagal mengambil koordinat dari API.');
                     return;
                 }
                 
-                console.log("DEBUG-FINAL: ✅ KONVERSI BERHASIL (Menggunakan Posisi Pano ID). Mencoba mengisi input.");
-
                 const clickedLat = latLng.lat().toFixed(8); 
                 const clickedLng = latLng.lng().toFixed(8);
 
+                // Isi Input
                 if (srLatInput && srLonInput) {
                     srLatInput.value = clickedLat;
                     srLonInput.value = clickedLng;
-                    alert(`Koordinat SR/Tetangga diisi berdasarkan Posisi Pano ID:\nLat: ${clickedLat}, Lon: ${clickedLng}`);
                     
-                    // Matikan mode klik setelah berhasil
-                    handleToggleCaptureMode(); 
-                    closeValidationStreetView(); 
+                    // Beri notifikasi visual/alert
+                    if(confirm(`Koordinat berhasil diambil:\nLat: ${clickedLat}\nLon: ${clickedLng}\n\nTutup Street View sekarang?`)) {
+                        handleToggleCaptureMode(); // Matikan mode
+                        closeValidationStreetView(); // Tutup modal
+                    } else {
+                        handleToggleCaptureMode(); // Cuma matikan mode
+                    }
                 }
             };
 
-            // FUNGSI TOGGLE: Mengaktifkan/Menonaktifkan Overlay
+            // --- C. Fungsi Toggle Mode Capture (Hanya Admin) ---
             const handleToggleCaptureMode = () => {
+                if (!streetViewOverlay || !toggleCaptureModeButton) return;
+
                 const isCaptureMode = streetViewOverlay.style.pointerEvents === 'auto';
                 
                 if (isCaptureMode) {
@@ -1596,27 +1636,29 @@ App.Validation = (() => {
                     toggleCaptureModeButton.textContent = 'Aktifkan Mode Klik';
                     toggleCaptureModeButton.classList.remove('bg-red-600', 'hover:bg-red-700');
                     toggleCaptureModeButton.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
-                    streetViewOverlay.removeEventListener('click', streetViewOverlay.__boundHandler); 
+                    if(streetViewOverlay.__boundHandler) {
+                        streetViewOverlay.removeEventListener('click', streetViewOverlay.__boundHandler);
+                    }
                 } else {
                     // AKTIFKAN MODE
                     if (!App.State.streetViewPanoramaInstance) {
-                        alert("Street View belum dimuat. Silakan tunggu atau coba lagi.");
+                        alert("Street View belum dimuat sepenuhnya.");
                         return;
                     }
                     streetViewOverlay.style.pointerEvents = 'auto';
-                    toggleCaptureModeButton.textContent = 'Klik untuk Ambil (Mode Aktif)';
+                    toggleCaptureModeButton.textContent = 'Klik Lokasi (Mode Aktif)';
                     toggleCaptureModeButton.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
                     toggleCaptureModeButton.classList.add('bg-red-600', 'hover:bg-red-700');
                     
-                    // Tambahkan listener saat mode aktif
+                    // Pasang listener klik ke overlay
                     const panorama = App.State.streetViewPanoramaInstance;
                     streetViewOverlay.__boundHandler = (e) => handleOverlayClick(e, panorama);
                     streetViewOverlay.addEventListener('click', streetViewOverlay.__boundHandler);
                 }
             };
 
-
-            const handleValidationStreetViewClick = async (e) => { 
+            // --- D. Handler Utama Saat Link Street View Diklik ---
+            const handleValidationStreetViewClick = (e) => { 
                 e.preventDefault(); 
                 e.stopPropagation();
 
@@ -1625,71 +1667,92 @@ App.Validation = (() => {
                     return;
                 }
                 
-                const targetLatLng = { lat: details.lat, lng: details.lon };
+                const targetLatLng = { lat: parseFloat(details.lat), lng: parseFloat(details.lon) };
                 
+                // Tampilkan Modal
                 streetViewModal.classList.remove('hidden'); 
-                streetViewModal.style.left = '';
-                streetViewModal.style.top = '';
-                streetViewModal.style.right = ''; 
+                streetViewModal.style.left = ''; streetViewModal.style.top = ''; streetViewModal.style.right = '';
 
-                try {
-                    // const { StreetViewService, StreetViewPanorama } = await google.maps.importLibrary("streetView");
-                    const { StreetViewService, StreetViewPanorama } = await google.maps.importLibrary("streetView", { key: GOOGLE_API_KEY });
-                    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker", { key: GOOGLE_API_KEY });
-                    // const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
-                    
-                    console.log("--- DEBUG: Library StreetView dan Marker berhasil di-await ---");
+                // === LOGIKA PEMISAHAN ROLE ===
+                if (window.currentUserRole === 'admin') {
+                    // ------------------------------------------------
+                    // 1. MODE ADMIN (JavaScript API - Berbayar)
+                    // ------------------------------------------------
+                    if(streetViewIframe) streetViewIframe.classList.add('hidden');
+                    if(streetViewContainer) streetViewContainer.classList.remove('hidden');
 
-                    const streetViewService = new StreetViewService();
-                    
-                    streetViewService.getPanorama(
-                        { location: targetLatLng, radius: 50 }, 
-                        (data, status) => {
-                            if (status === "OK") {
-                                const panorama = new StreetViewPanorama(
-                                    streetViewContainer, 
-                                    {
-                                        position: data.location.latLng,
-                                        pov: { heading: 0, pitch: 0 },
-                                        zoom: 1,
-                                        addressControl: false, 
-                                        linksControl: true, 
-                                        fullscreenControl: false, 
-                                        disableDefaultUI: true, 
-                                        panControl: false, 
-                                        zoomControl: false, 
-                                    }
-                                );
-                                
-                                App.State.streetViewPanoramaInstance = panorama; 
-
-                                const marker = new google.maps.Marker({
-                                    position: targetLatLng,
-                                    map: panorama,
-                                    title: "Posisi Asli Database"
-                                });
-                                
-                                // Reset mode ke pasif setelah panorama dimuat
-                                streetViewOverlay.style.pointerEvents = 'none';
-                                toggleCaptureModeButton.textContent = 'Aktifkan Mode Klik';
-
-                            } else {
-                                streetViewContainer.innerHTML = '<div class="flex items-center justify-center h-full text-red-500 p-4">Street View tidak tersedia untuk lokasi ini.</div>';
-                            }
+                    try {
+                        console.log("--- DEBUG: Memuat Street View (Mode Admin/Legacy) ---");
+                        
+                        // Pastikan google object ada (dimuat dari app.blade.php)
+                        if (typeof google === 'undefined' || !google.maps) {
+                            throw new Error("Google Maps API belum dimuat. Cek koneksi internet.");
                         }
-                    );
 
-                } catch (apiError) {
-                    console.error("Google Maps JS API gagal dimuat:", apiError);
-                    streetViewContainer.innerHTML = `<div class="p-4 text-red-500">Gagal memuat Google Maps API. Pastikan koneksi internet dan API Key Anda benar.<br><small>${apiError.message}</small></div>`;
+                        const streetViewService = new google.maps.StreetViewService();
+                        
+                        streetViewService.getPanorama(
+                            { location: targetLatLng, radius: 50 }, 
+                            (data, status) => {
+                                if (status === "OK") {
+                                    const panorama = new google.maps.StreetViewPanorama(
+                                        streetViewContainer, 
+                                        {
+                                            position: data.location.latLng,
+                                            pov: { heading: 0, pitch: 0 },
+                                            zoom: 1,
+                                            addressControl: false, 
+                                            linksControl: true, 
+                                            fullscreenControl: false,
+                                            disableDefaultUI: true, 
+                                            panControl: false, 
+                                            zoomControl: false, 
+                                        }
+                                    );
+                                    
+                                    App.State.streetViewPanoramaInstance = panorama; 
+
+                                    // Marker Posisi Asli
+                                    new google.maps.Marker({
+                                        position: targetLatLng,
+                                        map: panorama,
+                                        title: "Posisi Asli Database"
+                                    });
+                                    
+                                    // Reset tombol capture
+                                    if(streetViewOverlay) streetViewOverlay.style.pointerEvents = 'none';
+                                    if(toggleCaptureModeButton) toggleCaptureModeButton.textContent = 'Aktifkan Mode Klik';
+
+                                } else {
+                                    streetViewContainer.innerHTML = '<div class="flex items-center justify-center h-full text-red-500 p-4">Street View tidak tersedia di lokasi ini.</div>';
+                                }
+                            }
+                        );
+                    } catch (apiError) {
+                        console.error("Google Maps JS Error:", apiError);
+                        streetViewContainer.innerHTML = `<div class="p-4 text-red-500">Gagal memuat API.<br><small>${apiError.message}</small></div>`;
+                    }
+
+                } else {
+                    // ------------------------------------------------
+                    // 2. MODE USER LAIN (Embed API - Gratis)
+                    // ------------------------------------------------
+                    if(streetViewContainer) streetViewContainer.classList.add('hidden');
+                    if(streetViewIframe) {
+                        streetViewIframe.classList.remove('hidden');
+                        
+                        // Gunakan Embed API Format
+                        // Pastikan GOOGLE_API_KEY terdefinisi di atas file tab-manager.js
+                        const embedUrl = `https://www.google.com/maps/embed/v1/streetview?key=${GOOGLE_API_KEY}&location=${details.lat},${details.lon}`;
+                        streetViewIframe.src = embedUrl;
+                    }
                 }
             };
         
-            // --- Logika Drag Modal (DIPERTAHANKAN) ---
+            // --- E. Logika Drag Modal (Draggable) ---
             let isDragging = false, offsetX, offsetY;
             const onMouseDown = (e) => {
                 if (e.target.id !== 'street-view-header' && !e.target.closest('#street-view-header')) return;
-                // PENTING: Memastikan klik pada overlay atau tombol toggle tidak memicu drag
                 if (e.target === streetViewOverlay || e.target === toggleCaptureModeButton || e.target.closest('#toggle-capture-mode')) return; 
                 
                 isDragging = true;
@@ -1716,25 +1779,21 @@ App.Validation = (() => {
                 document.removeEventListener('mouseup', onMouseUp);
             };
 
-            // Pasang listener
+            // --- F. Pasang Event Listeners (Bersihkan yang lama dulu) ---
             streetViewLinkEl.removeEventListener('click', streetViewLinkEl.__handler);
             streetViewCloseButton.removeEventListener('click', streetViewCloseButton.__handler);
-            if (streetViewHeader.__handler) {
-                streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
-            }
-            if (toggleCaptureModeButton && toggleCaptureModeButton.__handler) {
-                toggleCaptureModeButton.removeEventListener('click', toggleCaptureModeButton.__handler);
-            }
+            if (streetViewHeader.__handler) streetViewHeader.removeEventListener('mousedown', streetViewHeader.__handler);
+            if (toggleCaptureModeButton && toggleCaptureModeButton.__handler) toggleCaptureModeButton.removeEventListener('click', toggleCaptureModeButton.__handler);
 
             streetViewLinkEl.__handler = handleValidationStreetViewClick;
             streetViewCloseButton.__handler = closeValidationStreetView;
             streetViewHeader.__handler = onMouseDown;
-            toggleCaptureModeButton.__handler = handleToggleCaptureMode;
+            if(toggleCaptureModeButton) toggleCaptureModeButton.__handler = handleToggleCaptureMode;
 
             streetViewLinkEl.addEventListener('click', handleValidationStreetViewClick);
             streetViewCloseButton.addEventListener('click', closeValidationStreetView);
             streetViewHeader.addEventListener('mousedown', onMouseDown);
-            toggleCaptureModeButton.addEventListener('click', handleToggleCaptureMode);
+            if(toggleCaptureModeButton) toggleCaptureModeButton.addEventListener('click', handleToggleCaptureMode);
         }
     }
 
@@ -2024,10 +2083,18 @@ App.Validation = (() => {
         const isRejectionReasonFilled = !hasAnyRejection || (rejectionReason && rejectionReason.value.trim().length >= MIN_REJECTION_CHARS);
 
         const areNewFieldsFilled = mcbValue.length > 0 && pbtsValue.length > 0 && merkkwhValue.length > 0 && tahunBuatValue.length > 0;
-        const areSrFieldsFilled = srValue.length > 0 && latSrValue.length > 0 && lonSrValue.length > 0;
+        
+        let areSrFieldsFilled = false;
+        if (window.currentUserRole === 'admin') {
+            // Admin: Wajib isi Tipe SR, Lat SR, dan Lon SR
+           areSrFieldsFilled = srValue.length > 0;
+        } else {
+            // User Biasa: Cukup isi Tipe SR saja
+            areSrFieldsFilled = srValue.length > 0;
+        }
         
         let isValidationReady = false;
-        const basicApprovalCriteria = petaValue === 'sesuai' && persilValue === 'sesuai' && fotoKwhValue === 'sesuai' && areNewFieldsFilled && areSrFieldsFilled;
+        const basicApprovalCriteria = petaValue === 'sesuai' && persilValue === 'sesuai' && fotoKwhValue === 'sesuai' && areNewFieldsFilled && areSrFieldsFilled && areSrFieldsFilled;;
 
         if (isMeterValidationRequired) {
             isValidationReady = meterMatch && basicApprovalCriteria;

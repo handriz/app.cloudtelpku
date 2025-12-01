@@ -18,6 +18,7 @@ use App\Http\Controllers\TeamUser\SmartTargetController;
 use App\Http\Controllers\TeamUser\MappingKddkController;
 use App\Http\Controllers\TeamUser\MappingValidationController;
 use App\Http\Controllers\TeamUser\ValidationRecapController;
+use App\Http\Controllers\TeamUser\MatrixKddkController;
 
 
 /*
@@ -171,6 +172,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
             Route::post('/repair/update', [ValidationRecapController::class, 'updateRepairData'])
                  ->name('repair.update');
+        });
+
+        Route::prefix('matrix-kddk')->name('matrix_kddk.')->group(function () {
+            Route::get('/', [MatrixKddkController::class, 'index'])
+                ->name('index');
         });
 
     });

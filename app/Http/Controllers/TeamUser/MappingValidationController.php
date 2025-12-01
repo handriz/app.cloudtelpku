@@ -296,6 +296,14 @@ class MappingValidationController extends Controller
 
     public function approve(Request $request, $id)
     {
+        $request->validate([
+                'eval_sr' => 'required|string|max:255',
+                'eval_latitudey_sr' => 'nullable|numeric',
+                'eval_longitudex_sr' => 'nullable|numeric',
+
+            ], [
+                'eval_sr.required' => 'Tipe Sambungan (SR) wajib dipilih!',
+        ]);
         DB::beginTransaction();
         try {
             // Pastikan user ini yang mengunci item
@@ -310,8 +318,8 @@ class MappingValidationController extends Controller
             $tempData->merkkwhmeter = $request->input('eval_merkkwhmeter');
             $tempData->tahun_buat = $request->input('eval_tahun_buat');
             $tempData->sr = $request->input('eval_sr');
-            $tempData->latitudey_sr = $request->input('eval_latitudey_sr');
-            $tempData->longitudex_sr = $request->input('eval_longitudex_sr');
+            $tempData->latitudey_sr = $request->input('eval_latitudey_sr') ?: null;
+            $tempData->longitudex_sr = $request->input('eval_longitudex_sr') ?: null;
 
             // 2. Tandai item SELESAI validasi (is_validated = true)
             $tempData->is_validated = true;

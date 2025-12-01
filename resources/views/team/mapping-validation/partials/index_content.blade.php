@@ -1,3 +1,7 @@
+<script>
+    // Kita definisikan variabel global agar tab-manager.js bisa membacanya
+    window.currentUserRole = "{{ Auth::user()->role->name ?? 'appuser' }}";
+</script>
 <div id="interactive-validation-container" class="space-y-6">
 
     {{-- ====================================================== --}}
@@ -310,7 +314,6 @@
     <div id="street-view-modal" class="fixed top-10 right-10 hidden z-50">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[50vw] h-[75vh] flex flex-col relative border dark:border-gray-700">
             
-            {{-- Tombol Close (dibuat lebih besar dan mudah di-klik) --}}
             <button id="street-view-close-button" class="absolute -top-3 -right-3 bg-red-500 hover:bg-red-700 text-white rounded-full p-2 z-10 w-8 h-8 flex items-center justify-center">
                 <i class="fas fa-times"></i>
             </button>
@@ -318,20 +321,38 @@
             {{-- Header Modal --}}
             <div id="street-view-header" class="px-6 py-3 border-b border-gray-200 dark:border-gray-700 cursor-move flex justify-between items-center">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Google Street View</h3>
+                
+                {{-- Tombol Ambil Koordinat (HANYA TAMPIL JIKA ADMIN) --}}
+                @if(Auth::user()->hasRole('admin'))
                 <button id="toggle-capture-mode" type="button" class="px-3 py-1 bg-indigo-600 text-white rounded-md font-semibold text-xs uppercase hover:bg-indigo-700 transition duration-150 ease-in-out">
                     <i class="fas fa-crosshairs mr-1"></i> Ambil Koordinat
                 </button>
+                @else
+                <span class="text-xs text-gray-500">(View Only)</span>
+                @endif
             </div>
 
            {{-- Konten Street View --}}
             <div class="flex-grow p-1 relative"> 
-                <div id="street-view-js-container" class="w-full h-full rounded-md bg-gray-200 dark:bg-gray-700"></div>
+                {{-- CONTAINER 1: UNTUK ADMIN (BERBAYAR - JS API) --}}
+                <div id="street-view-js-container" class="w-full h-full rounded-md bg-gray-200 dark:bg-gray-700 hidden"></div>
                 
-                {{-- OVERLAY CANVAS TRANSPARAN untuk menangkap klik --}}
+                {{-- CONTAINER 2: UNTUK USER LAIN (GRATIS - EMBED API) --}}
+                <iframe id="street-view-iframe" 
+                        class="w-full h-full rounded-md hidden"
+                        frameborder="0" 
+                        style="border:0" 
+                        allowfullscreen>
+                </iframe>
+
+                {{-- OVERLAY CANVAS (Hanya untuk Admin) --}}
+                @if(Auth::user()->hasRole('admin'))
                 <div id="street-view-overlay" 
                     style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; cursor: crosshair; pointer-events: none;">
                 </div>
+                @endif
             </div>
         </div>
     </div>
+
 </div>
