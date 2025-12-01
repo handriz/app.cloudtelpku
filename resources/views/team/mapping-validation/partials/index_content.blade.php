@@ -1,7 +1,7 @@
 <script>
     // Kita definisikan variabel global agar tab-manager.js bisa membacanya
     window.currentUserRole = "{{ Auth::user()->role->name ?? 'appuser' }}";
-    window.googleMapsApiKey = "{{ config('services.google-maps.key') }}";
+    window.googleMapsApiKey = "{{ env('VITE_GOOGLE_MAPS_API_KEY') }}";
 </script>
 <div id="interactive-validation-container" class="space-y-6">
 

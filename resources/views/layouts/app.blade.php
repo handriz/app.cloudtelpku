@@ -16,7 +16,9 @@
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
-    
+<script>
+    window.googleMapsApiKey = "{{ env('VITE_GOOGLE_MAPS_API_KEY') }}";
+</script>
 
 <script>
         (g => {

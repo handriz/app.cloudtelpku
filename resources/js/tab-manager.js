@@ -16,8 +16,8 @@
   - App.Listeners: Inisialisasi dan event listener global
 ===================================================================
 */
-
-const GOOGLE_API_KEY = window.googleMapsApiKey || import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+console.log("DEBUG API KEY = ", window.googleMapsApiKey);
+const GOOGLE_API_KEY = window.googleMapsApiKey;
 import homeblueIconUrl from '../images/home-icon-blue.png';
 import homeredIconUrl from '../images/home-icon-red.png';
 
@@ -1075,7 +1075,7 @@ App.Kddk = (() => {
                 const lat = parseFloat(data.lat);
                 const lon = parseFloat(data.lon);
                 latLonEl.textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
-                streetViewLinkEl.href = `https://www.google.com/maps/embed/v1/streetview?location=${lat},${lon}&key=${GOOGLE_API_KEY}`;
+                streetViewLinkEl.href = `https://www.google.com/maps/embed/v1/streetview?key=${GOOGLE_API_KEY}&location=${lat},${lon}`;
                 streetViewLinkEl.classList.remove('hidden');
             } else {
                 latLonEl.textContent = 'Koordinat tidak valid';
