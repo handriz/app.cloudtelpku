@@ -1565,6 +1565,12 @@ App.Validation = (() => {
                     streetViewIframe.classList.add('hidden');
                 }
 
+                const markerEl = streetViewModal.querySelector('#streetview-custom-marker');
+                    if (markerEl) {
+                        markerEl.classList.add('hidden');
+                        markerEl.style.opacity = '0';
+                }
+
                 // Reset Posisi Modal
                 streetViewModal.style.left = '';
                 streetViewModal.style.top = '';
@@ -1736,6 +1742,18 @@ App.Validation = (() => {
                         // Pastikan GOOGLE_API_KEY terdefinisi di atas file tab-manager.js
                         const embedUrl = `https://www.google.com/maps/embed/v1/streetview?key=${GOOGLE_API_KEY}&location=${details.lat},${details.lon}`;
                         streetViewIframe.src = embedUrl;
+
+                    try {
+                            const markerEl = streetViewModal.querySelector('#streetview-custom-marker');
+                            if (markerEl) {
+                                // tampilkan marker setelah iframe mulai memuat (opsional - memastikan visual ready)
+                                // iframe load event kadang tidak firing cross-origin; kita set small timeout instead
+                                markerEl.classList.remove('hidden');
+                                markerEl.style.opacity = '1';
+                            }
+                        } catch (e) {
+                            console.warn('Marker overlay tidak ditemukan atau gagal ditampilkan.', e);
+                        }
                     }
                 }
             };

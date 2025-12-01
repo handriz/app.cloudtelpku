@@ -346,6 +346,20 @@
                         allowfullscreen>
                 </iframe>
 
+                <div id="streetview-custom-marker"
+                    class="hidden pointer-events-none"
+                    style="
+                        position:absolute;
+                        top:50%;
+                        left:50%;
+                        width:30px;
+                        height:30px;
+                        transform: translate(-50%, -50%);
+                        z-index:50;
+                    ">
+                    <img src="{{ asset('images/pin-red.svg') }}" style="width:40px;height:40px;">
+                </div>
+
                 {{-- OVERLAY CANVAS (Hanya untuk Admin) --}}
                 @if(Auth::user()->hasRole('admin'))
                 <div id="street-view-overlay" 
