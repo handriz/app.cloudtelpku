@@ -16,7 +16,6 @@
   - App.Listeners: Inisialisasi dan event listener global
 ===================================================================
 */
-console.log("DEBUG API KEY = ", window.googleMapsApiKey);
 const GOOGLE_API_KEY = window.googleMapsApiKey;
 import homeblueIconUrl from '../images/home-icon-blue.png';
 import homeredIconUrl from '../images/home-icon-red.png';
@@ -224,13 +223,6 @@ App.Tabs = (() => {
     function loadTabContent(tabName, url, callback = null) {
         const tabContent = document.getElementById(`${tabName}-content`);
         if (!tabContent) return;
-
-        // Jika sudah punya konten (pernah dimuat), tidak perlu fetch ulang
-        // if (tabContent.dataset.loaded === "true") {
-        //     console.log(`[TAB MANAGER] ${tabName} sudah dimuat sebelumnya, lewati reload.`);
-        //     if (callback && typeof callback === 'function') callback();
-        //     return;
-        // }
 
         // Bersihkan isi tab dan tampilkan spinner loading
         if (App.State.mapInstance) {
@@ -1380,7 +1372,6 @@ App.Validation = (() => {
              if (App.State.validationMapInstance) { App.State.validationMapInstance.remove(); App.State.validationMapInstance = null; App.State.validationMarker = null;}
              return;
         }
-        console.log("DEBUG-UI: Item dimuat. details.enabled:", details.enabled, "Tipe:", typeof details.enabled);
         // 1. Update Header
         content.querySelector('#detail-idpel').textContent = details.idpel || 'IDPEL Tidak Tersedia';
         content.querySelector('#detail-user').textContent = details.user_pendataan || 'User Tidak Diketahui';
