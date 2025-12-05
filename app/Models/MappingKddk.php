@@ -14,6 +14,11 @@ class MappingKddk extends Model
         'objectid','idpel', 'user_pendataan','user_validasi', 'enabled', 'nokwhmeter', 'merkkwhmeter',
         'tahun_buat', 'mcb', 'type_pbts', 'type_kotakapp', 'latitudey', 'longitudex',
         'namagd', 'jenis_kabel', 'ukuran_kabel', 'ket_survey', 'deret', 'sr',
-        'ket_validasi', 'foto_kwh', 'foto_bangunan',
+        'ket_validasi', 'foto_kwh', 'foto_bangunan','kddk',
     ];
+
+    public function masterData()
+    {
+        return $this->belongsTo(MasterDataPelanggan::class, 'idpel', 'idpel');
+    }
 }

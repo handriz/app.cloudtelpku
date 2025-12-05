@@ -68,6 +68,16 @@ class User extends Authenticatable
         return $this->role && $this->role->name === $roleName;
     }
 
+    public function menuItems()
+    {
+        return $this->belongsToMany(MenuItem::class, 'menu_item_user');
+    }
+
+    public function hasCustomMenus()
+    {
+        return $this->menuItems()->exists();
+    }
+    
     public function assignRole(string $roleName): void
     {
         $role = Role::where('name', $roleName)->first();

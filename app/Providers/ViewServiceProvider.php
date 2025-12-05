@@ -23,19 +23,31 @@ class ViewServiceProvider extends ServiceProvider
             $menuItems = collect();
 
             if ($user && $user->role) {
-                $cacheKey = 'menu_for_role_' . $user->role->id;
+                // $cacheKey = 'menu_for_role_' . $user->role->id;
+                $cacheKey = 'sidebar_menu_user_' . $user->id;
 
-                // Ambil data menu dari cache atau database
+                // Ambil data menu dari Logika Prioritas (User Override > Role Default)
                 $menuItems = Cache::remember($cacheKey, now()->addMinutes(60), function () use ($user) {
-                    $role = $user->role->load(['menuItems' => function($query) {
-                        $query->where('is_active', true)->orderBy('order');
-                    }]);
+                    if ($user->menuItems()->exists()) {
+                        // AMBIL MENU KHUSUS USER
+                        $rawMenus = $user->menuItems()
+                            ->where('is_active', true)
+                            ->orderBy('order')
+                            ->get();
+                    } else {
+                        // FALLBACK: AMBIL MENU DARI ROLE (Default)
+                        $rawMenus = $user->role->menuItems()
+                            ->where('is_active', true)
+                            ->orderBy('order')
+                            ->get();
+                    }
 
-                    $allRoleMenus = $role->menuItems->where('name', '!=', 'Dashboard');
+                    $filteredMenus = $rawMenus->where('name', '!=', 'Dashboard');
 
                     // Bangun struktur menu bertingkat
-                    $nestedMenus = $allRoleMenus->whereNull('parent_id')->map(function ($menu) use ($allRoleMenus) {
-                        $menu->setRelation('children', $allRoleMenus->where('parent_id', $menu->id));
+                    $nestedMenus = $filteredMenus->whereNull('parent_id')->map(function ($menu) use ($filteredMenus) {
+                        $children = $filteredMenus->where('parent_id', $menu->id)->values();
+                        $menu->setRelation('children', $children);
                         return $menu;
                     });
                     
@@ -46,12 +58,16 @@ class ViewServiceProvider extends ServiceProvider
             // Tambahkan flag 'is_active' pada setiap item menu
             $menuItems = $menuItems->map(function ($menu) {
                 $menu->is_active = $this->isMenuItemActive($menu);
-                $menu->children = $menu->children->map(function ($child) {
-                    $child->is_active = $this->isMenuItemActive($child);
-                    return $child;
-                });
+
+                if ($menu->children) {
+                    $menu->children = $menu->children->map(function ($child) {
+                        $child->is_active = $this->isMenuItemActive($child);
+                        return $child;
+                    });
+                }
                 return $menu;
             });
+            
             $view->with('menuItems', $menuItems);
         });
 

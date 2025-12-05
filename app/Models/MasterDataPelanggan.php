@@ -11,7 +11,8 @@ class MasterDataPelanggan extends Model
     use HasFactory;
 
     protected $table = 'master_data_pelanggan';
-
+    protected $guarded = ['id'];
+    
     protected $fillable = [
         'v_bulan_rekap',
         'unitupi',

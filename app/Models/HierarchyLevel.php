@@ -18,6 +18,8 @@ class HierarchyLevel extends Model
         'parent_code',
         'order',
         'is_active',
+        'kddk_code',
+        'unit_type',
     ];
 
     /**
@@ -28,6 +30,11 @@ class HierarchyLevel extends Model
         return $this->hasMany(HierarchyLevel::class, 'parent_code', 'code')->orderBy('order');
     }
 
+    public function childrenRecursive()
+    {
+        return $this->children()->with('childrenRecursive');
+    }
+    
     /**
      * Get the parent hierarchy level that owns the hierarchy level.
      */

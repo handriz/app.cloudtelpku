@@ -82,10 +82,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Resource routes untuk manajemen menu, hierarki, dan permission
         Route::resource('menu', MenuController::class);
         Route::resource('hierarchies', HierarchyController::class)->except(['show']);
-        Route::resource('permissions', PermissionController::class)->except(['show']);
+        Route::prefix('permissions')->name('permissions.')->group(function () {
+            
+            // 1. Halaman Utama (Index) & Form Tambah Izin Manual
+            Route::get('/', [PermissionController::class, 'index'])->name('index');
+            Route::get('/create', [PermissionController::class, 'create'])->name('create');
+            Route::post('/', [PermissionController::class, 'store'])->name('store');
+            
+            // 2. Action: Update Izin Fitur (Security)
+            Route::post('/update-role', [PermissionController::class, 'updateRolePermissions'])->name('updateRolePermissions');
+            
+            // 3. Action: Update Menu Sidebar (Visibility - Role Default)
+            Route::post('/update-role-menus', [PermissionController::class, 'updateRoleMenus'])->name('updateRoleMenus');
 
-        // Rute khusus di dalam group admin
-        Route::post('/permissions/update-role-permissions', [PermissionController::class, 'updateRolePermissions'])->name('permissions.updateRolePermissions');
+            // 4. Action: Update Menu Sidebar (Visibility - User Spesifik)
+            Route::post('/update-user-menus', [PermissionController::class, 'updateUserMenus'])->name('updateUserMenus');
+
+            // 5. Action: Reset Menu User ke Default Role
+            Route::post('/reset-user-menus', [PermissionController::class, 'resetUserMenus'])->name('resetUserMenus');
+        });
     
         // Manajemen Data
         Route::prefix('manajemen-data')->name('manajemen_data.')->group(function () {
@@ -110,7 +125,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     // ======================================================================
-    // RUTE UNTUK PANEL PENGGUNA APLIKASI (TL & App User)
+    // RUTE UNTUK PANEL PENGGUNA APLIKASI (TL User)
     // Menggunakan middleware 'role' yang spesifik
     // ======================================================================
     Route::prefix('team')->name('team.')->middleware('role:team,appuser,admin')->group(function () {
@@ -174,13 +189,43 @@ Route::middleware(['auth', 'verified'])->group(function () {
                  ->name('repair.update');
         });
 
+        // Modul Matrix KDDK & Manajemen RBM
         Route::prefix('matrix-kddk')->name('matrix_kddk.')->group(function () {
-            Route::get('/', [MatrixKddkController::class, 'index'])
-                ->name('index');
+            
+            // 1. Halaman Utama (Rekapitulasi)
+            Route::get('/', [MatrixKddkController::class, 'index'])->name('index');
+            
+            // 2. Drill Down: Detail Pelanggan per Unit
+            Route::get('/details/{unit}', [MatrixKddkController::class, 'details'])->name('details');
+            
+            // 3. Generator KDDK: Simpan Group Baru
+            Route::post('/store-group', [MatrixKddkController::class, 'storeKddkGroup'])->name('store_group');
+            
+            // 4. Generator KDDK: Cek Sequence (Nomor Urut) - INI YANG MENYEBABKAN ERROR ANDA
+            Route::get('/next-sequence/{prefix7}', [MatrixKddkController::class, 'getNextSequence'])->name('next_sequence');
+
+            // 5. Manage RBM: Halaman Kelola & Tree View
+            Route::get('/manage-rbm/{unit}', [MatrixKddkController::class, 'manageRbm'])->name('rbm_manage');
+            
+            // 6. Manage RBM: Simpan Penugasan Petugas
+            Route::post('/update-rbm', [MatrixKddkController::class, 'updateRbmAssignment'])->name('rbm_update');
+            
+            // 7. Manage RBM: Pindah Pelanggan (Drag, Reorder), remove & report
+            Route::post('/move-idpel', [MatrixKddkController::class, 'moveIdpelKddk'])->name('move_idpel');
+            Route::post('/remove-idpel', [MatrixKddkController::class, 'removeIdpelKddk'])->name('remove_idpel');
+            Route::post('/reorder-idpel', [MatrixKddkController::class, 'reorderIdpelKddk'])->name('reorder_idpel');
+            Route::get('/export-rbm/{unit}', [MatrixKddkController::class, 'exportRbm'])->name('export_rbm');
+
+            // 8. Peta
+            Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');
         });
 
     });
 
+    // ======================================================================
+    // RUTE UNTUK PANEL PENGGUNA APLIKASI (TL & App User)
+    // Menggunakan middleware 'role' yang spesifik
+    // ======================================================================
     Route::prefix('appuser')->name('appuser.')->middleware('role:appuser')->group(function () {
         Route::get('/dashboard', [AppUserDashboardController::class, 'index'])->name('dashboard');
     });
@@ -193,6 +238,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/dashboard', [ExecutiveDashboardController::class, 'index'])->name('dashboard');
     });
 
+    // ======================================================================
+    // GLOBAL Setting Apps
+    // Menggunakan middleware 'role' yang spesifik
+    // ======================================================================
+    Route::prefix('settings')->name('admin.settings.')->middleware(['role:admin,team,appuser,executive_user'])->group(function () {
+    
+        // Halaman Utama Pengaturan
+        Route::get('/', [App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('index');
+        Route::post('/update', [App\Http\Controllers\Admin\SettingsController::class, 'update'])->name('update');
+        Route::get('/manage-routes/{areaCode}', [App\Http\Controllers\Admin\SettingsController::class, 'manageRoutes'])->name('manage_routes');
+    });
 
 });
 

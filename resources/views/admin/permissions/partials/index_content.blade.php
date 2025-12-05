@@ -1,279 +1,304 @@
-    <div class="pt-0 pb-0">
-        <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight mb-4">
-            {{ __('Manajemen Izin') }}
-        </h2>
+<div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg p-6">
+    {{-- HEADER --}}
+    <div class="flex justify-between items-center mb-6">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100">
+            Manajemen Akses & Menu
+        </h3>
+        {{-- Tombol Tambah Permission --}}
+        <a href="{{ route('admin.permissions.create') }}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm shadow transition">
+            <i class="fas fa-plus mr-2"></i> Tambah Izin Baru
+        </a>
+    </div>
 
-        {{-- Notifikasi Sukses --}}
-        @if (session('success'))
-            <div id="success-alert" class="bg-green-100 dark:bg-green-900 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-200 px-4 py-3 rounded-lg shadow-md relative w-full mb-4">
-                <strong class="font-bold">Berhasil!</strong>
-                <span class="block sm:inline">{{ session('success') }}</span>
-                <span class="absolute top-2 right-2 px-2 py-1 cursor-pointer" onclick="document.getElementById('success-alert').style.display='none'">
-                    <svg class="fill-current h-5 w-5 text-green-500 dark:text-green-300" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l3.029-2.651-3.029-2.651a1.2 1.2 0 0 1 1.697-1.697L10 8.183l2.651-3.029a1.2 1.2 0 1 1 1.697 1.697L11.819 10l3.029 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
-                </span>
-            </div>
-        @endif
+    {{-- NOTIFIKASI SUKSES --}}
+    @if (session('success'))
+        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded shadow-sm relative">
+            <span class="block sm:inline">{{ session('success') }}</span>
+            <span class="absolute top-0 bottom-0 right-0 px-4 py-3 cursor-pointer" onclick="this.parentElement.style.display='none';">
+                <i class="fas fa-times"></i>
+            </span>
+        </div>
+    @endif
 
-        {{-- Notifikasi Error (jika ada) --}}
-        @if (session('error'))
-            <div id="error-alert" class="bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-200 px-4 py-3 rounded-lg shadow-md relative w-full mb-4">
-                <strong class="font-bold">Error!</strong>
-                <span class="block sm:inline">{{ session('error') }}</span>
-                <span class="absolute top-2 right-2 px-2 py-1 cursor-pointer" onclick="document.getElementById('error-alert').style.display='none'">
-                    <svg class="fill-current h-5 w-5 text-red-500 dark:text-red-300" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l3.029-2.651-3.029-2.651a1.2 1.2 0 0 1 1.697-1.697L10 8.183l2.651-3.029a1.2 1.2 0 1 1 1.697 1.697L11.819 10l3.029 2.651a1.2 1.2 0 0 1 0 1.698z"/></svg>
-                </span>
-            </div>
-        @endif
+    {{-- AREA SELEKSI (ROLE & USER) --}}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        
+        {{-- 1. PILIH ROLE (DEFAULT) --}}
+        <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+            <label for="role_id_main" class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                <i class="fas fa-users-cog mr-1"></i> Kelola per Peran (Role):
+            </label>
+            <select name="role_id" id="role_id_main" 
+                    onchange="const tabName = App.Utils.getActiveTabName(); const url = '{{ route('admin.permissions.index') }}?role_id=' + this.value; App.Tabs.loadTabContent(tabName, url);"
+                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 dark:bg-gray-800 dark:text-gray-200">
+                <option value="">-- Pilih Peran --</option>
+                @foreach($roles as $role)
+                    <option value="{{ $role->id }}" {{ (isset($selectedRole) && $selectedRole->id == $role->id && !isset($selectedUser)) ? 'selected' : '' }}>
+                        {{ $role->name }}
+                    </option>
+                @endforeach
+            </select>
+        </div>
 
-        <hr class="border-gray-200 dark:border-gray-700 my-6">
-
-        <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
-            <div class="p-6 text-gray-900 dark:text-gray-100">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Atur Izin Peran</h3>
-
-                {{-- Formulir untuk memilih peran dan menampilkan/memperbarui izin --}}
-                <form action="{{ route('admin.permissions.updateRolePermissions') }}" method="POST" id="permissions-form">
-                    @csrf
-                    <div class="mb-4">
-                        <label for="role_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pilih Peran</label>
-                        <select name="role_id" id="role_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200" required>
-                            <option value="">Pilih Peran...</option>
-                            @foreach($roles as $role)
-                                <option value="{{ $role->id }}" {{ old('role_id', $selectedRole->id ?? '') == $role->id ? 'selected' : '' }}>
-                                    {{ $role->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                        @error('role_id')
-                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    {{-- Perbaikan: Ganti nama input dari array menjadi string --}}
-                    <input type="hidden" name="all_checked_permissions" id="all_checked_permissions_input">
-
-
-                    {{-- Bagian pengelompokan izin --}}
-                    @if ($paginatedGroupedPermissions->isNotEmpty())
-                        @foreach ($paginatedGroupedPermissions as $groupName => $groupItems)
-                            <div class="mb-6 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
-                                {{-- Header Grup dengan Toggle dan Pilih Semua --}}
-                                <div class="flex items-center justify-between p-4 bg-gray-100 dark:bg-gray-750 cursor-pointer permission-group-toggle" data-target-group="{{ Str::slug($groupName) }}">
-                                    <h4 class="font-semibold text-gray-800 dark:text-gray-100 text-md">
-                                        <i class="fas fa-caret-right group-icon-closed mr-2"></i>
-                                        <i class="fas fa-caret-down group-icon-open hidden mr-2"></i>
-                                        {{ $groupName }}
-                                    </h4>
-                                    <label class="inline-flex items-center">
-                                        <input type="checkbox" class="form-checkbox h-5 w-5 text-indigo-600 rounded permission-group-select-all" data-group-name="{{ Str::slug($groupName) }}">
-                                        <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Pilih Semua</span>
-                                    </label>
-                                </div>
-
-                                {{-- Konten Grup (disembunyikan secara default) --}}
-                                <div id="group-{{ Str::slug($groupName) }}" class="permission-group-content hidden">
-                                    <div class="overflow-x-auto">
-                                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                            <thead class="bg-gray-50 dark:bg-gray-700">
-                                                <tr>
-                                                    <th scope="col" class="px-3 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">
-                                                        No.
-                                                    </th>
-                                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">
-                                                        Izin
-                                                    </th>
-                                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">
-                                                        Deskripsi
-                                                    </th>
-                                                    <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-200 uppercase tracking-wider">
-                                                        Pilih
-                                                    </th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                                {{-- Iterasi $groupItems --}}
-                                                @forelse($groupItems as $indexInGroup => $permission)
-                                                    <tr>
-                                                        <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                                                            {{ ($paginator->currentPage() - 1) * $paginator->perPage() + $indexInGroup + 1 }}
-                                                        </td>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                                                            {{ $permission->name }}
-                                                        </td>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                                                            {{ $permission->description }}
-                                                        </td>
-                                                        <td class="px-6 py-4 whitespace-nowrap text-center text-sm">
-                                                            <input type="checkbox" data-permission-id="{{ $permission->id }}"
-                                                                class="form-checkbox h-5 w-5 text-indigo-600 rounded permission-checkbox group-{{ Str::slug($groupName) }}"
-                                                                {{ in_array((string)$permission->id, $combinedPermissions, true) ? 'checked' : '' }}>
-                                                        </td>
-                                                    </tr>
-                                                @empty
-                                                    <tr>
-                                                        <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">Tidak ada izin ditemukan dalam grup ini.</td>
-                                                    </tr>
-                                                @endforelse
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    @else
-                        <div class="overflow-x-auto mb-4">
-                             <p class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">Tidak ada izin ditemukan.</p>
-                        </div>
-                    @endif
-
-
-                    {{-- Tautan Paginasi --}}
-                    <div class="mt-4" id="pagination-links">
-                        {{ $paginator->appends(request()->query())->links('vendor.pagination.tailwind') }}
-                    </div>
-
-                    <div class="flex items-center justify-end mt-4">
-                        <button type="submit" class="inline-flex items-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:bg-gray-700 dark:focus:bg-white active:bg-gray-900 dark:active:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-2 transition ease-in-out duration-150">
-                            Perbarui Izin
-                        </button>
-                    </div>
-                </form>
-            </div>
+        {{-- 2. PILIH USER (OVERRIDE/KHUSUS) --}}
+        <div class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <label for="user_selector" class="block text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">
+                <i class="fas fa-user-edit mr-1"></i> Kelola per User (Spesifik):
+            </label>
+            <select id="user_selector" 
+                    onchange="if(this.value) { const tabName = App.Utils.getActiveTabName(); const url = '{{ route('admin.permissions.index') }}?user_id=' + this.value; App.Tabs.loadTabContent(tabName, url); }"
+                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-200">
+                <option value="">-- Cari User --</option>
+                {{-- Batasi user yg tampil agar tidak berat, atau gunakan ajax search di masa depan --}}
+                @foreach(\App\Models\User::with('role')->orderBy('name')->limit(100)->get() as $u)
+                    <option value="{{ $u->id }}" {{ (isset($selectedUser) && $selectedUser->id == $u->id) ? 'selected' : '' }}>
+                        {{ $u->name }} ({{ $u->role->name }})
+                    </option>
+                @endforeach
+            </select>
+            <p class="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                *Pilih ini jika ingin mengatur menu khusus untuk 1 orang (mengabaikan aturan Role).
+            </p>
         </div>
     </div>
 
-    <script>
-        let globalCheckedPermissions = new Set();
+    @if($selectedRole)
         
-        document.addEventListener('DOMContentLoaded', function() {
-            const roleSelect = document.getElementById('role_id');
-            const permissionsForm = document.getElementById('permissions-form');
-            const allCheckedPermissionsInput = document.getElementById('all_checked_permissions_input');
-            const paginationContainer = document.getElementById('pagination-links');
+        {{-- TABS NAVIGASI (LOKAL) --}}
+        <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
+            <ul class="flex flex-wrap -mb-px text-sm font-medium text-center">
+                <li class="mr-2">
+                    <button class="tab-toggle-btn inline-block p-4 border-b-2 rounded-t-lg transition-colors duration-200 text-indigo-600 border-indigo-600 dark:text-indigo-500 dark:border-indigo-500" 
+                            id="btn-tab-permissions" 
+                            type="button" 
+                            data-target="permissions">
+                        <i class="fas fa-key mr-2"></i> Izin Fitur (Security)
+                    </button>
+                </li>
+                <li class="mr-2">
+                    <button class="tab-toggle-btn inline-block p-4 border-b-2 border-transparent rounded-t-lg hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300 transition-colors duration-200" 
+                            id="btn-tab-menus" 
+                            type="button" 
+                            data-target="menus">
+                        <i class="fas fa-list mr-2"></i> Menu Sidebar (Visibility)
+                    </button>
+                </li>
+            </ul>
+        </div>
 
-            // KUNCI PERBAIKAN: Inisialisasi Set dari data yang dikirim server
-            // Ini akan mengambil status terakhir dari database DAN URL
-            const combinedPermissionsFromServer = @json($combinedPermissions ?? []);
-            combinedPermissionsFromServer.forEach(id => globalCheckedPermissions.add(String(id)));
-
-            // Tangani klik pada tautan paginasi
-            if (paginationContainer) {
-                paginationContainer.addEventListener('click', function(e) {
-                    // Cek apakah yang diklik adalah tautan di dalam container
-                    const target = e.target.closest('a');
-                    if (target) {
-                        e.preventDefault();
-                        const url = new URL(target.href);
-                        
-                        // Periksa apakah peran sudah dipilih
-                        if (roleSelect.value) {
-                            url.searchParams.set('role_id', roleSelect.value);
-                            // KUNCI PERBAIKAN: Tambahkan semua izin yang dicentang ke URL saat navigasi
-                            const checkedIdsArray = Array.from(globalCheckedPermissions);
-                            url.searchParams.set('checked_permissions', JSON.stringify(checkedIdsArray));
-                            window.location.href = url.toString();
-                        } else {
-                            // Jika belum ada peran yang dipilih, jangan tambahkan parameter
-                            window.location.href = url.toString();
-                        }
-                    }
-                });
-            }
-
-            // Tangani perubahan dropdown peran
-            roleSelect.addEventListener('change', function() {
-                const selectedRoleId = this.value;
-                const url = new URL(window.location.href);
-                if (selectedRoleId) {
-                    url.searchParams.set('role_id', selectedRoleId);
-                    // Saat ganti peran, hapus checked_permissions dari URL untuk mendapatkan status baru dari database
-                    url.searchParams.delete('checked_permissions');
-                } else {
-                    url.searchParams.delete('role_id');
-                    url.searchParams.delete('checked_permissions');
-                }
-                url.searchParams.delete('page'); // Selalu kembali ke halaman 1 saat ganti peran
-                window.location.href = url.toString();
-            });
+        {{-- ================================================= --}}
+        {{-- KONTEN TAB 1: PERMISSIONS (KEAMANAN) --}}
+        {{-- ================================================= --}}
+        <div id="content-tab-permissions" class="local-tab-content">
             
-            // Logika untuk memperbarui status globalCheckedPermissions
-            document.querySelectorAll('.permission-checkbox').forEach(checkbox => {
-                const permissionId = checkbox.dataset.permissionId;
-                checkbox.addEventListener('change', function() {
-                    if (this.checked) {
-                        globalCheckedPermissions.add(permissionId);
-                    } else {
-                        globalCheckedPermissions.delete(permissionId);
-                    }
-                    updateSelectAllCheckboxes();
-                });
-            });
+            {{-- Form hanya update Role Permission (User tidak punya permission spesifik, hanya menu) --}}
+            <form action="{{ route('admin.permissions.updateRolePermissions') }}" method="POST">
+                @csrf
+                <input type="hidden" name="role_id" value="{{ $selectedRole->id }}">
+                
+                <div class="mb-4 bg-yellow-50 dark:bg-yellow-900/30 p-3 rounded text-sm text-yellow-800 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800 flex items-start">
+                    <i class="fas fa-shield-alt mt-1 mr-2"></i>
+                    <div>
+                        <strong>KEAMANAN SERVER:</strong> Centang fitur yang boleh dieksekusi.
+                        <br>
+                        <span class="text-xs">Pengaturan ini berlaku untuk SEMUA user dengan role <strong>{{ $selectedRole->name }}</strong>.</span>
+                    </div>
+                </div>
 
-            // Logika Expand/Collapse Grup Izin
-            document.querySelectorAll('.permission-group-toggle').forEach(toggleButton => {
-                toggleButton.addEventListener('click', function() {
-                    const targetGroupId = this.dataset.targetGroup;
-                    const groupContent = document.getElementById(`group-${targetGroupId}`);
-                    const closedIcon = this.querySelector('.group-icon-closed');
-                    const openIcon = this.querySelector('.group-icon-open');
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto p-1">
+                    @foreach ($groupedPermissions as $groupName => $permissions)
+                        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm">
+                            <div class="bg-gray-100 dark:bg-gray-700 px-4 py-2 flex justify-between items-center border-b border-gray-200 dark:border-gray-600">
+                                <span class="font-bold text-gray-700 dark:text-gray-200">{{ $groupName }}</span>
+                                <label class="text-xs flex items-center cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400">
+                                    <input type="checkbox" class="group-select-all mr-1 form-checkbox rounded text-indigo-600" data-group="{{ Str::slug($groupName) }}"> Pilih Semua
+                                </label>
+                            </div>
+                            <div class="p-3 bg-white dark:bg-gray-800 space-y-2">
+                                @foreach($permissions as $perm)
+                                    <div class="flex items-start">
+                                        @php
+                                            // Proteksi Hard Lock: Admin + Manage Permissions
+                                            $isCritical = ($selectedRole->name === 'admin' && $perm->name === 'manage-permissions');
+                                        @endphp
 
-                    if (groupContent) {
-                        groupContent.classList.toggle('hidden');
-                        closedIcon.classList.toggle('hidden');
-                        openIcon.classList.toggle('hidden');
-                    }
-                });
-            });
+                                        <input type="checkbox" 
+                                               name="{{ $isCritical ? '' : 'permissions[]' }}" 
+                                               value="{{ $perm->id }}" 
+                                               class="permission-item group-{{ Str::slug($groupName) }} mt-1 mr-2 form-checkbox h-4 w-4 text-indigo-600 rounded border-gray-300 {{ $isCritical ? 'opacity-50 cursor-not-allowed bg-gray-100' : '' }}"
+                                               {{ in_array($perm->id, $rolePermissionIds) ? 'checked' : '' }}
+                                               {{ $isCritical ? 'disabled' : '' }}>
+                                        
+                                        {{-- Input Hidden untuk Critical Permission --}}
+                                        @if($isCritical)
+                                            <input type="hidden" name="permissions[]" value="{{ $perm->id }}">
+                                        @endif
 
-            // Logika Pilih Semua Per Grup
-            document.querySelectorAll('.permission-group-select-all').forEach(selectAllCheckbox => {
-                selectAllCheckbox.addEventListener('change', function() {
-                    const groupName = selectAllCheckbox.dataset.groupName;
-                    const groupCheckboxes = document.querySelectorAll(`.permission-checkbox.group-${groupName}`);
+                                        <div>
+                                            <label class="text-sm font-medium text-gray-700 dark:text-gray-300 {{ $isCritical ? 'cursor-not-allowed text-gray-500' : 'cursor-pointer' }}">
+                                                {{ $perm->name }}
+                                                @if($isCritical)
+                                                    <i class="fas fa-lock text-xs text-red-500 ml-1" title="Dikunci permanen untuk Admin"></i>
+                                                @endif
+                                            </label>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ $perm->description }}</p>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+                
+                <div class="mt-6 flex justify-end border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <button type="submit" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow font-bold transition">
+                        Simpan Izin Keamanan
+                    </button>
+                </div>
+            </form>
+        </div>
 
-                    groupCheckboxes.forEach(checkbox => {
-                        checkbox.checked = this.checked;
-                        const permissionId = checkbox.dataset.permissionId;
-                        if (this.checked) {
-                            globalCheckedPermissions.add(permissionId);
-                        } else {
-                            globalCheckedPermissions.delete(permissionId);
-                        }
-                    });
-                    updateSelectAllCheckboxes();
-                });
-            });
+        {{-- ================================================= --}}
+        {{-- KONTEN TAB 2: MENUS (VISIBILITY) --}}
+        {{-- ================================================= --}}
+        <div id="content-tab-menus" class="local-tab-content hidden">
             
-            // Logika untuk memastikan checkbox "Pilih Semua" sesuai dengan status individual checkbox
-            function updateSelectAllCheckboxes() {
-                document.querySelectorAll('.permission-group-select-all').forEach(selectAllCheckbox => {
-                    const groupName = selectAllCheckbox.dataset.groupName;
-                    const groupCheckboxes = document.querySelectorAll(`.permission-checkbox.group-${groupName}`);
-                    
-                    if (groupCheckboxes.length === 0) {
-                        selectAllCheckbox.checked = false;
-                        selectAllCheckbox.disabled = true;
-                        return;
-                    }
+            {{-- Cek Mode: Apakah sedang edit User Spesifik atau Role Default? --}}
+            @php
+                $isUserMode = isset($selectedUser);
+                // Tentukan Action URL
+                $formAction = $isUserMode ? route('admin.permissions.updateUserMenus') : route('admin.permissions.updateRoleMenus');
+                // Tentukan data Checked (Gunakan $userMenuIds jika user mode, $roleMenuIds jika role mode)
+                $checkedIds = $isUserMode ? ($userMenuIds ?? []) : ($roleMenuIds ?? []);
+            @endphp
 
-                    // Perbaikan utama: Cek status dari Set global, bukan hanya elemen di halaman ini
-                    const allChecked = Array.from(groupCheckboxes).every(checkbox => globalCheckedPermissions.has(checkbox.dataset.permissionId));
-                    selectAllCheckbox.checked = allChecked;
-                    selectAllCheckbox.disabled = false;
-                });
-            }
+            @if($isUserMode)
+                {{-- Info Box: Mode User --}}
+                <div class="mb-4 bg-blue-50 border-l-4 border-blue-500 p-4 flex justify-between items-center">
+                    <div>
+                        <h4 class="font-bold text-blue-700">Mode Kustom: {{ $selectedUser->name }}</h4>
+                        <p class="text-sm text-blue-600">
+                            Status: 
+                            @if($selectedUser->menuItems()->exists())
+                                <span class="font-bold">MENGGUNAKAN MENU PRIBADI</span>
+                            @else
+                                <span class="font-bold opacity-75">MENGIKUTI ROLE (Default)</span>
+                            @endif
+                        </p>
+                    </div>
+                    @if($selectedUser->menuItems()->exists())
+                        <form action="{{ route('admin.permissions.resetUserMenus') }}" method="POST" onsubmit="return confirm('Hapus menu pribadi dan kembali ikuti Role?');">
+                            @csrf
+                            <input type="hidden" name="user_id" value="{{ $selectedUser->id }}">
+                            <button type="submit" class="text-xs bg-white text-red-600 px-3 py-1 rounded border border-red-200 hover:bg-red-50 shadow-sm">
+                                <i class="fas fa-undo mr-1"></i> Reset ke Role
+                            </button>
+                        </form>
+                    @endif
+                </div>
+            @else
+                {{-- Info Box: Mode Role --}}
+                <div class="mb-4 bg-purple-50 dark:bg-purple-900/30 p-3 rounded text-sm text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-800">
+                    <i class="fas fa-eye mr-1"></i> <strong>TAMPILAN SIDEBAR:</strong> Mengatur menu default untuk Role <strong>{{ $selectedRole->name }}</strong>.
+                </div>
+            @endif
 
-            // Panggil saat DOM siap
-            updateSelectAllCheckboxes();
+            <form action="{{ $formAction }}" method="POST">
+                @csrf
+                @if($isUserMode)
+                    <input type="hidden" name="user_id" value="{{ $selectedUser->id }}">
+                @else
+                    <input type="hidden" name="role_id" value="{{ $selectedRole->id }}">
+                @endif
 
-            // Ini memastikan bahwa form update selalu mengirimkan role_id yang saat ini aktif
-            permissionsForm.addEventListener('submit', function(event) {
-                event.preventDefault();
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto p-1">
+                    @foreach ($groupedMenus as $parentMenu)
+                        <div class="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm">
+                            {{-- Parent Menu --}}
+                            <div class="bg-gray-50 dark:bg-gray-700 px-4 py-3 flex items-center border-b border-gray-200 dark:border-gray-600">
+                                @php
+                                    // Hard Lock Menu: Jika Admin & Permission 'manage-permissions', kunci menu ini
+                                    $isCriticalMenu = ($selectedRole->name === 'admin' && $parentMenu->permission_name === 'manage-permissions');
+                                    
+                                    // Cek juga anak-anaknya, jika ada anak kritis, bapaknya jadi kritis juga
+                                    foreach($parentMenu->children as $c) {
+                                        if ($selectedRole->name === 'admin' && $c->permission_name === 'manage-permissions') {
+                                            $isCriticalMenu = true;
+                                            break;
+                                        }
+                                    }
+                                @endphp
 
-                const allCheckedIds = Array.from(globalCheckedPermissions);
-                allCheckedPermissionsInput.value = JSON.stringify(allCheckedIds);
+                                <input type="checkbox" 
+                                       name="{{ $isCriticalMenu ? '' : 'menu_ids[]' }}" 
+                                       value="{{ $parentMenu->id }}"
+                                       class="group-select-all mr-3 h-5 w-5 text-blue-600 rounded form-checkbox parent-menu-cb {{ $isCriticalMenu ? 'opacity-50 cursor-not-allowed bg-gray-100' : '' }}"
+                                       data-group="menu-{{ $parentMenu->id }}"
+                                       data-parent-id="{{ $parentMenu->id }}"
+                                       {{ in_array($parentMenu->id, $checkedIds) ? 'checked' : '' }}
+                                       {{ $isCriticalMenu ? 'disabled' : '' }}>
+                                
+                                @if($isCriticalMenu)
+                                    <input type="hidden" name="menu_ids[]" value="{{ $parentMenu->id }}">
+                                @endif
 
-                this.submit();
-            });
-        });
-    </script>
+                                <span class="font-bold text-gray-700 dark:text-gray-200 flex items-center flex-1 select-none">
+                                    <i class="{{ $parentMenu->icon }} mr-2 w-6 text-center text-gray-500 dark:text-gray-400"></i> 
+                                    {{ $parentMenu->name }}
+                                    @if($isCriticalMenu && !$isUserMode)
+                                        <i class="fas fa-lock text-xs text-red-500 ml-2" title="Dikunci untuk Admin"></i>
+                                    @endif
+                                </span>
+                            </div>
+                            
+                            {{-- Children Menu --}}
+                            @if($parentMenu->children->count() > 0)
+                                <div class="p-4 bg-white dark:bg-gray-800 ml-8 border-l-2 border-gray-100 dark:border-gray-600 space-y-3">
+                                    @foreach($parentMenu->children as $child)
+                                        <div class="flex items-center">
+                                            @php
+                                                $isCriticalChild = ($selectedRole->name === 'admin' && $child->permission_name === 'manage-permissions');
+                                            @endphp
+
+                                            <input type="checkbox" 
+                                                   name="{{ $isCriticalChild ? '' : 'menu_ids[]' }}" 
+                                                   value="{{ $child->id }}"
+                                                   class="permission-item group-menu-{{ $parentMenu->id }} mr-3 h-4 w-4 text-blue-600 rounded form-checkbox child-menu-cb child-of-{{ $parentMenu->id }} {{ $isCriticalChild ? 'opacity-50 cursor-not-allowed bg-gray-100' : '' }}"
+                                                   {{ in_array($child->id, $checkedIds) ? 'checked' : '' }}
+                                                   {{ $isCriticalChild ? 'disabled' : '' }}>
+
+                                            @if($isCriticalChild)
+                                                <input type="hidden" name="menu_ids[]" value="{{ $child->id }}">
+                                            @endif
+
+                                            <span class="text-sm text-gray-700 dark:text-gray-300 select-none">
+                                                <i class="{{ $child->icon }} mr-2 w-4 text-center text-gray-400"></i> {{ $child->name }}
+                                                @if($isCriticalChild && !$isUserMode)
+                                                    <i class="fas fa-lock text-xs text-red-500 ml-1"></i>
+                                                @endif
+                                            </span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="mt-6 flex justify-end border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow font-bold transition">
+                        {{ $isUserMode ? 'Simpan Menu Pribadi User' : 'Simpan Menu Default Role' }}
+                    </button>
+                </div>
+            </form>
+        </div>
+
+    @else
+        {{-- EMPTY STATE --}}
+        <div class="text-center py-12 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800 mt-6">
+            <i class="fas fa-user-shield text-4xl text-gray-400 mb-3"></i>
+            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Pilih Target Konfigurasi</h3>
+            <p class="text-gray-500 dark:text-gray-400">Silakan pilih <strong>Peran (Role)</strong> atau cari <strong>User Spesifik</strong> di atas.</p>
+        </div>
+    @endif
+</div>

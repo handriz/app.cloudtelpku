@@ -58,7 +58,7 @@ class MenuController extends Controller
             $data = $request->except('is_active');
             $data['is_active'] = $request->has('is_active');
 
-            MenuItem::create($data->all());
+            MenuItem::create($data);
 
             return response()->json([
                 'success' => true,

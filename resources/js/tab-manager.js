@@ -2490,7 +2490,7 @@ App.Form = (() => {
 
         fetch(form.action, {
             method: 'POST',
-            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'), 'Accept': 'application/json' },
+            headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'), 'Accept': 'application/json','X-Requested-With': 'XMLHttpRequest' },
             body: new FormData(form)
         })
         .then(response => {
@@ -2543,7 +2543,10 @@ App.Form = (() => {
                         const tabName = activeTabButton.dataset.tabName;
                         const tabUrl = activeTabButton.dataset.url || activeTabButton.href;
                         
-                        App.Tabs.loadTabContent(tabName, tabUrl, () => {
+                        let bustUrl = new URL(tabUrl, window.location.origin);
+                        bustUrl.searchParams.set('_cb', new Date().getTime());
+
+                       App.Tabs.loadTabContent(tabName, bustUrl.toString(), () => {
                             console.log('handleModalFormSubmit: Konten tab aktif dimuat ulang, menampilkan notifikasi.');
                             // Tampilkan notifikasi di tab yang sama
                             App.Utils.displayNotification('success', successMessage, tabName); 
@@ -2566,39 +2569,64 @@ App.Form = (() => {
                 submitButton.innerHTML = originalButtonText;
             }
 
+            if (!error.errors) {
+                // Jika tidak ada error.errors, ini adalah error umum (misal 500) atau error parsing
+                console.error('CRITICAL SERVER ERROR (Unhandled):', error); 
+            } else {
+                // Jika ada error.errors (422 Validation), kita sudah menanganinya di UI. 
+                // Cukup log ringan di console.log atau console.warn.
+                console.warn('Validation error detected and handled.'); 
+            }
+
             if (error.errors) {
-                let errorDiv = null;
+               let errorDiv = form.querySelector('#ajax-errors') || form.querySelector('.error-container');
                 
                 // [PENANGANAN ERROR UNTUK FORM AJAX]
-                if (form.id === 'create-mapping-form') errorDiv = form.querySelector('#create-mapping-errors');
-                else if (form.id === 'edit-user-form') errorDiv = form.querySelector('#edit-user-errors');
-                else if (form.id === 'create-user-form' || form.id === 'edit-user-form') errorDiv = form.querySelector('#ajax-errors'); 
+                if (!errorDiv) {
+                    if (form.id === 'create-mapping-form') errorDiv = form.querySelector('#create-mapping-errors');
+                    else if (form.id === 'edit-user-form') errorDiv = form.querySelector('#edit-user-errors');
+                    else if (form.id === 'create-user-form' || form.id === 'edit-user-form') errorDiv = form.querySelector('#ajax-errors'); 
+                }
 
                 if (errorDiv) {
-                    let errorList = '<ul>';
-                    for (const key in error.errors) {
-                        errorList += `<li class="text-sm">- ${error.errors[key][0]}</li>`;
-                    }
-                    errorList += '</ul>';
-                    errorDiv.innerHTML = errorList;
-                    errorDiv.classList.remove('hidden');
+                    let errorListHtml = '<div class="font-bold mb-2"><i class="fas fa-exclamation-circle"></i> Terdapat kesalahan input:</div><ul class="list-disc list-inside">';
                     
-                    // === FIX SINTAKS ERROR PADA PENUGASAN SCROLL (L1732, L1828, L1829) ===
+                    // Iterasi yang lebih aman untuk objek error
+                    for (const fieldName in error.errors) { 
+                        if (error.errors.hasOwnProperty(fieldName)) {
+                            // error.errors[fieldName] adalah array pesan ['message1', 'message2']
+                            error.errors[fieldName].forEach(msg => {
+                                errorListHtml += `<li class="text-sm">- ${msg}</li>`;
+                            });
+                        }
+                    }
+                    errorListHtml += '</ul>';
+                    
+                    // Tambahkan Tombol Close ke dalam div error
+                    const fullErrorHtml = `
+                        <div class="relative">
+                            <button type="button" 
+                                    class="absolute top-1 right-2 text-red-700 opacity-70 hover:opacity-100 text-lg" 
+                                    onclick="this.closest('#ajax-errors').classList.add('hidden');">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            ${errorListHtml}
+                        </div>
+                    `;
+
+                    errorDiv.innerHTML = fullErrorHtml;
+                    errorDiv.classList.remove('hidden');
+                    errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    
                     const modalContentEl = document.getElementById('modal-content');
-                    if (modalContentEl) {
-                        modalContentEl.scrollTop = 0;
-                    }
-                    const notificationContainerEl = document.getElementById('kddk-notification-container');
-                    if (notificationContainerEl) {
-                        notificationContainerEl.scrollTop = 0;
-                    }
-                    // =======================================================================
+                    if (modalContentEl) modalContentEl.scrollTop = 0;
+                    
                 } else {
-                    alert('Validasi gagal. Cek console untuk detail.');
+                    alert('Validasi gagal. Cek inputan Anda.');
                 }
             } else {
-                // Tampilkan notifikasi error global jika bukan error validasi
-                App.Utils.displayNotification('error', error.message || 'Terjadi kesalahan.');
+                // Error Umum (Server Error 500)
+                App.Utils.displayNotification('error', error.message || 'Terjadi kesalahan pada server.');
             }
         });
     }
@@ -2606,7 +2634,6 @@ App.Form = (() => {
 App.Listeners = (() => {
     let __modalHandler = null;
     function init() {
-        console.log('TAB MANAGER: Inisialisasi Dimulai.');
         document.addEventListener('DOMContentLoaded', () => {
             // --- Inisialisasi Variabel DOM ---
             const elements = {
