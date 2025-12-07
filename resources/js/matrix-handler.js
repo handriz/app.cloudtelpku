@@ -2,8 +2,6 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     
-    console.log('Matrix KDDK Handler Loaded (Integrated: Map + Confirmation + Generator)');
-
     // ============================================================
     // 1. GLOBAL STATE (CHECKBOX & METADATA PRESERVATION)
     // ============================================================
@@ -594,11 +592,24 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateRouteOptions() {
         const areaSelect = document.getElementById('part_area');
         const routeSelect = document.getElementById('part_rute');
+        const areaLabelDisplay = document.getElementById('area-label-display');
+        const routeLabelDisplay = document.getElementById('rute-label-display');
+
         if (!areaSelect || !routeSelect) return;
 
         routeSelect.innerHTML = '<option value="">--</option>';
+        if (routeLabelDisplay) routeLabelDisplay.textContent = '';
         
         const selectedOption = areaSelect.options[areaSelect.selectedIndex];
+        if (areaLabelDisplay && selectedOption.value) {
+             // Ambil text setelah kode (misal: "RB - RBM Paskabayar" -> ambil "RBM Paskabayar")
+             // Atau gunakan data-label jika kita tambahkan di blade
+             const labelText = selectedOption.dataset.label || selectedOption.text;
+             areaLabelDisplay.textContent = labelText;
+        } else if (areaLabelDisplay) {
+             areaLabelDisplay.textContent = '';
+        }
+
         if (selectedOption && selectedOption.dataset.routes) {
             try {
                 const routes = JSON.parse(selectedOption.dataset.routes);
@@ -606,6 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const opt = document.createElement('option');
                     opt.value = r.code;
                     opt.textContent = `${r.code} (${r.label})`;
+                    opt.dataset.label = r.label;
                     routeSelect.appendChild(opt);
                 });
             } catch(e) { console.error("JSON Route Error", e); }
@@ -631,7 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
         generateFinalCode(); 
 
         // PERBAIKAN: Gunakan .items.size
-        const count = selectionState.items.size; 
+        const count = (typeof selectionState !== 'undefined') ? selectionState.items.size : 0;
         const countDisplay = document.getElementById('count-display');
         if (countDisplay) countDisplay.textContent = count;
 
@@ -989,6 +1001,128 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ============================================================
+    // 7. CUSTOM SUBMIT GENERATOR (UNTUK MODAL SUKSES)
+    // ============================================================
+    
+    // PERBAIKAN 1: Gunakan 'true' (Capture Phase) agar menang dari tab-manager.js
+    document.addEventListener('submit', function(e) {
+        if (e.target.id === 'kddk-generator-form') {
+            e.preventDefault(); 
+            e.stopPropagation(); // Hentikan event bubbling ke tab-manager
+            handleGeneratorSubmit(e.target);
+        }
+    }, true); 
+
+    function handleGeneratorSubmit(form) {
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: { 
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: new FormData(form)
+        })
+        .then(res => res.json())
+        .then(data => {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+
+            if (data.success) {
+                // 1. Tutup Modal Generator
+                window.closeKddkModal();
+                selectionState.items.clear();
+                toggleGroupButton();
+
+                document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
+                const checkAll = document.getElementById('check-all-rows');
+                if(checkAll) checkAll.checked = false;
+                
+                // 2. Tampilkan Modal Sukses Kustom
+                showSuccessModal(data);
+                
+                // PERBAIKAN 2: JANGAN REFRESH TAB DISINI!
+                // Refresh akan dilakukan saat user klik tombol "Selesai" di modal sukses.
+                // Jika refresh disini, modal sukses akan langsung hilang tertimpa konten baru.
+                
+            } else {
+                alert('Gagal: ' + data.message);
+            }
+        })
+        .catch(err => {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+            console.error(err);
+            
+            if (err.errors) {
+                alert('Validasi Gagal. Cek inputan.'); 
+            } else {
+                alert('Terjadi kesalahan sistem.');
+            }
+        });
+    }
+
+    function showSuccessModal(data) {
+        const modal = document.getElementById('modal-success-generator');
+        if (!modal) {
+            alert(data.message);
+            return;
+        }
+        document.getElementById('success-modal-message').textContent = data.message;
+        
+        const previewCode = document.getElementById('final_kddk_preview').value;
+        const totalCount = document.getElementById('count-selected').textContent;
+
+        const codeEl = document.getElementById('success-start-code');
+        const countEl = document.getElementById('success-total-count');
+        
+        if(codeEl) codeEl.textContent = previewCode.substring(0, 12) + '...';
+        if(countEl) countEl.textContent = totalCount + ' Pelanggan';
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    // PERBAIKAN 3: REFRESH SAAT TUTUP MODAL
+    window.closeSuccessModal = function() {
+        const modal = document.getElementById('modal-success-generator');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            
+            // BARU DISINI KITA REFRESH HALAMAN
+            const activeTab = App.Utils.getActiveTabName();
+            if (activeTab) {
+                // Ambil URL refresh yang benar (pertahankan search filter jika ada)
+                const tabContent = document.getElementById(`${activeTab}-content`);
+                const searchForm = tabContent ? tabContent.querySelector('form[action*="details"]') : null;
+                
+                // Gunakan URL search form (jika ada) atau URL tab default
+                let refreshUrl = window.location.href;
+                if (searchForm) {
+                     refreshUrl = searchForm.action + window.location.search;
+                } else {
+                     // Fallback ke data-url tab button
+                     const tabBtn = document.querySelector(`.tab-button[data-tab-name="${activeTab}"]`);
+                     if(tabBtn) refreshUrl = tabBtn.dataset.url;
+                }
+                
+                // Tambahkan cache buster
+                let bustUrl = new URL(refreshUrl, window.location.origin);
+                bustUrl.searchParams.set('_cb', new Date().getTime());
+
+                App.Tabs.loadTabContent(activeTab, bustUrl.toString());
+            }
+        }
+    }
+
     // C. Helper & Eksekusi Pindah (Global)
     window.updateMoveRouteOptions = function() {
         const areaSelect = document.getElementById('move-area');
@@ -1031,6 +1165,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if(moveModal) moveModal.classList.add('hidden');
 
         performMoveIdpel(idpel, targetPrefix); // Fungsi AJAX Move yang sudah ada (Smart Move)
+    }
+
+    window.updateLabelDisplay = function() {
+        const routeSelect = document.getElementById('part_rute');
+        const routeLabelDisplay = document.getElementById('rute-label-display');
+        
+        if (routeSelect && routeLabelDisplay) {
+            const selectedOption = routeSelect.options[routeSelect.selectedIndex];
+            if (selectedOption && selectedOption.value) {
+                routeLabelDisplay.textContent = selectedOption.dataset.label || '';
+            } else {
+                routeLabelDisplay.textContent = '';
+            }
+        }
+        // Panggil generator update juga
+        if (typeof updateSequenceAndGenerate === 'function') updateSequenceAndGenerate();
     }
 
     // --- FUNGSI AJAX HAPUS (Helper untuk Remove) ---

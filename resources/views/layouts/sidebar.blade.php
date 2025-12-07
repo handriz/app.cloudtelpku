@@ -1,6 +1,6 @@
 {{-- resources/views/layouts/sidebar.blade.php --}}
 <!-- <aside id="sidebarMenu" class="w-64 bg-white shadow-md flex-shrink-0 min-h-screen border-r border-gray-200 transition-all duration-300"> -->
-<aside id="sidebarMenu" class="w-64 bg-white shadow-md flex-shrink-0 min-h-screen border-r border-gray-200 transition-transform duration-300 ease-in-out fixed inset-y-0 left-0 z-30 -translate-x-full lg:relative lg:translate-x-0" :class="{ 'translate-x-0': mobileSidebarOpen, '-translate-x-full': !mobileSidebarOpen }" >
+<aside id="sidebarMenu" class="w-64 bg-slate-100 shadow-md flex-shrink-0 min-h-screen border-r border-gray-200 transition-transform duration-300 ease-in-out fixed inset-y-0 left-0 z-30 -translate-x-full lg:relative lg:translate-x-0" :class="{ 'translate-x-0': mobileSidebarOpen, '-translate-x-full': !mobileSidebarOpen }" >
 {{-- Area Logo Aplikasi --}}
     <div class="flex items-center justify-center h-16 border-b border-gray-200">
         <a href="{{ route('dashboard') }}" class="flex items-center space-x-2">

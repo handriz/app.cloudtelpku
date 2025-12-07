@@ -31,7 +31,7 @@
         .sidebar-collapsed .menu-text { display: none; }
     </style>
     </head>
-    <body class="font-sans antialiased bg-gray-100 dark:bg-gray-900" 
+    <body class="font-sans antialiased bg-slate-100 dark:bg-gray-900" 
           @php
               $dashboardRoute = 'dashboard';
               $userRole = Auth::check() && Auth::user()->role ? Auth::user()->role->name : null;
@@ -77,8 +77,9 @@
                 <main class="flex-1 overflow-y-auto pt-6 pb-12">
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                         {{-- Wadah untuk Tab Dinamis --}}
-                        <div id="tab-container" class="bg-white dark:bg-gray-800 shadow sm:rounded-lg">
-                            
+                        <!-- <div id="tab-container" class="bg-white dark:bg-gray-800 shadow sm:rounded-lg"> -->
+                        <div id="tab-container" class="content-wrapper shadow-sm sm:rounded-lg">
+    
                             <div class="tabs-header-wrapper border-b border-gray-200 dark:border-gray-700">
                                 <button id="tab-scroll-left" class="tab-scroll-button bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-l-lg hidden">
                                     <i class="fas fa-chevron-left text-gray-700 dark:text-gray-200"></i>
@@ -96,6 +97,9 @@
                             <div id="tabs-content" class="p-4">
                                 {{-- Konten tab akan ditambahkan di sini oleh JavaScript --}}
                             </div>
+                        </div>
+                        <div class="mt-8 px-4 py-3 text-[11px] text-slate-500 border-t border-slate-300 text-center">
+                            © 2025 TeL UP3 Pekanbaru
                         </div>
                     </div>
                 </main>

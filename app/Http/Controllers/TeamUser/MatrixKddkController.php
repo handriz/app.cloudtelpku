@@ -27,11 +27,12 @@ class MatrixKddkController extends Controller
 
         $hierarchyFilter = $this->getHierarchyFilterForJoin($user);
 
-        // 2. QUERY UTAMA
         $query = DB::table('master_data_pelanggan')
             // PERBAIKAN 1: JOIN KE 'CODE', BUKAN 'NAME'
             ->join('hierarchy_levels as h_ulp', 'master_data_pelanggan.unitup', '=', 'h_ulp.code')
             ->leftJoin('hierarchy_levels as h_up3', 'h_ulp.parent_code', '=', 'h_up3.code')
+
+            ->leftJoin('mapping_kddk', 'master_data_pelanggan.idpel', '=', 'mapping_kddk.idpel')
 
             ->leftJoin('temporary_mappings', function($join) use ($activePeriod) {
                 $join->on('master_data_pelanggan.idpel', '=', 'temporary_mappings.idpel')
@@ -39,26 +40,28 @@ class MatrixKddkController extends Controller
             })
             
             ->select(
-                // PERBAIKAN 2: Ambil Nama dari Hirarki untuk ditampilkan sebagai 'unit_layanan'
                 'h_ulp.name as unit_layanan', 
-                // Kita ambil juga kodenya untuk keperluan link/drill-down nanti
                 'master_data_pelanggan.unitup as unit_code',
-                
                 'h_ulp.kddk_code as kode_ulp',
                 'h_up3.name as unit_induk_name',
                 'h_up3.kddk_code as kode_up3',
+                'h_up3.order as order_up3', 
+                'h_ulp.order as order_ulp',
 
+                // TARGET (Total DIL)
                 DB::raw('COUNT(master_data_pelanggan.id) as target_pelanggan'),
-                DB::raw('COUNT(temporary_mappings.id) as realisasi'),
-                DB::raw('COUNT(CASE WHEN temporary_mappings.is_validated = 1 THEN 1 END) as valid'),
-                DB::raw('COUNT(CASE WHEN temporary_mappings.ket_validasi LIKE "rejected_%" THEN 1 END) as ditolak')
+                // SUDAH KDDK (Progress Grouping) -> INI YANG JADI ACUAN PERSENTASE
+                DB::raw('COUNT(DISTINCT mapping_kddk.id) as sudah_kddk'),
+                // VALIDASI (Realisasi Lapangan)
+                DB::raw('COUNT(DISTINCT temporary_mappings.id) as realisasi_survey'),
+                DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.is_validated = 1 THEN temporary_mappings.id END) as valid'),
+                DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.ket_validasi LIKE "rejected_%" THEN temporary_mappings.id END) as ditolak')
             );
 
         if (!$user->hasRole('admin') && $hierarchyFilter) {
             $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
         }
 
-        // PERBAIKAN 3: Group By harus konsisten dengan Select
         $rawMatrix = $query->groupBy(
                 'h_ulp.name',           // Group by Nama (Kota Barat)
                 'master_data_pelanggan.unitup', // Group by Kode (18111)
@@ -72,7 +75,23 @@ class MatrixKddkController extends Controller
             ->orderBy('h_ulp.order', 'asc')
             ->get();
 
-        $matrixData = $rawMatrix->groupBy(function($item) {
+        // Cek Tipe Unit User yang Login
+        $isUserULP = false;
+        if (!$user->hasRole('admin') && $user->hierarchy_level_code) {
+            $userType = \App\Models\HierarchyLevel::where('code', $user->hierarchy_level_code)
+                        ->value('unit_type');
+            if ($userType === 'ULP') {
+                $isUserULP = true;
+            }
+        }
+
+        // Lakukan Grouping Dinamis
+        $matrixData = $rawMatrix->groupBy(function($item) use ($isUserULP) {
+            if ($isUserULP) {
+                // Jika ULP, jadikan DIRINYA SENDIRI sebagai Header Group
+                return $item->unit_layanan; 
+            }
+            // Jika Admin/UP3, jadikan INDUKNYA sebagai Header Group
             return $item->unit_induk_name ?? 'LAINNYA';
         });
 
@@ -426,7 +445,7 @@ class MatrixKddkController extends Controller
                 $fullKddk = $prefix . $seqString . $sisipan;
 
                 // 1. Simpan ke Master (Agar tercatat sebagai kode valid)
-                \App\Models\MasterKddk::firstOrCreate(
+                \App\Models\MasterKddk::insertOrIgnore(
                     ['kode_kddk' => $fullKddk],
                     [
                         'unitup' => $unitup,
@@ -446,7 +465,7 @@ class MatrixKddkController extends Controller
                     ]);
                 } else {
                     DB::table('mapping_kddk')->insert([
-                        'objectid' => (string) \Illuminate\Support\Str::uuid(),
+                        'objectid' => (string) Str::uuid(),
                         'idpel' => $idpel,
                         'kddk' => $fullKddk,
                         'enabled' => true,

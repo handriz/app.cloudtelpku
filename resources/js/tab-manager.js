@@ -150,13 +150,16 @@ App.Utils = (() => {
         const overlay = modal;
 
         if (!modal || !titleEl || !messageEl || !okButton || !cancelButton) {
-            console.error('Elemen modal konfirmasi kustom tidak ditemukan!');
-            if (confirm(message)) onConfirm();
+            // Fallback jika modal HTML tidak ditemukan di halaman ini
+            console.warn('Elemen modal konfirmasi kustom tidak ditemukan, menggunakan native confirm.');
+            // Bersihkan tag HTML untuk alert biasa agar rapi
+            const plainMessage = message.replace(/<[^>]*>?/gm, ''); 
+            if (confirm(plainMessage)) onConfirm();
             return;
         }
 
         titleEl.textContent = title || 'Konfirmasi Tindakan';
-        messageEl.textContent = message;
+        messageEl.innerHTML = message;
         modal.classList.remove('hidden');
         modal.classList.add('flex');
 
@@ -2569,63 +2572,57 @@ App.Form = (() => {
                 submitButton.innerHTML = originalButtonText;
             }
 
-            if (!error.errors) {
-                // Jika tidak ada error.errors, ini adalah error umum (misal 500) atau error parsing
-                console.error('CRITICAL SERVER ERROR (Unhandled):', error); 
-            } else {
-                // Jika ada error.errors (422 Validation), kita sudah menanganinya di UI. 
-                // Cukup log ringan di console.log atau console.warn.
-                console.warn('Validation error detected and handled.'); 
-            }
-
             if (error.errors) {
-               let errorDiv = form.querySelector('#ajax-errors') || form.querySelector('.error-container');
-                
-                // [PENANGANAN ERROR UNTUK FORM AJAX]
+                // 1. Cari Container Error (Generic untuk semua form)
+                // Mencari #ajax-errors di dalam form, atau fallback ke global
+                let errorDiv = form.querySelector('#ajax-errors') || 
+                               form.querySelector('.error-container') ||
+                               document.getElementById('ajax-errors');
+
+                // Kompatibilitas untuk form lama (Hardcoded IDs)
                 if (!errorDiv) {
                     if (form.id === 'create-mapping-form') errorDiv = form.querySelector('#create-mapping-errors');
                     else if (form.id === 'edit-user-form') errorDiv = form.querySelector('#edit-user-errors');
-                    else if (form.id === 'create-user-form' || form.id === 'edit-user-form') errorDiv = form.querySelector('#ajax-errors'); 
                 }
 
                 if (errorDiv) {
-                    let errorListHtml = '<div class="font-bold mb-2"><i class="fas fa-exclamation-circle"></i> Terdapat kesalahan input:</div><ul class="list-disc list-inside">';
+                    // 2. PERBAIKAN UTAMA: DEDUPLIKASI PESAN
+                    // Gunakan Set untuk menyimpan pesan unik saja
+                    let uniqueMessages = new Set();
                     
-                    // Iterasi yang lebih aman untuk objek error
-                    for (const fieldName in error.errors) { 
-                        if (error.errors.hasOwnProperty(fieldName)) {
-                            // error.errors[fieldName] adalah array pesan ['message1', 'message2']
-                            error.errors[fieldName].forEach(msg => {
-                                errorListHtml += `<li class="text-sm">- ${msg}</li>`;
-                            });
-                        }
+                    for (const key in error.errors) {
+                        // error.errors[key] adalah array string, kita ambil isinya
+                        error.errors[key].forEach(msg => uniqueMessages.add(msg));
                     }
+
+                    // 3. Render List Error
+                    let errorListHtml = '<div class="font-bold text-red-700 mb-1"><i class="fas fa-exclamation-circle mr-1"></i> Terdapat kesalahan:</div>';
+                    errorListHtml += '<ul class="list-disc list-inside">';
+                    
+                    uniqueMessages.forEach(msg => {
+                        errorListHtml += `<li class="text-sm text-red-600">${msg}</li>`;
+                    });
                     errorListHtml += '</ul>';
                     
-                    // Tambahkan Tombol Close ke dalam div error
-                    const fullErrorHtml = `
-                        <div class="relative">
-                            <button type="button" 
-                                    class="absolute top-1 right-2 text-red-700 opacity-70 hover:opacity-100 text-lg" 
-                                    onclick="this.closest('#ajax-errors').classList.add('hidden');">
-                                <i class="fas fa-times"></i>
-                            </button>
-                            ${errorListHtml}
-                        </div>
-                    `;
-
-                    errorDiv.innerHTML = fullErrorHtml;
+                    errorDiv.innerHTML = errorListHtml;
                     errorDiv.classList.remove('hidden');
+                    
+                    // Scroll ke error agar terlihat
                     errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    
-                    const modalContentEl = document.getElementById('modal-content');
-                    if (modalContentEl) modalContentEl.scrollTop = 0;
-                    
+
+                    // Reset scroll container jika ada (misal di modal)
+                    const modalContent = document.getElementById('modal-content');
+                    if (modalContent) modalContent.scrollTop = 0;
+
                 } else {
-                    alert('Validasi gagal. Cek inputan Anda.');
+                    // Fallback Alert jika tidak ada div error di HTML
+                    let msg = Object.values(error.errors).flat().join('\n');
+                    // Saring duplikat untuk alert juga
+                    msg = [...new Set(Object.values(error.errors).flat())].join('\n');
+                    alert('Validasi Gagal:\n' + msg);
                 }
             } else {
-                // Error Umum (Server Error 500)
+                // Error Server (500, 403, dll)
                 App.Utils.displayNotification('error', error.message || 'Terjadi kesalahan pada server.');
             }
         });

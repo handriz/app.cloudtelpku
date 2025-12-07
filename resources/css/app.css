@@ -75,3 +75,14 @@
   /* Pastikan box-shadow terlihat (jika tema gelap) */
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.4);
 }
+
+.header-blue {
+    background-color: #60A5FA !important; /* Tailwind Blue-400 */
+    color: white !important;
+}
+
+.content-wrapper {
+    background-color: #FFFFFF;
+    border-radius: 10px;
+    border: 1px solid #CBD5E1;
+}

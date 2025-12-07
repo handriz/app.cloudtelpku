@@ -284,23 +284,100 @@
     
 </div>
 
-{{-- CSS KHUSUS FULLSCREEN --}}
 <style>
-    /* Mode Fullscreen */
-    body.rbm-fullscreen #sidebarMenu, 
-    body.rbm-fullscreen header, 
-    body.rbm-fullscreen nav {
-        display: none !important;
+    /* ===============================================
+       1. CUSTOM SCROLLBAR (MODERN & MINIMALIS)
+       =============================================== */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
     }
     
+    /* Track (Jalur) Transparan */
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    
+    /* Thumb (Batang Scroll) */
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1; /* gray-300 */
+        border-radius: 20px;
+        border: 1px solid transparent;
+        background-clip: content-box;
+    }
+    
+    /* Thumb Hover */
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: #94a3b8; /* gray-400 */
+    }
+
+    /* Dark Mode Scrollbar */
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: #4b5563; /* gray-600 */
+    }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: #6b7280; /* gray-500 */
+    }
+
+
+    /* ===============================================
+       2. MODE FULLSCREEN (FORCE LAYOUT)
+       =============================================== */
+    
+    /* Sembunyikan elemen layout Laravel bawaan (Sidebar, Nav, Header) saat mode fullscreen aktif */
+    /* Menggunakan !important untuk menimpa style bawaan framework */
+    body.rbm-fullscreen nav,
+    body.rbm-fullscreen aside,
+    body.rbm-fullscreen header, 
+    body.rbm-fullscreen footer,
+    body.rbm-fullscreen .min-h-screen > div:first-child {
+        display: none !important;
+    }
+
+    /* Konfigurasi Workspace saat Fullscreen */
     #rbm-workspace.fullscreen-mode {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        z-index: 9999;
+        position: fixed !important;      /* Lepas dari aliran dokumen normal */
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100vw !important;         /* Lebar 100% Viewport */
+        height: 100vh !important;        /* Tinggi 100% Viewport */
+        
+        z-index: 2147483647 !important;  /* Z-Index Maksimum Browser agar selalu di paling atas */
+        
         margin: 0 !important;
-        border-radius: 0;
+        padding: 0 !important;
+        border-radius: 0 !important;     /* Hilangkan rounded corner */
+        background-color: #f3f4f6;       /* bg-gray-100 (Light Mode) */
+        
+        transform: none !important;      /* Reset transformasi CSS jika ada */
+        overflow: hidden !important;     /* Mencegah scrollbar ganda pada body */
+    }
+
+    /* Background untuk Dark Mode saat Fullscreen */
+    .dark #rbm-workspace.fullscreen-mode {
+        background-color: #111827;       /* bg-gray-900 (Dark Mode) */
+    }
+
+
+    /* ===============================================
+       3. PENYESUAIAN KONTEN DALAM FULLSCREEN
+       =============================================== */
+
+    /* Pastikan Grid Layout mengisi tinggi penuh dikurangi header toolbar */
+    #rbm-workspace.fullscreen-mode .grid {
+        height: 100% !important;
+    }
+
+    /* Pastikan Peta mengisi sisa ruang vertikal sepenuhnya */
+    #rbm-workspace.fullscreen-mode #rbm-map {
+        height: 100% !important;
+        min-height: 0 !important; /* Reset min-height agar fleksibel */
+    }
+
+    /* Animasi Transisi Halus saat masuk/keluar fullscreen */
+    #rbm-workspace {
+        transition: all 0.3s ease-in-out;
     }
 </style>

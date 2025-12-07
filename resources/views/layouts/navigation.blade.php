@@ -1,17 +1,23 @@
 {{-- resources/views/layouts/navigation.blade.php --}}
-<nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
+<!-- <nav x-data="{ open: false }" class="bg-white border-b border-gray-100"> -->
+    <nav x-data="{ open: false }" class="bg-sky-400 text-white shadow-md">
     <!-- Primary Navigation Menu -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
             <div class="flex items-center">
                 <!-- Logo -->
-        <button id="sidebarToggle" class="text-gray-500 hover:text-gray-700 focus:outline-none" title="Toggle Sidebar"  @click.prevent="mobileSidebarOpen = !mobileSidebarOpen" >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
-                 viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                      stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-            </svg>
-        </button>
+                <button id="sidebarToggle"
+                        class="px-3 py-2 rounded-full bg-white border border-slate-200 shadow-sm
+                            hover:bg-slate-100 hover:shadow transition-all duration-200
+                            text-slate-600"
+                        @click.prevent="mobileSidebarOpen = !mobileSidebarOpen">
+
+                    <svg xmlns="http://www.w3.org/2000/svg"
+                        class="h-5 w-5" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
                 {{-- Hapus atau Kosongkan bagian Navigation Links (menu dinamis sudah di sidebar) --}}
                 <div class="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex">
                     {{-- Anda bisa menambahkan link statis di sini jika ada,

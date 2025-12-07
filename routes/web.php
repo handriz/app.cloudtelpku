@@ -19,7 +19,7 @@ use App\Http\Controllers\TeamUser\MappingKddkController;
 use App\Http\Controllers\TeamUser\MappingValidationController;
 use App\Http\Controllers\TeamUser\ValidationRecapController;
 use App\Http\Controllers\TeamUser\MatrixKddkController;
-
+use App\Http\Controllers\Admin\SettingsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -245,9 +245,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('settings')->name('admin.settings.')->middleware(['role:admin,team,appuser,executive_user'])->group(function () {
     
         // Halaman Utama Pengaturan
-        Route::get('/', [App\Http\Controllers\Admin\SettingsController::class, 'index'])->name('index');
-        Route::post('/update', [App\Http\Controllers\Admin\SettingsController::class, 'update'])->name('update');
-        Route::get('/manage-routes/{areaCode}', [App\Http\Controllers\Admin\SettingsController::class, 'manageRoutes'])->name('manage_routes');
+        Route::get('/', [SettingsController::class, 'index'])->name('index');
+        Route::post('/update', [SettingsController::class, 'update'])->name('update');
+        Route::get('/manage-routes/{areaCode}', [SettingsController::class, 'manageRoutes'])->name('manage_routes');
+        Route::post('/delete-item', [SettingsController::class, 'deleteKddkConfigItem'])->name('delete_item');
     });
 
 });
