@@ -6,11 +6,12 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use App\Models\HierarchyLevel;
 use App\Models\MasterKddk;
 use App\Models\AppSetting; 
 use App\Models\User;
-use Illuminate\Support\Str;
 
 class MatrixKddkController extends Controller
 {
@@ -25,44 +26,44 @@ class MatrixKddkController extends Controller
             ? \App\Models\AppSetting::findValue('kddk_active_period', $user->hierarchy_level_code, date('Y-m'))
             : date('Y-m');
 
-        $hierarchyFilter = $this->getHierarchyFilterForJoin($user);
+        $cacheKey = 'matrix_index_' . $user->id . '_' . $activePeriod;
+        $matrixData = Cache::remember($cacheKey, 600, function () use ($user, $activePeriod) {
 
-        $query = DB::table('master_data_pelanggan')
-            // PERBAIKAN 1: JOIN KE 'CODE', BUKAN 'NAME'
-            ->join('hierarchy_levels as h_ulp', 'master_data_pelanggan.unitup', '=', 'h_ulp.code')
-            ->leftJoin('hierarchy_levels as h_up3', 'h_ulp.parent_code', '=', 'h_up3.code')
+            $hierarchyFilter = $this->getHierarchyFilterForJoin($user);
 
-            ->leftJoin('mapping_kddk', 'master_data_pelanggan.idpel', '=', 'mapping_kddk.idpel')
+            $query = DB::table('master_data_pelanggan')
+                ->join('hierarchy_levels as h_ulp', 'master_data_pelanggan.unitup', '=', 'h_ulp.code')
+                ->leftJoin('hierarchy_levels as h_up3', 'h_ulp.parent_code', '=', 'h_up3.code')
+                ->leftJoin('mapping_kddk', 'master_data_pelanggan.idpel', '=', 'mapping_kddk.idpel')
+                ->leftJoin('temporary_mappings', function($join) use ($activePeriod) {
+                    $join->on('master_data_pelanggan.idpel', '=', 'temporary_mappings.idpel')
+                        ->whereRaw("DATE_FORMAT(temporary_mappings.created_at, '%Y-%m') = ?", [$activePeriod]);
+                })         
+                ->select(
+                    'h_ulp.name as unit_layanan', 
+                    'master_data_pelanggan.unitup as unit_code',
+                    'h_ulp.kddk_code as kode_ulp',
+                    'h_up3.name as unit_induk_name',
+                    'h_up3.kddk_code as kode_up3',
+                    'h_up3.order as order_up3', 
+                    'h_ulp.order as order_ulp',
 
-            ->leftJoin('temporary_mappings', function($join) use ($activePeriod) {
-                $join->on('master_data_pelanggan.idpel', '=', 'temporary_mappings.idpel')
-                     ->whereRaw("DATE_FORMAT(temporary_mappings.created_at, '%Y-%m') = ?", [$activePeriod]);
-            })
+                    // TARGET (Total DIL)
+                    DB::raw('COUNT(master_data_pelanggan.id) as target_pelanggan'),
+                    // SUDAH KDDK (Progress Grouping) -> INI YANG JADI ACUAN PERSENTASE
+                    DB::raw('COUNT(DISTINCT mapping_kddk.id) as sudah_kddk'),
+                    // VALIDASI (Realisasi Lapangan)
+                    DB::raw('COUNT(DISTINCT temporary_mappings.id) as realisasi_survey'),
+                    DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.is_validated = 1 THEN temporary_mappings.id END) as valid'),
+                    DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.ket_validasi LIKE "rejected_%" THEN temporary_mappings.id END) as ditolak')
+                );
+
             
-            ->select(
-                'h_ulp.name as unit_layanan', 
-                'master_data_pelanggan.unitup as unit_code',
-                'h_ulp.kddk_code as kode_ulp',
-                'h_up3.name as unit_induk_name',
-                'h_up3.kddk_code as kode_up3',
-                'h_up3.order as order_up3', 
-                'h_ulp.order as order_ulp',
+                if (!$user->hasRole('admin') && $hierarchyFilter) {
+                $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+            }
 
-                // TARGET (Total DIL)
-                DB::raw('COUNT(master_data_pelanggan.id) as target_pelanggan'),
-                // SUDAH KDDK (Progress Grouping) -> INI YANG JADI ACUAN PERSENTASE
-                DB::raw('COUNT(DISTINCT mapping_kddk.id) as sudah_kddk'),
-                // VALIDASI (Realisasi Lapangan)
-                DB::raw('COUNT(DISTINCT temporary_mappings.id) as realisasi_survey'),
-                DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.is_validated = 1 THEN temporary_mappings.id END) as valid'),
-                DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.ket_validasi LIKE "rejected_%" THEN temporary_mappings.id END) as ditolak')
-            );
-
-        if (!$user->hasRole('admin') && $hierarchyFilter) {
-            $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
-        }
-
-        $rawMatrix = $query->groupBy(
+            $rawMatrix = $query->groupBy(
                 'h_ulp.name',           // Group by Nama (Kota Barat)
                 'master_data_pelanggan.unitup', // Group by Kode (18111)
                 'h_ulp.kddk_code', 
@@ -75,24 +76,21 @@ class MatrixKddkController extends Controller
             ->orderBy('h_ulp.order', 'asc')
             ->get();
 
-        // Cek Tipe Unit User yang Login
-        $isUserULP = false;
-        if (!$user->hasRole('admin') && $user->hierarchy_level_code) {
-            $userType = \App\Models\HierarchyLevel::where('code', $user->hierarchy_level_code)
-                        ->value('unit_type');
-            if ($userType === 'ULP') {
-                $isUserULP = true;
+            // Logika Grouping (ULP vs Admin)
+            $isUserULP = false;
+            if (!$user->hasRole('admin') && $user->hierarchy_level_code) {
+                $userType = \App\Models\HierarchyLevel::where('code', $user->hierarchy_level_code)
+                            ->value('unit_type');
+                if ($userType === 'ULP') {
+                    $isUserULP = true;
+                }
             }
-        }
 
-        // Lakukan Grouping Dinamis
-        $matrixData = $rawMatrix->groupBy(function($item) use ($isUserULP) {
-            if ($isUserULP) {
-                // Jika ULP, jadikan DIRINYA SENDIRI sebagai Header Group
-                return $item->unit_layanan; 
-            }
-            // Jika Admin/UP3, jadikan INDUKNYA sebagai Header Group
-            return $item->unit_induk_name ?? 'LAINNYA';
+            return $rawMatrix->groupBy(function($item) use ($isUserULP) {
+                if ($isUserULP) return $item->unit_layanan; 
+                return $item->unit_induk_name ?? 'LAINNYA';
+            });
+
         });
 
         $viewData = compact('matrixData', 'activePeriod');
@@ -126,20 +124,12 @@ class MatrixKddkController extends Controller
         $subUnits = collect(); 
 
         if ($currentUnit) {
-            // Jika ULP
-            if ($currentUnit->unit_type === 'ULP') {
+             if ($currentUnit->unit_type === 'ULP') {
                 $autoCodes['ulp'] = $currentUnit->kddk_code;
-                if ($currentUnit->parent) {
-                    $autoCodes['up3'] = $currentUnit->parent->kddk_code;
-                }
-                // Cek Sub Unit
+                if ($currentUnit->parent) $autoCodes['up3'] = $currentUnit->parent->kddk_code;
                 $subUnits = $currentUnit->children()->where('unit_type', 'SUB_ULP')->orderBy('kddk_code')->get();
-                if ($subUnits->isNotEmpty()) {
-                    $autoCodes['sub'] = ''; // Kosongkan agar user wajib pilih
-                }
-            } 
-            // Jika SUB ULP (Jaga-jaga)
-            elseif ($currentUnit->unit_type === 'SUB_ULP') {
+                if ($subUnits->isNotEmpty()) $autoCodes['sub'] = ''; 
+            } elseif ($currentUnit->unit_type === 'SUB_ULP') {
                 $autoCodes['sub'] = $currentUnit->kddk_code;
                 if ($currentUnit->parent) {
                     $autoCodes['ulp'] = $currentUnit->parent->kddk_code;
@@ -150,27 +140,49 @@ class MatrixKddkController extends Controller
 
         // 3. QUERY DATA PELANGGAN
         $query = DB::table('master_data_pelanggan')
+            // 1. Join untuk Status Validasi (Tidak mempengaruhi filtering utama)
             ->leftJoin('temporary_mappings', 'master_data_pelanggan.idpel', '=', 'temporary_mappings.idpel')
-            ->leftJoin('mapping_kddk', 'master_data_pelanggan.idpel', '=', 'mapping_kddk.idpel') // Join untuk lihat KDDK eksisting
+            
+            // 2. Join ke Mapping KDDK Khusus yang ENABLED = 1 (Data Aktif)
+            ->leftJoin('mapping_kddk', function($join) {
+                $join->on('master_data_pelanggan.idpel', '=', 'mapping_kddk.idpel')
+                     ->where('mapping_kddk.enabled', 1);
+            })
+
             ->select(
                 'master_data_pelanggan.*',
+
+                // Ambil Data dari Mapping yang Enabled=1
                 'mapping_kddk.kddk as current_kddk',
+                'mapping_kddk.user_pendataan',
+                'mapping_kddk.latitudey',
+                'mapping_kddk.longitudex',
+                'mapping_kddk.foto_kwh',
+                'mapping_kddk.foto_bangunan',
+                'mapping_kddk.namagd',
+
                 'temporary_mappings.is_validated',
-                'temporary_mappings.ket_validasi'
+                'temporary_mappings.ket_validasi',
+
             )
             ->where('master_data_pelanggan.unitup', $unitCode)
-            ->whereNull('mapping_kddk.kddk');
+
+            ->where(function($q) {
+                $q->whereNull('mapping_kddk.kddk')
+                  ->orWhere('mapping_kddk.kddk', '=', '');
+            });
             
         // Filter Pencarian (Opsional)
         if ($request->has('search') && $request->search != '') {
-            $query->where(function($q) use ($request) {
-                $q->where('master_data_pelanggan.idpel', 'like', '%' . $request->search . '%')
-                  ->orWhere('master_data_pelanggan.nomor_meter_kwh', 'like', '%' . $request->search . '%');
+            $searchTerm = '%' . $request->search . '%';
+            
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('master_data_pelanggan.idpel', 'like', $searchTerm)
+                  ->orWhere('master_data_pelanggan.nomor_meter_kwh', 'like', $searchTerm);
             });
         }
 
-        $customers = $query->paginate(8);
-        $customers->withPath(route('team.matrix_kddk.details', ['unit' => $unitCode]));
+        $customers = $query->paginate(8)->withPath(route('team.matrix_kddk.details', ['unit' => $unitCode]));
 
         $viewData = compact('customers', 'unit', 'activePeriod', 'autoCodes', 'subUnits', 'kddkConfig');
 
@@ -203,6 +215,9 @@ class MatrixKddkController extends Controller
                 'master_data_pelanggan.nomor_meter_kwh'
             )
             ->where('master_data_pelanggan.unitup', $unitCode)
+            ->whereNotNull('mapping_kddk.kddk')
+            ->where('mapping_kddk.kddk', '!=', '')
+            ->whereRaw('LENGTH(mapping_kddk.kddk) >= 5')
             ->orderBy('mapping_kddk.kddk') 
             ->get();
 
@@ -227,7 +242,7 @@ class MatrixKddkController extends Controller
         $areaLabels = collect($kddkConfig['areas'] ?? [])->pluck('label', 'code');
         $officers = \App\Models\User::whereHas('role', fn($q) => $q->where('name', 'appuser'))->get();
 
-        $viewData = compact('unitCode', 'hierarchy', 'groupedData', 'officers', 'areaLabels');
+        $viewData = compact('unitCode', 'hierarchy', 'groupedData', 'officers', 'areaLabels','kddkConfig');
 
         if ($request->has('is_ajax')) {
             return view('team.matrix_kddk.partials.rbm_manage_content', $viewData);
@@ -344,10 +359,14 @@ class MatrixKddkController extends Controller
 
         try {
             DB::transaction(function() use ($idpel, $target) {
+
+                // 1. Ambil Kode Lama (Source Route) sebelum diupdate
+                $oldKddk = DB::table('mapping_kddk')->where('idpel', $idpel)->value('kddk');
+                $sourcePrefix = substr($oldKddk, 0, 7);
                 
+                // 2. Proses Pindah ke Target (Logika Lama)
                 $finalKddk = $target;
 
-                // LOGIKA BARU: Jika target cuma 7 digit (Prefix Rute), Generate Sequence Baru
                 if (strlen($target) === 7) {
                     // Cari urutan terakhir di rute tujuan
                     $maxSeq = DB::table('mapping_kddk')
@@ -381,7 +400,15 @@ class MatrixKddkController extends Controller
                         'kddk' => $finalKddk,
                         'updated_at' => now()
                     ]);
+
+                // 3. RAPIAKAN RUTE ASAL (Jika pindah rute, bukan reorder dalam rute sama)
+                if ($sourcePrefix && $sourcePrefix !== substr($finalKddk, 0, 7)) {
+                    $this->resequenceRoute($sourcePrefix);
+                }
             });
+
+            $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
+            Cache::forget($cacheKey);
 
             return response()->json(['success' => true, 'message' => "Berhasil dipindahkan."]);
 
@@ -478,6 +505,9 @@ class MatrixKddkController extends Controller
             }
         });
 
+        $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
+        Cache::forget($cacheKey);
+
         $count = count($validIdpels);
         $endSeq = $startSequence + $count - 1;
         
@@ -541,6 +571,11 @@ class MatrixKddkController extends Controller
         ]);
 
         try {
+
+            // 1. Ambil Kode Lama
+            $oldKddk = DB::table('mapping_kddk')->where('idpel', $request->idpel)->value('kddk');
+            $sourcePrefix = substr($oldKddk, 0, 7);
+
             // Update kolom kddk menjadi NULL
             DB::table('mapping_kddk')
                 ->where('idpel', $request->idpel)
@@ -548,6 +583,14 @@ class MatrixKddkController extends Controller
                     'kddk' => null, // Kosongkan KDDK
                     'updated_at' => now()
                 ]);
+            
+            // 3. RAPIAKAN RUTE ASAL
+            if ($sourcePrefix) {
+                $this->resequenceRoute($sourcePrefix);
+            }
+
+            $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
+            Cache::forget($cacheKey);
 
             return response()->json([
                 'success' => true,
@@ -628,6 +671,155 @@ class MatrixKddkController extends Controller
         });
 
         return response()->json(['success' => true, 'message' => 'Urutan berhasil diperbarui.']);
+    }
+
+    /**
+     * BULK MOVE: Pindahkan Banyak Pelanggan Sekaligus
+     */
+    public function bulkMove(Request $request)
+    {
+        $request->validate([
+            'idpels' => 'required|array|min:1',
+            'idpels.*' => 'exists:mapping_kddk,idpel',
+            'target_kddk' => 'required|string',
+        ]);
+
+        $idpels = $request->idpels;
+        $target = $request->target_kddk;
+
+        try {
+            DB::transaction(function() use ($idpels, $target) {
+
+                // 1. Kumpulkan semua Prefix Asal yang terlibat (Bisa jadi idpel dari rute yg beda-beda)
+                $sourcePrefixes = DB::table('mapping_kddk')
+                    ->whereIn('idpel', $idpels)
+                    ->select(DB::raw('LEFT(kddk, 7) as prefix'))
+                    ->distinct()
+                    ->pluck('prefix')
+                    ->toArray();
+                
+                // Cek apakah target adalah Rute (7 Digit) atau KDDK Spesifik (12 Digit)
+                // Biasanya Bulk Move diarahkan ke Rute (7 Digit) agar sequence dibuatkan otomatis
+                if (strlen($target) === 7) {
+                    
+                    // 1. Cari Max Sequence saat ini di rute target
+                    $maxSeq = DB::table('mapping_kddk')
+                        ->where('kddk', 'like', $target . '%')
+                        ->max(DB::raw('CAST(SUBSTRING(kddk, 8, 3) AS UNSIGNED)'));
+                    $currentSeq = $maxSeq ? ($maxSeq + 1) : 1;
+
+                    // 2. Loop setiap pelanggan
+                    foreach ($idpels as $idpel) {
+                        $seqStr = str_pad($currentSeq, 3, '0', STR_PAD_LEFT);
+                        $finalKddk = $target . $seqStr . '00'; // Default sisipan 00
+
+                        // Update Mapping
+                        DB::table('mapping_kddk')
+                            ->where('idpel', $idpel)
+                            ->update([
+                                'kddk' => $finalKddk,
+                                'updated_at' => now()
+                            ]);
+                        
+                        // Increment sequence untuk pelanggan berikutnya
+                        $currentSeq++;
+                    }
+                }
+
+                // 3. RAPIAKAN SEMUA RUTE ASAL
+                foreach ($sourcePrefixes as $prefix) {
+                    if ($prefix && $prefix !== $target) { // Jangan rapikan target dulu (sudah rapi dari loop di atas)
+                        $this->resequenceRoute($prefix);
+                    }
+                }
+                    
+            });
+
+            $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
+            Cache::forget($cacheKey);
+
+            return response()->json(['success' => true, 'message' => count($idpels) . " Pelanggan berhasil dipindahkan."]);
+
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * BULK REMOVE: Keluarkan Banyak Pelanggan Sekaligus
+     */
+    public function bulkRemove(Request $request)
+    {
+        $request->validate([
+            'idpels' => 'required|array|min:1',
+            'idpels.*' => 'exists:mapping_kddk,idpel',
+        ]);
+
+        try {
+
+            // 1. Kumpulkan Prefix Asal
+            $sourcePrefixes = DB::table('mapping_kddk')
+                ->whereIn('idpel', $request->idpels)
+                ->select(DB::raw('LEFT(kddk, 7) as prefix'))
+                ->distinct()
+                ->pluck('prefix')
+                ->toArray();
+
+            // 2. Proses Hapus
+            DB::table('mapping_kddk')
+                ->whereIn('idpel', $request->idpels)
+                ->update([
+                    'kddk' => null,
+                    'updated_at' => now()
+                ]);
+            
+            // 3. RAPIAKAN RUTE ASAL
+            foreach ($sourcePrefixes as $prefix) {
+                if ($prefix) {
+                    $this->resequenceRoute($prefix);
+                }
+            }
+
+            $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
+            Cache::forget($cacheKey);
+
+            return response()->json(['success' => true, 'message' => count($request->idpels) . " Pelanggan berhasil dikeluarkan."]);
+
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Helper: Merapikan urutan nomor (sequence) dalam satu rute
+     * Contoh: 001, 003, 005 -> menjadi -> 001, 002, 003
+     */
+    private function resequenceRoute($routePrefix)
+    {
+        // Ambil semua pelanggan di rute tersebut, urutkan berdasarkan kddk yang sekarang (berantakan)
+        $customers = DB::table('mapping_kddk')
+            ->where('kddk', 'like', $routePrefix . '%')
+            ->orderBy('kddk')
+            ->get();
+
+        $seq = 1;
+        foreach ($customers as $c) {
+            // Bentuk KDDK Baru: Prefix (7) + Urut Baru (3) + Sisipan Lama (2)
+            $oldSisip = substr($c->kddk, 10, 2); 
+            $newSeqStr = str_pad($seq, 3, '0', STR_PAD_LEFT);
+            $newKddk = $routePrefix . $newSeqStr . $oldSisip;
+
+            // Update hanya jika berubah (untuk optimasi)
+            if ($c->kddk !== $newKddk) {
+                DB::table('mapping_kddk')
+                    ->where('id', $c->id)
+                    ->update([
+                        'kddk' => $newKddk,
+                        'updated_at' => now()
+                    ]);
+            }
+            $seq++;
+        }
     }
 
     // --- Helper Hirarki (Copy dari kode lama Anda) ---

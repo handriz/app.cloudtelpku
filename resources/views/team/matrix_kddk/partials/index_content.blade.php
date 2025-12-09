@@ -8,6 +8,10 @@
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 Rekapitulasi penyelesaian berdasarkan update data pelanggan aktif.
             </p>
+            <div class="mt-2 inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-700">
+                <i class="fas fa-clock mr-1.5 animate-pulse"></i>
+                <span>Data diperbarui otomatis setiap 10 menit.</span>
+            </div>
         </div>
 
         @if(isset($activePeriod))

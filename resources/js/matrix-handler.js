@@ -60,11 +60,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const displayEl = document.getElementById('live-kddk-display');
         if (displayEl && displayCode) {
             // Animasi kecil agar user sadar berubah
+            displayEl.style.transition = 'opacity 0.2s';
             displayEl.style.opacity = 0;
             setTimeout(() => {
                 displayEl.textContent = displayCode;
                 displayEl.style.opacity = 1;
-            }, 100);
+            }, 200);
         }
     }
 
@@ -88,13 +89,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (toggleRow) {
             e.preventDefault(); e.stopPropagation(); 
             const targetId = toggleRow.dataset.target;
-            const icon = document.getElementById('icon-' + targetId);
+            const icon = document.getElementById('icon-' + targetId) || toggleRow.querySelector('i.fa-chevron-down'); // Support icon di dalam tombol
+            const displayCode = toggleRow.dataset.displayCode;
             
-            const singleRow = document.getElementById('row-' + targetId);
-            if (singleRow) singleRow.classList.toggle('hidden');
+            // Handle Single Row (Manage RBM - Level 2 Digit 6)
+            const singleRow = document.getElementById(targetId) || document.getElementById('row-' + targetId);
+            if (singleRow) {
+                singleRow.classList.toggle('hidden');
+                if (!singleRow.classList.contains('hidden') && displayCode) {
+                    updateBreadcrumb(displayCode); // UPDATE DISPLAY
+                }
+            }
 
+            // Handle Multi Rows (Index)
             const multiRows = document.querySelectorAll(`.tree-child-${targetId}`);
-            multiRows.forEach(row => row.classList.toggle('hidden'));
+            if (multiRows.length > 0) {
+                multiRows.forEach(row => row.classList.toggle('hidden'));
+            }
 
             if (icon) icon.classList.toggle('rotate-90');
             return;
@@ -106,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const targetId = areaHeader.dataset.target;
             const areaCode = areaHeader.dataset.areaCode;
+            const displayCode = areaHeader.dataset.displayCode; // AMBIL DATA
             const icon = areaHeader.querySelector('.icon-chevron');
             
             const content = document.getElementById(targetId);
@@ -115,40 +127,55 @@ document.addEventListener('DOMContentLoaded', () => {
             if (content && !content.classList.contains('hidden')) {
                 loadMapContext(areaCode, null);
                 updateMapTitle(`Peta Area Baca ${areaCode}`);
+                if (displayCode) updateBreadcrumb(displayCode); // UPDATE DISPLAY
             }
             return;
-            
-            // function updateMapTitle(title) {
-            //     const titleEl = document.getElementById('map-context-title');
-            //     if (titleEl) {
-            //         titleEl.textContent = title;
-            //     }
-            // }
         }
 
-        // D. TOGGLE ROUTE MAP
+        // D. TOGGLE DIGIT 6 (KELOMPOK RUTE) ---
+        const digit6Header = e.target.closest('[data-action="toggle-digit6"]');
+        if (digit6Header) {
+            e.preventDefault();
+            const targetId = digit6Header.dataset.target;
+            const displayCode = digit6Header.dataset.displayCode; // Ambil data breadcrumb
+            const icon = digit6Header.querySelector('.icon-chevron-d6');
+            
+            const content = document.getElementById(targetId);
+            if (content) {
+                content.classList.toggle('hidden');
+                if(icon) icon.classList.toggle('rotate-180');
+
+                // Update Breadcrumb di atas jika dibuka
+                if (!content.classList.contains('hidden') && displayCode) {
+                    updateBreadcrumb(displayCode);
+                }
+            }
+            return;
+        }
+
+        // E. TOGGLE ROUTE MAP (HARI BACA)
         const routeHeader = e.target.closest('[data-action="toggle-route-map"]');
         if (routeHeader) {
             e.preventDefault(); e.stopPropagation(); 
             const targetId = routeHeader.dataset.target;
             const areaCode = routeHeader.dataset.areaCode;
             const routeCode = routeHeader.dataset.routeCode;
+            const displayCode = routeHeader.dataset.displayCode; // AMBIL DATA
             const icon = routeHeader.querySelector('.icon-chevron-sub');
 
-            // 1. Toggle Accordion UI
             const content = document.getElementById(targetId);
             if(content) content.classList.toggle('hidden');
             if(icon) icon.classList.toggle('rotate-180');
 
-            // 2. Load Map & Update Judul
             if (content && !content.classList.contains('hidden')) {
                 loadMapContext(areaCode, routeCode);
-                updateMapTitle(`Peta Area Baca ${areaCode} Rute ${routeCode}`); 
+                updateMapTitle(`Peta Area ${areaCode} Rute ${routeCode}`);
+                if (displayCode) updateBreadcrumb(displayCode); // UPDATE DISPLAY
             }
             return;
         }
 
-        // E. Drill Down Detail
+        // F. Drill Down Detail
         const row = e.target.closest('[data-action="drill-down"]');
         if (row) {
             e.preventDefault();
@@ -158,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // F. FULL SCREEN
+        // G. FULL SCREEN
         const fsBtn = e.target.closest('[data-action="toggle-fullscreen"]');
         if (fsBtn) {
             e.preventDefault();
@@ -186,6 +213,107 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return;
         }
+
+        // H. TOGGLE MAP LAYOUT (DATA FOCUS MODE) - FIXED
+        const mapToggleBtn = e.target.closest('[data-action="toggle-map-layout"]');
+        if (mapToggleBtn) {
+            e.preventDefault();
+            
+            const panelList = document.getElementById('panel-list');
+            const panelMap = document.getElementById('panel-map');
+            const textSpan = mapToggleBtn.querySelector('.text-btn');
+            const icon = mapToggleBtn.querySelector('i');
+            
+            // PERBAIKAN LOGIKA:
+            // Cek apakah peta sedang aktif di desktop? (Punya class 'md:block')
+            const isMapActive = panelMap.classList.contains('md:block');
+
+            if (isMapActive) {
+                // --- AKSI: SEMBUNYIKAN PETA (Mode Fokus Data) ---
+                
+                // 1. Matikan Peta
+                panelMap.classList.remove('md:block'); // Matikan mode desktop
+                panelMap.classList.add('hidden');      // Paksa sembunyi
+                
+                // 2. Lebarkan List
+                panelList.classList.remove('md:w-[450px]'); // Hapus lebar tetap
+                panelList.classList.add('w-full');           // Pakai lebar penuh
+                
+                // 3. Update Tombol
+                textSpan.textContent = "Show Map";
+                icon.className = "fas fa-columns mr-1.5 icon-map";
+                
+                // 4. Ubah Rute jadi Grid (Supaya muat banyak)
+                document.querySelectorAll('.routes-grid-container').forEach(el => {
+                    el.classList.remove('space-y-2');
+                    el.classList.add('grid', 'grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-3', 'gap-4');
+                });
+
+            } else {
+                // --- AKSI: TAMPILKAN PETA (Mode Normal) ---
+                
+                // 1. Hidupkan Peta
+                panelMap.classList.add('md:block');    // Hidupkan mode desktop
+                panelMap.classList.remove('hidden');   // Hapus hidden
+                
+                // 2. Kecilkan List
+                panelList.classList.remove('w-full');
+                panelList.classList.add('md:w-[450px]'); // Kembali ke lebar asal
+                
+                // 3. Update Tombol
+                textSpan.textContent = "Hide Map";
+                icon.className = "fas fa-map-marked-alt mr-1.5 icon-map";
+                
+                // 4. Ubah Rute jadi List Vertikal
+                document.querySelectorAll('.routes-grid-container').forEach(el => {
+                    el.classList.remove('grid', 'grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-3', 'gap-4');
+                    el.classList.add('space-y-2');
+                });
+            }
+            
+            // Refresh ukuran peta agar tidak error abu-abu
+            setTimeout(() => {
+                window.dispatchEvent(new Event('resize'));
+                if(typeof rbmMap !== 'undefined' && rbmMap) rbmMap.invalidateSize();
+            }, 300);
+            
+            return;
+        }
+
+        // ==========================================================
+        // I. TOMBOL HAPUS PELANGGAN SATUAN (BARU)
+        // ==========================================================
+        const btnRemoveCustomer = e.target.closest('.btn-remove-customer');
+        if (btnRemoveCustomer) {
+            e.preventDefault();
+            e.stopPropagation(); // Agar tidak men-trigger accordion atau drag
+            
+            const idpel = btnRemoveCustomer.dataset.idpel;
+            
+            // Fungsi aksi hapus
+            const onConfirmAction = () => {
+                performRemoveIdpel(idpel);
+            };
+            
+            // Pesan HTML Cantik
+            const message = `
+                Anda akan mengeluarkan pelanggan <strong class="text-indigo-600 text-lg">${idpel}</strong>.<br>
+                <div class="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded border border-red-100 flex items-start">
+                    <i class="fas fa-exclamation-circle mt-0.5 mr-2"></i>
+                    <span>Status pelanggan akan kembali menjadi <strong>Belum Dikelompokkan</strong>.</span>
+                </div>
+            `;
+
+            // Panggil Modal Kustom
+            if (typeof App !== 'undefined' && App.Utils) {
+                App.Utils.showCustomConfirm('Keluarkan Pelanggan?', message, onConfirmAction);
+            } else {
+                // Fallback aman
+                if (confirm(`Keluarkan pelanggan ${idpel}?`)) onConfirmAction();
+            }
+            return;
+        }
+
     });
 
     document.addEventListener('input', function(e) {
@@ -429,28 +557,66 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // AJAX: PINDAH GRUP
-    function performMoveIdpel(idpel, targetKddk) {
-        const urlInput = document.getElementById('move-route');
-        if (!urlInput) return;
+    // ============================================================
+    // 4. FUNGSI HELPER AJAX & MODAL SUKSES (FINAL INTEGRATED)
+    // ============================================================
+
+    // 1. TAMPILKAN MODAL SUKSES
+    function showGenericSuccess(message) {
+        const modal = document.getElementById('modal-success-generic');
+        const msgEl = document.getElementById('generic-success-message');
         
-        executeDragDropAjax(urlInput.value, { idpel: idpel, target_kddk: targetKddk });
+        if (modal && msgEl) {
+            msgEl.textContent = message;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            // Fokus ke tombol OK
+            const okBtn = modal.querySelector('button');
+            if(okBtn) setTimeout(() => okBtn.focus(), 100);
+        } else {
+            // Fallback
+            alert(message);
+            // Jika fallback alert, refresh manual disini
+            refreshActiveTab();
+        }
     }
 
-    // AJAX: HAPUS DARI GRUP (BARU)
-    function performRemoveIdpel(idpel) {
-        const urlInput = document.getElementById('remove-route');
-        if (!urlInput) return;
-
-        executeDragDropAjax(urlInput.value, { idpel: idpel });
+    // 2. FUNGSI BARU: TUTUP MODAL & REFRESH (Dipanggil oleh Tombol OK)
+    window.closeGenericSuccessModal = function() {
+        const modal = document.getElementById('modal-success-generic');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+        
+        // REFRESH HALAMAN SETELAH TUTUP
+        refreshActiveTab();
     }
 
-    // Helper AJAX Generik
-    function executeDragDropAjax(url, bodyData) {
+    // 3. HELPER REFRESH TAB
+    function refreshActiveTab() {
+        if (typeof App === 'undefined' || !App.Utils || !App.Tabs) return;
+
+        const activeTab = App.Utils.getActiveTabName();
+        const unitInput = document.querySelector('form.ajax-form input[name="unitup"]');
+        
+        if (unitInput && activeTab) {
+            const refreshUrl = `/team/matrix-kddk/manage-rbm/${encodeURIComponent(unitInput.value)}`;
+            let bustUrl = new URL(refreshUrl, window.location.origin);
+            bustUrl.searchParams.set('_cb', new Date().getTime());
+            
+            // Load ulang tab
+            App.Tabs.loadTabContent(activeTab, bustUrl.toString());
+        }
+    }
+
+    // 4. EKSEKUTOR AJAX
+    function executeAjax(url, bodyData) {
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         document.body.style.cursor = 'wait';
 
-        fetch(url, {
+        return fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
             body: JSON.stringify(bodyData)
@@ -459,31 +625,37 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(data => {
             document.body.style.cursor = 'default';
             if (data.success) {
-                if (typeof App !== 'undefined' && App.Utils) App.Utils.displayNotification('success', data.message);
                 
-                // Refresh Halaman
-                const activeTab = App.Utils.getActiveTabName();
-                const unitInput = document.querySelector('form.ajax-form input[name="unitup"]');
-                if (unitInput) {
-                    const refreshUrl = `/team/matrix-kddk/manage-rbm/${encodeURIComponent(unitInput.value)}`;
-                    let bustUrl = new URL(refreshUrl, window.location.origin);
-                    bustUrl.searchParams.set('_cb', new Date().getTime());
-                    App.Tabs.loadTabContent(activeTab, bustUrl.toString());
-                }
+                // HANYA TAMPILKAN MODAL (JANGAN REFRESH DISINI)
+                showGenericSuccess(data.message);
+                
             } else {
                 alert('Gagal: ' + data.message);
             }
         })
         .catch(error => {
             document.body.style.cursor = 'default';
-            console.error('Error:', error);
+            console.error('Error AJAX:', error);
             alert('Terjadi kesalahan server.');
         });
     }
 
+    // 4. WRAPPER ACTIONS (AGAR KONSISTEN)
+    
+    function performMoveIdpel(idpel, targetKddk) {
+        const urlInput = document.getElementById('move-route');
+        if (!urlInput) return;
+        executeAjax(urlInput.value, { idpel: idpel, target_kddk: targetKddk });
+    }
+
+    function performRemoveIdpel(idpel) {
+        const urlInput = document.getElementById('remove-route');
+        if (!urlInput) return;
+        executeAjax(urlInput.value, { idpel: idpel });
+    }
 
     // ============================================================
-    // 4. LOGIKA GENERATOR KDDK (MODAL)
+    // 5. LOGIKA GENERATOR KDDK (MODAL)
     // ============================================================
 
     let sequenceController = null; 
@@ -876,7 +1048,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ============================================================
-    // 6. LOGIKA PETA KONTEKSTUAL (Baru)
+    // 7. LOGIKA PETA KONTEKSTUAL (Baru)
     // ============================================================
     let rbmMap = null;
     let markersLayer = null;
@@ -915,8 +1087,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderMap(points) {
         const mapContainer = document.getElementById('rbm-map');
-        
-        // Init Map jika belum ada
+        if (!mapContainer) return;
+
+        if (rbmMap) {
+            const attachedContainer = rbmMap.getContainer();
+            
+            // Jika container berbeda (berarti halaman baru di-load via AJAX), 
+            // maka peta lama harus dihancurkan.
+            if (attachedContainer !== mapContainer) {
+                console.log("Map container changed. Destroying old instance.");
+                rbmMap.remove();
+                rbmMap = null;
+                markersLayer = null;
+            }
+        }
+
+        // Init Map jika belum ada (atau baru saja di-reset)
         if (!rbmMap) {
             mapContainer.innerHTML = ''; // Bersihkan placeholder
             rbmMap = L.map('rbm-map').setView([0.5071, 101.4478], 13);
@@ -924,6 +1110,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 attribution: 'Tiles © Esri'
             }).addTo(rbmMap);
             markersLayer = L.featureGroup().addTo(rbmMap);
+            setTimeout(() => {
+                rbmMap.invalidateSize();
+            }, 200);
         } else {
             markersLayer.clearLayers(); // Bersihkan marker lama
         }
@@ -949,7 +1138,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         try {
-            rbmMap.fitBounds(markersLayer.getBounds().pad(0.1));
+           setTimeout(() => {
+                if (markersLayer.getLayers().length > 0) {
+                    rbmMap.fitBounds(markersLayer.getBounds().pad(0.1)); 
+                }
+            }, 100);
         } catch(e){}
     }
 
@@ -1002,7 +1195,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ============================================================
-    // 7. CUSTOM SUBMIT GENERATOR (UNTUK MODAL SUKSES)
+    // 8. CUSTOM SUBMIT GENERATOR (UNTUK MODAL SUKSES)
     // ============================================================
     
     // PERBAIKAN 1: Gunakan 'true' (Capture Phase) agar menang dari tab-manager.js
@@ -1090,6 +1283,113 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.add('flex');
     }
 
+    // ============================================================
+    // 8. LOGIKA BULK ACTION (MULTI SELECT)
+    // ============================================================
+    
+    // A. Handle Checkbox Change
+    document.addEventListener('change', function(e) {
+        // 1. Select All per Table
+        if (e.target.classList.contains('select-all-route')) {
+            const table = e.target.closest('table');
+            const checkboxes = table.querySelectorAll('.select-item-row');
+            checkboxes.forEach(cb => cb.checked = e.target.checked);
+            updateBulkUI();
+        }
+
+        // 2. Select Individual Item
+        if (e.target.classList.contains('select-item-row')) {
+            // Cek apakah semua dicentang untuk update header checkbox
+            const table = e.target.closest('table');
+            const all = table.querySelectorAll('.select-item-row');
+            const checked = table.querySelectorAll('.select-item-row:checked');
+            const headerCb = table.querySelector('.select-all-route');
+            if (headerCb) headerCb.checked = (all.length === checked.length);
+            
+            updateBulkUI();
+        }
+    });
+
+    // B. Update UI Floating Bar
+    function updateBulkUI() {
+        const totalChecked = document.querySelectorAll('.select-item-row:checked').length;
+        const bar = document.getElementById('bulk-action-bar');
+        const countSpan = document.getElementById('bulk-count');
+
+        if (totalChecked > 0) {
+            if(bar) bar.classList.remove('hidden');
+            if(countSpan) countSpan.textContent = totalChecked;
+        } else {
+            if(bar) bar.classList.add('hidden');
+        }
+    }
+
+    // C. Clear Selection
+    window.clearBulkSelection = function() {
+        document.querySelectorAll('.select-item-row').forEach(cb => cb.checked = false);
+        document.querySelectorAll('.select-all-route').forEach(cb => cb.checked = false);
+        updateBulkUI();
+    }
+
+    // D. Bulk Actions Implementation
+    window.openBulkMoveModal = function() {
+        // Gunakan modal pindah yang sudah ada, tapi set flag "BULK"
+        const moveModal = document.getElementById('modal-move-route');
+        const count = document.getElementById('bulk-count').textContent;
+        
+        // Ubah judul modal agar user tahu ini massal
+        const titleEl = moveModal.querySelector('h3');
+        const idpelEl = document.getElementById('move-modal-idpel');
+        
+        titleEl.textContent = `Pindahkan ${count} Pelanggan`;
+        idpelEl.textContent = 'Multi Selection';
+        idpelEl.dataset.mode = 'bulk'; // Flag Mode
+
+        // Reset Dropdown
+        const areaSelect = document.getElementById('move-area');
+        const routeSelect = document.getElementById('move-route-select');
+        if(areaSelect) areaSelect.value = "";
+        if(routeSelect) {
+            routeSelect.innerHTML = '<option value="">-- Pilih Area Dulu --</option>';
+            routeSelect.disabled = true;
+        }
+
+        moveModal.classList.remove('hidden');
+        moveModal.classList.add('flex');
+    }
+
+    window.executeBulkRemove = function() {
+        const checked = document.querySelectorAll('.select-item-row:checked');
+        const ids = Array.from(checked).map(cb => cb.value);
+        
+        if (ids.length === 0) return;
+
+        const count = ids.length;
+        const url = document.getElementById('bulk-remove-route').value;
+
+        // Aksi Konfirmasi
+        const onConfirmAction = () => {
+            executeAjax(url, { idpels: ids });
+            window.clearBulkSelection();
+        };
+
+        // Pesan HTML Cantik
+        const title = 'Keluarkan Pelanggan?';
+        const message = `
+            Anda akan mengeluarkan <strong class="text-red-600 text-xl font-bold mx-1">${count}</strong> pelanggan terpilih dari grup ini.<br>
+            <span class="text-xs mt-2 block bg-red-50 text-red-600 p-2 rounded border border-red-100">
+                <i class="fas fa-info-circle mr-1"></i> Data akan kembali ke antrian detail (Belum Dikelompokkan).
+            </span>
+        `;
+
+        // Panggil Modal Kustom
+        if (typeof App !== 'undefined' && App.Utils) {
+            App.Utils.showCustomConfirm(title, message, onConfirmAction);
+        } else {
+            if(confirm(`Yakin ingin mengeluarkan ${count} pelanggan?`)) onConfirmAction();
+        }
+    }
+
     // PERBAIKAN 3: REFRESH SAAT TUTUP MODAL
     window.closeSuccessModal = function() {
         const modal = document.getElementById('modal-success-generator');
@@ -1130,23 +1430,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if(!areaSelect || !routeSelect) return;
         
         routeSelect.innerHTML = '<option value="">-- Pilih Rute --</option>';
+        routeSelect.disabled = true;
         
         const selectedOption = areaSelect.options[areaSelect.selectedIndex];
+
         if (selectedOption && selectedOption.dataset.routes) {
             try {
                 const routes = JSON.parse(selectedOption.dataset.routes);
-                routes.forEach(r => {
-                    const opt = document.createElement('option');
-                    opt.value = r.code;
-                    opt.textContent = `${r.code} (${r.label})`;
-                    routeSelect.appendChild(opt);
-                });
+                if (routes.length > 0) {
+                    routeSelect.disabled = false; // <--- INI KUNCINYA
+                    
+                    routes.forEach(r => {
+                        const opt = document.createElement('option');
+                        opt.value = r.code;
+                        opt.textContent = `${r.code} (${r.label})`;
+                        routeSelect.appendChild(opt);
+                    });
+                }
             } catch(e) { console.error(e); }
         }
     }
 
     window.executeMoveRoute = function() {
-        const idpel = document.getElementById('ctx-selected-idpel').value;
+        const moveModal = document.getElementById('modal-move-route');
+        const idpelEl = document.getElementById('move-modal-idpel');
+        const isBulk = idpelEl.dataset.mode === 'bulk';
+        
         const area = document.getElementById('move-area').value;
         const route = document.getElementById('move-route-select').value;
         const unitPrefixInput = document.getElementById('ctx-unit-prefix'); 
@@ -1157,14 +1466,29 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Asumsi Sub Unit Default 'A' (sesuaikan jika perlu dropdown sub)
         const sub = 'A'; 
         const targetPrefix = `${unitPrefix}${sub}${area}${route}`;
 
-        const moveModal = document.getElementById('modal-move-route');
-        if(moveModal) moveModal.classList.add('hidden');
+        if (isBulk) {
+            // Logic Bulk
+            const checked = document.querySelectorAll('.select-item-row:checked');
+            const ids = Array.from(checked).map(cb => cb.value);
+            const url = document.getElementById('bulk-move-route').value;
+            
+            executeAjax(url, { idpels: ids, target_kddk: targetPrefix });
+            window.clearBulkSelection();
+        } else {
+            // Logic Single (Lama)
+            const idpel = document.getElementById('ctx-selected-idpel').value;
+            performMoveIdpel(idpel, targetPrefix);
+        }
 
-        performMoveIdpel(idpel, targetPrefix); // Fungsi AJAX Move yang sudah ada (Smart Move)
+        moveModal.classList.add('hidden');
+        moveModal.classList.remove('flex');
+        // Reset flag
+        idpelEl.dataset.mode = '';
+        const titleEl = moveModal.querySelector('h3');
+        titleEl.textContent = 'Pindahkan Pelanggan'; // Balikin judul
     }
 
     window.updateLabelDisplay = function() {

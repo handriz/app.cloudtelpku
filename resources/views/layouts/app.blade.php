@@ -74,7 +74,7 @@
                 </div>
                 
                 {{-- Area Konten Halaman --}}
-                <main class="flex-1 overflow-y-auto pt-6 pb-12">
+                <main class="flex-1 overflow-y-auto pt-6 pb-0">
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                         {{-- Wadah untuk Tab Dinamis --}}
                         <!-- <div id="tab-container" class="bg-white dark:bg-gray-800 shadow sm:rounded-lg"> -->
@@ -98,7 +98,7 @@
                                 {{-- Konten tab akan ditambahkan di sini oleh JavaScript --}}
                             </div>
                         </div>
-                        <div class="mt-8 px-4 py-3 text-[11px] text-slate-500 border-t border-slate-300 text-center">
+                        <div class="mt-4 px-4 py-3 text-[11px] text-slate-500 border-t border-slate-300 text-center">
                             © 2025 TeL UP3 Pekanbaru
                         </div>
                     </div>

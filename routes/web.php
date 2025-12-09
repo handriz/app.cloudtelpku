@@ -193,28 +193,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::prefix('matrix-kddk')->name('matrix_kddk.')->group(function () {
             
             // 1. Halaman Utama (Rekapitulasi)
-            Route::get('/', [MatrixKddkController::class, 'index'])->name('index');
-            
+            Route::get('/', [MatrixKddkController::class, 'index'])->name('index');   
             // 2. Drill Down: Detail Pelanggan per Unit
             Route::get('/details/{unit}', [MatrixKddkController::class, 'details'])->name('details');
-            
             // 3. Generator KDDK: Simpan Group Baru
             Route::post('/store-group', [MatrixKddkController::class, 'storeKddkGroup'])->name('store_group');
-            
             // 4. Generator KDDK: Cek Sequence (Nomor Urut) - INI YANG MENYEBABKAN ERROR ANDA
             Route::get('/next-sequence/{prefix7}', [MatrixKddkController::class, 'getNextSequence'])->name('next_sequence');
-
             // 5. Manage RBM: Halaman Kelola & Tree View
             Route::get('/manage-rbm/{unit}', [MatrixKddkController::class, 'manageRbm'])->name('rbm_manage');
-            
             // 6. Manage RBM: Simpan Penugasan Petugas
             Route::post('/update-rbm', [MatrixKddkController::class, 'updateRbmAssignment'])->name('rbm_update');
-            
             // 7. Manage RBM: Pindah Pelanggan (Drag, Reorder), remove & report
             Route::post('/move-idpel', [MatrixKddkController::class, 'moveIdpelKddk'])->name('move_idpel');
             Route::post('/remove-idpel', [MatrixKddkController::class, 'removeIdpelKddk'])->name('remove_idpel');
             Route::post('/reorder-idpel', [MatrixKddkController::class, 'reorderIdpelKddk'])->name('reorder_idpel');
             Route::get('/export-rbm/{unit}', [MatrixKddkController::class, 'exportRbm'])->name('export_rbm');
+            Route::post('/bulk-move', [MatrixKddkController::class, 'bulkMove'])->name('bulk_move');
+            Route::post('/bulk-remove', [MatrixKddkController::class, 'bulkRemove'])->name('bulk_remove');
 
             // 8. Peta
             Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');

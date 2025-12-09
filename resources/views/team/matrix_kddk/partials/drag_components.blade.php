@@ -4,7 +4,7 @@
 --}}
 
 {{-- 1. CONTEXT MENU (KLIK KANAN) --}}
-<div id="custom-context-menu" class="fixed z-[60] hidden bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 w-56 overflow-hidden transform transition-opacity duration-100 font-sans">
+<div id="custom-context-menu" class="fixed z-[2000] hidden bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 w-56 overflow-hidden transform transition-opacity duration-100 font-sans">
     {{-- Header Info (IDPEL yang diklik) --}}
     <div class="px-4 py-2 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-xs font-bold text-gray-500 dark:text-gray-300" id="ctx-header">
         Pelanggan
@@ -26,8 +26,8 @@
 </div>
 
 {{-- 2. MODAL PINDAH RUTE (MOVE CUSTOMER) --}}
-<div id="modal-move-route" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-[70] p-4 backdrop-blur-sm">
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md transform transition-all scale-100">
+<div id="modal-move-route" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-[2050] p-4 backdrop-blur-sm">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md transform transition-all scale-100 z-[2060]">
         <div class="p-6">
             <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">Pindahkan Pelanggan</h3>
             <p class="text-sm text-gray-500 mb-4">
@@ -39,18 +39,18 @@
                 {{-- Info Prefix Unit --}}
                 <div class="p-3 bg-gray-50 dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 text-xs text-gray-500 flex justify-between items-center">
                     <span>
-                        <i class="fas fa-building mr-1"></i> Unit: 
+                        <i class="fas fa-building mr-1"></i> Unit Area Baca Awal: 
                         <strong class="text-gray-700 dark:text-gray-300">{{ $hierarchy->parent->kddk_code ?? '?' }}{{ $hierarchy->kddk_code ?? '?' }}</strong>
                     </span>
                     <span>
-                        <i class="fas fa-code-branch mr-1"></i> Sub: 
+                        <i class="fas fa-code-branch mr-1"></i> Sub Unit: 
                         <strong class="text-gray-700 dark:text-gray-300">A (Default)</strong>
                     </span>
                 </div>
 
                 {{-- Pilih Area Tujuan --}}
                 <div>
-                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 uppercase">Pilih Area Tujuan</label>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 uppercase">Pilih Area Baca Tujuan</label>
                     <select id="move-area" class="w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white focus:ring-indigo-500 focus:border-indigo-500 text-sm shadow-sm" onchange="updateMoveRouteOptions()">
                         <option value="">-- Pilih Area --</option>
                         {{-- Menggunakan variable $kddkConfig dari Controller --}}
@@ -66,7 +66,7 @@
 
                 {{-- Pilih Rute Tujuan --}}
                 <div>
-                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 uppercase">Pilih Rute Tujuan</label>
+                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 uppercase">Pilih Rute Baca Tujuan</label>
                     <select id="move-route-select" class="w-full rounded-md border-gray-300 dark:bg-gray-700 dark:text-white focus:ring-indigo-500 focus:border-indigo-500 text-sm shadow-sm" disabled>
                         <option value="">-- Pilih Area Dulu --</option>
                     </select>
@@ -76,7 +76,7 @@
 
         {{-- Footer Modal --}}
         <div class="bg-gray-50 dark:bg-gray-700 px-6 py-4 rounded-b-xl flex justify-end space-x-2 border-t border-gray-100 dark:border-gray-600">
-            <button type="button" onclick="document.getElementById('modal-move-route').classList.add('hidden')" class="px-4 py-2 bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 text-sm font-medium transition">
+            <button type="button" onclick="const m=document.getElementById('modal-move-route'); m.classList.add('hidden'); m.classList.remove('flex');" ...>
                 Batal
             </button>
             <button type="button" onclick="executeMoveRoute()" class="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 text-sm shadow-md transition transform active:scale-95">
@@ -85,6 +85,7 @@
         </div>
     </div>
 </div>
+
 
 {{-- 3. HIDDEN INPUTS UNTUK JS --}}
 {{-- Menyimpan IDPEL yang sedang diklik kanan --}}

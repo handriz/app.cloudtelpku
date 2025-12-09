@@ -14,7 +14,7 @@
         
         <div class="flex space-x-2">
             {{-- TOMBOL BENTUK KDDK (Muncul saat checkbox dicentang) --}}
-            <button onclick="window.openKddkModal()" id="btn-group-kddk" class="hidden px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded shadow transition flex items-center">
+            <button onclick="window.confirmGrouping()" id="btn-group-kddk" class="hidden px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded shadow transition flex items-center">
                 <i class="fas fa-layer-group mr-2"></i> Bentuk Group KDDK
             </button>
 
@@ -40,8 +40,13 @@
                     <th class="px-4 py-3 text-center w-10">
                         <input type="checkbox" id="check-all-rows" class="rounded text-indigo-600 focus:ring-indigo-500">
                     </th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IDPEL / No Meter</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Alamat</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Idpelanggan / No Meter</th>
+                    
+                    {{-- KOLOM BARU: INFO SURVEY & ALAMAT --}}
+                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                        Data Survey
+                    </th>
+                    
                     <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status DIL</th>
                     <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">KDDK Saat Ini</th>
                 </tr>
@@ -49,41 +54,107 @@
             <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 @forelse($customers as $c)
                 <tr class="hover:bg-indigo-50 dark:hover:bg-gray-700 transition">
-                    <td class="px-4 py-3 text-center">
-                        {{-- PENTING: data-jenis untuk konfirmasi --}}
+                    <td class="px-4 py-3 text-center align-top">
                         <input type="checkbox" name="idpel_select[]" value="{{ $c->idpel }}" data-jenis="{{ $c->jenislayanan ?? 'UMUM' }}" class="row-checkbox rounded text-indigo-600 focus:ring-indigo-500">
                     </td>
-                    <td class="px-4 py-3 whitespace-nowrap">
+                    <td class="px-4 py-3 whitespace-nowrap align-top">
                         <div class="text-sm font-bold text-gray-900 dark:text-white">{{ $c->idpel }}</div>
-                        <div class="text-xs text-gray-500">{{ $c->nomor_meter_kwh ?? '-' }}</div>
+                        <div class="text-xs text-red-500">{{ $c->nomor_meter_kwh ?? '-' }} ({{ $c->merk_meter_kwh }})</div>
+                        <div class="text-[10px] text-indigo-500 mt-1 font-semibold">{{ $c->tarif }}-{{ $c->daya }}</div>
                     </td>
-                    <td class="px-4 py-3 text-sm text-gray-500 max-w-xs truncate" title="{{ $c->nomor_meter_kwh }}">{{ $c->nomor_meter_kwh }}</td>
-                    <td class="px-4 py-3 whitespace-nowrap text-center">
+                    
+                    {{-- ISI KOLOM SURVEY --}}
+                    <td class="px-4 py-3 text-sm text-gray-500 align-top">
+                        
+                        {{-- 1. Koordinat & Gardu --}}
+                        <div class="flex items-center space-x-2 mb-2 text-xs">
+                            @if($c->latitudey && $c->longitudex)
+                                <a href="https://www.google.com/maps?q={{ $c->latitudey }},{{ $c->longitudex }}" target="_blank" 
+                                   class="flex items-center text-green-700 hover:text-green-900 font-bold bg-green-100 px-2 py-1 rounded border border-green-200 transition">
+                                    <i class="fas fa-map-marked-alt mr-1.5"></i>
+                                    {{ number_format($c->latitudey, 5) }}, {{ number_format($c->longitudex, 5) }}
+                                </a>
+                            @else
+                                <span class="flex items-center text-gray-400 bg-gray-100 px-2 py-1 rounded border border-gray-200 cursor-not-allowed">
+                                    <i class="fas fa-map-marker-slash mr-1.5"></i> No Coord
+                                </span>
+                            @endif
+
+                            @if($c->namagd)
+                                <span class="flex items-center text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100" title="Nama Gardu">
+                                    <i class="fas fa-bolt mr-1.5 text-yellow-500"></i> {{ $c->namagd }}
+                                </span>
+                            @endif
+                        </div>
+
+                        {{-- 2. Foto Survey --}}
+                        <div class="flex items-center space-x-2 mb-2">
+                            @if($c->foto_kwh)
+                                <button class="image-zoom-trigger flex items-center space-x-1 px-2 py-1 bg-white hover:bg-gray-50 text-gray-600 hover:text-indigo-600 rounded border border-gray-300 transition text-xs shadow-sm"
+                                        data-zoom-type="image">
+                                    <i class="fas fa-camera"></i> <span>KWH</span>
+                                    <img src="{{ asset('storage/' . $c->foto_kwh) }}" class="hidden">
+                                </button>
+                            @endif
+
+                            @if($c->foto_bangunan)
+                                <button class="image-zoom-trigger flex items-center space-x-1 px-2 py-1 bg-white hover:bg-gray-50 text-gray-600 hover:text-indigo-600 rounded border border-gray-300 transition text-xs shadow-sm"
+                                        data-zoom-type="bangunan">
+                                    <i class="fas fa-home"></i> <span>Rumah</span>
+                                    <img src="{{ asset('storage/' . $c->foto_bangunan) }}" class="hidden">
+                                </button>
+                            @endif
+                            
+                            @if(!$c->foto_kwh && !$c->foto_bangunan)
+                                <span class="text-[10px] text-gray-400 italic">Belum ada foto survey.</span>
+                            @endif
+                        </div>
+
+                        {{-- 3. User Pendataan (Master Data) --}}
+                        <div class="text-gray-800 dark:text-gray-300 max-w-sm leading-snug border-t border-gray-100 pt-1 mt-1">
+                            <i class="fas fa-map-pin text-gray-400 mr-1 text-[10px]"></i> {{ $c->user_pendataan }}
+                        </div>
+                    </td>
+
+                    <td class="px-4 py-3 whitespace-nowrap text-center align-top">
                         @php
                             $status = strtoupper(trim($c->status_dil));
                             $activeKeywords = ['1', 'NYALA', 'AKTIF', 'HIDUP', 'ON'];
                         @endphp
                         @if(in_array($status, $activeKeywords)) 
-                            <span class="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-800">Aktif</span>
+                            <span class="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-800 border border-green-200">
+                                Aktif
+                            </span>
                         @else
-                            <span class="px-2 py-1 text-xs font-bold rounded-full bg-red-100 text-red-800">Non-Aktif</span>
+                            <span class="px-2 py-1 text-xs font-bold rounded-full bg-red-100 text-red-800 border border-red-200">
+                                Non-Aktif
+                            </span>
                         @endif
                     </td>
-                    <td class="px-4 py-3 whitespace-nowrap text-center text-sm font-mono text-gray-700 dark:text-gray-300">
+                    <td class="px-4 py-3 whitespace-nowrap text-center text-sm font-mono text-gray-700 dark:text-gray-300 align-top">
                         {{ $c->current_kddk ?? '-' }}
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">Tidak ada data.</td></tr>
+                <tr>
+                    <td colspan="5" class="px-6 py-12 text-center text-gray-500">
+                        <div class="flex flex-col items-center">
+                            <i class="fas fa-check-circle text-4xl text-green-400 mb-3"></i>
+                            <span class="font-medium text-lg">Semua Pelanggan Sudah Memiliki Grup!</span>
+                            <span class="text-sm mt-1">Tidak ada data pelanggan tanpa KDDK di unit ini.</span>
+                        </div>
+                    </td>
+                </tr>
                 @endforelse
             </tbody>
         </table>
     </div>
+
     {{-- Paginasi Ringkas --}}
     <div class="mt-4">{{ $customers->onEachSide(1)->links() }}</div>
 
     {{-- MODAL GENERATOR KDDK (STRUCTURE FIX) --}}
-    <div id="modal-create-kddk" class="fixed inset-0 bg-gray-900 bg-opacity-80 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+    <div id="modal-create-kddk" class="fixed inset-0 bg-gray-900 bg-opacity-80 hidden items-center justify-center z-[1500] p-4 backdrop-blur-sm">
         
         {{-- CONTAINER MODAL: Flex Column & Max Height --}}
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-3xl transform transition-all flex flex-col max-h-[90vh] relative">
@@ -160,7 +231,7 @@
                             <select id="part_area" class="kddk-part w-full font-bold text-gray-800 border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 text-sm py-2.5">
                                 <option value="">-- Pilih --</option>
                                 @foreach($kddkConfig['areas'] ?? [] as $area)
-                                    <option value="{{ $area['code'] }}" data-label="{{ $area['label'] }}" data-routes="{{ json_encode($area['routes'] ?? []) }}">{{ $area['code'] }} - {{ Str::limit($area['label'], 15) }}</option>
+                                    <option value="{{ $area['code'] }}" data-label="{{ $area['label'] }}" data-routes="{{ json_encode($area['routes'] ?? []) }}">{{ $area['code'] }} - {{ Str::limit($area['label'], 30) }}</option>
                                 @endforeach
                             </select>
                             <div id="area-label-display" class="text-[10px] text-indigo-600 mt-1 h-3 truncate font-semibold"></div>
@@ -207,7 +278,7 @@
     </div>
     
     {{-- MODAL KONFIRMASI (Tetap Sama) --}}
-    <div id="modal-confirm-selection" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-[60] p-4 backdrop-blur-sm">
+    <div id="modal-confirm-selection" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center z-[1600] p-4 backdrop-blur-sm">
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-sm transform transition-all">
              <div class="bg-indigo-600 p-3 text-white text-center rounded-t-xl">
                 <h3 class="text-md font-bold">Konfirmasi Seleksi</h3>
@@ -228,7 +299,7 @@
     </div>
 
     {{-- MODAL SUKSES GENERATOR --}}
-    <div id="modal-success-generator" class="fixed inset-0 bg-gray-900 bg-opacity-80 hidden items-center justify-center z-[70] p-4 backdrop-blur-sm">
+    <div id="modal-success-generator" class="fixed inset-0 bg-gray-900 bg-opacity-80 hidden items-center justify-center z-[1700] p-4 backdrop-blur-sm">
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-sm transform transition-all scale-100 overflow-hidden text-center">
             
             {{-- Icon Sukses Animasi --}}

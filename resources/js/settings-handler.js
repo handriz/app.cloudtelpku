@@ -568,5 +568,5 @@ document.addEventListener('DOMContentLoaded', () => {
         return String.fromCharCode(char1) + String.fromCharCode(char2);
     }
 
-    console.log('Settings Handler Loaded (Complete & Fixed)');
+    console.log('Settings Handler Loaded');
 });
