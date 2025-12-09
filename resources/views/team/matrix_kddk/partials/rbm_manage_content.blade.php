@@ -2,6 +2,23 @@
 @php 
     // Ambil 3 Digit Awal (UP3 + ULP + Sub Default A)
     $basePrefix = ($hierarchy->parent->kddk_code ?? '?') . ($hierarchy->kddk_code ?? '?') . 'A';
+
+    $dayColors = [
+    'A' => 'bg-green-100 text-green-800 border-green-200',
+    'B' => 'bg-blue-100 text-blue-800 border-blue-200',
+    'C' => 'bg-red-100 text-red-800 border-red-200',
+    'D' => 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    'E' => 'bg-purple-100 text-purple-800 border-purple-200',
+    'F' => 'bg-pink-100 text-pink-800 border-pink-200',
+    'G' => 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    'H' => 'bg-teal-100 text-teal-800 border-teal-200',
+    'I' => 'bg-orange-100 text-orange-800 border-orange-200',
+    'J' => 'bg-lime-100 text-lime-800 border-lime-200',
+
+    // Default
+    'DEFAULT' => 'bg-gray-100 text-gray-800 border-gray-200'
+];
+
 @endphp
 
 {{-- WRAPPER UTAMA (WORKSPACE) --}}
@@ -84,7 +101,7 @@
                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><i class="fas fa-search"></i></span>
                     <input type="text" id="kddk-search-input" 
                            class="w-full py-2 pl-9 pr-4 text-sm bg-gray-100 dark:bg-gray-700 border-transparent focus:bg-white focus:border-indigo-500 rounded-md transition"
-                           placeholder="Filter IDPEL, Rute, Petugas...">
+                           placeholder="filter idpelanggan">
                 </div>
             </div>
 
@@ -148,10 +165,10 @@
                                                         <div class="w-6 h-6 rounded-full bg-indigo-200 text-indigo-800 flex items-center justify-center text-xs font-bold mr-2 border border-indigo-300">
                                                             {{ $digit6 }}
                                                         </div>
-                                                        <span class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase">Kelompok {{ $digit6 }}</span>
+                                                        <span class="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase">Kelompok Rute {{ $digit6 }}</span>
                                                     </div>
                                                     <div class="flex items-center">
-                                                        <span class="text-[9px] bg-gray-200 text-gray-600 px-1.5 rounded mr-2">{{ $totalD6Plg }} Plg</span>
+                                                        <span class="text-[12px] bg-gray-200 text-gray-800 px-1.5 rounded mr-2">{{ $totalD6Plg }} Plg</span>
                                                         <i class="fas fa-chevron-down text-gray-400 text-xs transition-transform duration-200 icon-chevron-d6"></i>
                                                     </div>
                                                 </div>
@@ -179,10 +196,17 @@
                                                                      data-area-code="{{ $areaCode }}"
                                                                      data-route-code="{{ $fullRouteCode }}"
                                                                      data-display-code="{{ $displayDigit7 }}">
+                                                                    @php
+                                                                        $colorClass = $dayColors[$digit7] ?? $dayColors['DEFAULT'];
+                                                                    @endphp
+
                                                                     <div class="flex items-center">
-                                                                        <i class="far fa-calendar-alt text-green-600 mr-2 text-xs"></i>
-                                                                        <span class="text-xs font-bold text-gray-700 dark:text-gray-300 mr-2">
-                                                                            Hari: <span class="text-green-600 font-mono">{{ $digit7 }}</span>
+                                                                        <i class="far fa-calendar-alt text-gray-400 mr-2 text-xs"></i>
+                                                                        <span class="text-xs font-bold text-gray-600 dark:text-gray-300 mr-2">Hari:</span>
+                                                                        
+                                                                        {{-- BADGE WARNA HARI --}}
+                                                                        <span class="px-2 py-0.5 rounded text-xs font-bold font-mono border {{ $colorClass }}">
+                                                                            {{ $digit7 }}
                                                                         </span>
                                                                     </div>
                                                                     <div class="flex items-center">

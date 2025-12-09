@@ -85,7 +85,7 @@
                     <tr class="bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer transition-colors"
                         data-action="toggle-tree" data-target="{{ $uniqueId }}">
                         <td class="px-4 py-4 text-center"><i class="fas fa-chevron-right text-gray-500 transition-transform duration-200 icon-arrow" id="icon-{{ $uniqueId }}"></i></td>
-                        <td class="px-4 py-4 whitespace-nowrap font-bold text-gray-800 dark:text-white"><i class="fas fa-building text-blue-500 mr-2"></i> {{ $up3Name }}</td>
+                        <td class="px-4 py-4 whitespace-nowrap font-bold  text-sm text-gray-800 dark:text-white"><i class="fas fa-building text-blue-500 mr-2"></i> {{ $up3Name }}</td>
                         <td class="px-4 py-4 text-center"><span class="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded border border-blue-200">{{ $up3Code }}..</span></td>
                         
                         <td class="px-4 py-4 text-center text-sm font-bold">{{ number_format($up3Target) }}</td>

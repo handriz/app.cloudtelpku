@@ -77,6 +77,38 @@
                            class="w-full md:w-1/3 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 dark:bg-gray-700 dark:text-white">
                     <p class="text-xs text-gray-500 mt-1">Menentukan bulan dan tahun data yang akan difilter di Matrix KDDK.</p>
                 </div>
+                @if($isAdminRole)
+                <hr class="my-6 border-gray-200 dark:border-gray-700">
+
+                {{-- MAINTENANCE SECTION --}}
+                <div class="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-800">
+                    <h4 class="text-sm font-bold text-red-800 dark:text-red-300 flex items-center mb-3">
+                        <i class="fas fa-tools mr-2"></i> Pemeliharaan Data (Audit Log)
+                    </h4>
+                    
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div class="text-xs text-red-600 dark:text-red-400">
+                            Hapus riwayat aktivitas lama untuk menghemat kapasitas penyimpanan server.<br>
+                            Data yang dihapus <strong>tidak dapat dikembalikan</strong>.
+                        </div>
+
+                        <div class="flex items-center space-x-2">
+                            {{-- Opsi Hapus --}}
+                            <select id="audit-prune-days" class="text-xs rounded border-red-300 bg-white text-gray-700 focus:ring-red-500 py-1.5">
+                                <option value="30">Lebih dari 1 Bulan (30 Hari)</option>
+                                <option value="60" selected>Lebih dari 2 Bulan (60 Hari)</option>
+                                <option value="90">Lebih dari 3 Bulan (90 Hari)</option>
+                                <option value="all" class="font-bold text-red-600">⚠ HAPUS SEMUA DATA</option>
+                            </select>
+
+                            <button type="button" onclick="window.clearAuditLogs()" 
+                                    class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded shadow transition flex items-center whitespace-nowrap">
+                                <i class="fas fa-trash-alt mr-1.5"></i> Bersihkan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                @endif
             </div>
 
             {{-- KONTEN TAB: KDDK CONFIG --}}

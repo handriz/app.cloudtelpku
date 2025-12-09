@@ -31,6 +31,9 @@ class Kernel extends ConsoleKernel
          $schedule->command('app:clean-temporary-photos')
          ->daily()
          ->appendOutputTo(storage_path('logs/scheduler-clean.log'));
+
+        // 4. Jalankan pembersihan setiap tengah malam
+        Schedule::command('model:prune')->daily();
     }
 
     /**

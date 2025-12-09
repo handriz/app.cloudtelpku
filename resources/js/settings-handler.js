@@ -568,5 +568,54 @@ document.addEventListener('DOMContentLoaded', () => {
         return String.fromCharCode(char1) + String.fromCharCode(char2);
     }
 
+    // --- FUNGSI MEMBERSIHKAN AUDIT LOG ---
+    window.clearAuditLogs = function() {
+        const daysSelect = document.getElementById('audit-prune-days');
+        const days = daysSelect.value;
+        const isAll = days === 'all';
+        
+        let confirmMsg = `Yakin ingin menghapus riwayat aktivitas yang lebih lama dari <strong>${days} hari</strong>?`;
+        if (isAll) confirmMsg = `<strong class="text-red-600">PERINGATAN KERAS!</strong><br>Anda akan menghapus <strong>SELURUH</strong> riwayat aktivitas. Tindakan ini tidak bisa dibatalkan.`;
+
+        const executeClear = () => {
+            const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            document.body.style.cursor = 'wait';
+
+            fetch('/settings/clear-audit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ 
+                    retention_days: isAll ? 0 : days,
+                    mode: isAll ? 'all' : 'old'
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                document.body.style.cursor = 'default';
+                if (data.success) {
+                    if (typeof App !== 'undefined' && App.Utils) App.Utils.displayNotification('success', data.message);
+                    else alert(data.message);
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(err => {
+                document.body.style.cursor = 'default';
+                alert("Terjadi kesalahan server.");
+            });
+        };
+
+        if (typeof App !== 'undefined' && App.Utils) {
+            App.Utils.showCustomConfirm('Bersihkan Log?', confirmMsg, executeClear);
+        } else {
+            if (confirm("Yakin ingin menghapus data log ini?")) executeClear();
+        }
+    }
+    
     console.log('Settings Handler Loaded');
 });

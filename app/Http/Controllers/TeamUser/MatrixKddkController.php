@@ -12,6 +12,7 @@ use App\Models\HierarchyLevel;
 use App\Models\MasterKddk;
 use App\Models\AppSetting; 
 use App\Models\User;
+use App\Models\AuditLog;
 
 class MatrixKddkController extends Controller
 {
@@ -274,11 +275,30 @@ class MatrixKddkController extends Controller
         if ($route) $query->where('mapping_kddk.kddk', 'like', '_____' . $route . '%');
         
         $data = $query->limit(2000)->get()->map(function($item) {
+            $mapsUrl = "https://www.google.com/maps?q={$item->latitudey},{$item->longitudex}";
             return [
                 'lat' => $item->latitudey,
                 'lng' => $item->longitudex,
                 'seq' => substr($item->kddk, 7, 3),
-                'info' => "<b>Seq: " . substr($item->kddk, 7, 3) . "</b><br>{$item->idpel}<br>" . substr($item->nomor_meter_kwh, 0, 15)
+                'info' => "
+                    <div class='text-xs font-sans'>
+                        <div class='border-b border-gray-100 pb-1 mb-1'>
+                            <strong class='text-indigo-600 block text-sm'>{$item->idpel}</strong>
+                            <span class='text-gray-500 text-[10px]'>Urut: " . substr($item->kddk, 7, 3) . "</span>
+                        </div>
+                        
+                        <div class='mb-2 text-gray-600'>
+                            <div>Lat: <span class='font-mono'>{$item->latitudey}</span></div>
+                            <div>Lon: <span class='font-mono'>{$item->longitudex}</span></div>
+                        </div>
+
+                        <a href='{$mapsUrl}' target='_blank' 
+                           class='inline-flex items-center justify-center w-full px-2 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded transition text-[10px] font-bold decoration-0'
+                           style='text-decoration: none !important;'>
+                            <i class='fas fa-map-marked-alt mr-1.5'></i> Buka Google Maps
+                        </a>
+                    </div>
+                "
             ];
         });
 
@@ -405,6 +425,12 @@ class MatrixKddkController extends Controller
                 if ($sourcePrefix && $sourcePrefix !== substr($finalKddk, 0, 7)) {
                     $this->resequenceRoute($sourcePrefix);
                 }
+
+                $this->recordActivity(
+                    'MOVE_SINGLE', 
+                    "Memindahkan pelanggan {$idpel} ke Rute {$finalKddk}", 
+                    $idpel
+                );
             });
 
             $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
@@ -502,6 +528,13 @@ class MatrixKddkController extends Controller
                 }
 
                 $currentSeq++; // Lanjut ke nomor berikutnya
+
+                $count = count($validIdpels);
+                    $this->recordActivity(
+                    'GENERATE_GROUP', 
+                    "Membentuk grup baru untuk {$count} pelanggan di Rute {$prefix}", 
+                    $prefix
+                );
             }
         });
 
@@ -583,11 +616,19 @@ class MatrixKddkController extends Controller
                     'kddk' => null, // Kosongkan KDDK
                     'updated_at' => now()
                 ]);
-            
+
+            $this->recordActivity(
+                'MOVE_SINGLE', 
+                "Memindahkan pelanggan {$idpel} ke Rute {$finalKddk}", 
+                $idpel
+            );
+
             // 3. RAPIAKAN RUTE ASAL
             if ($sourcePrefix) {
                 $this->resequenceRoute($sourcePrefix);
             }
+
+            
 
             $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
             Cache::forget($cacheKey);
@@ -732,7 +773,13 @@ class MatrixKddkController extends Controller
                         $this->resequenceRoute($prefix);
                     }
                 }
-                    
+                
+                $count = count($idpels);
+                $this->recordActivity(
+                    'BULK_MOVE', 
+                    "Memindahkan massal {$count} pelanggan ke Rute {$target}", 
+                    "{$count} Pcs"
+                );
             });
 
             $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
@@ -773,6 +820,13 @@ class MatrixKddkController extends Controller
                     'updated_at' => now()
                 ]);
             
+            $count = count($request->idpels);
+            $this->recordActivity(
+                'BULK_REMOVE', 
+                "Mengeluarkan massal {$count} pelanggan dari grup", 
+                "{$count} Pcs"
+            );
+
             // 3. RAPIAKAN RUTE ASAL
             foreach ($sourcePrefixes as $prefix) {
                 if ($prefix) {
@@ -819,6 +873,25 @@ class MatrixKddkController extends Controller
                     ]);
             }
             $seq++;
+        }
+    }
+
+    /**
+     * Helper: Mencatat Aktivitas ke Audit Log
+     */
+    private function recordActivity($action, $description, $targetRef = null)
+    {
+        try {
+            AuditLog::create([
+                'user_id' => Auth::id(),
+                'action_type' => $action,
+                'description' => $description,
+                'target_reference' => $targetRef,
+                'ip_address' => request()->ip()
+            ]);
+        } catch (\Exception $e) {
+            // Jangan biarkan error logging menghentikan proses utama
+            \Illuminate\Support\Facades\Log::error("Gagal mencatat audit: " . $e->getMessage());
         }
     }
 

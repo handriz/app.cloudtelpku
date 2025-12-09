@@ -309,6 +309,41 @@ class SettingsController extends Controller
     }
     
     /**
+     * Membersihkan Audit Log (Maintenance)
+     */
+    public function clearAuditLogs(Request $request)
+    {
+        // Hanya Admin yang boleh
+        if (!Auth::user()->hasRole('admin')) {
+            return response()->json(['message' => 'Akses ditolak.'], 403);
+        }
+
+        $days = (int) $request->input('retention_days', 60);
+        $mode = $request->input('mode', 'old'); // 'old' atau 'all'
+
+        try {
+            if ($mode === 'all') {
+                // HAPUS SEMUA (TRUNCATE)
+                \App\Models\AuditLog::truncate();
+                $count = 'Semua';
+            } else {
+                // HAPUS YANG LEBIH TUA DARI X HARI
+                $date = now()->subDays($days);
+                $query = \App\Models\AuditLog::where('created_at', '<', $date);
+                $count = $query->count();
+                $query->delete();
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Berhasil membersihkan {$count} data riwayat aktivitas."
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
+        }
+    }
+    
+    /**
      * Default configuration data for KDDK (Fallback jika DB kosong)
      */
     private function getDefaultKddkConfig() {

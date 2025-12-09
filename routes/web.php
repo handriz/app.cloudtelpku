@@ -245,6 +245,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/update', [SettingsController::class, 'update'])->name('update');
         Route::get('/manage-routes/{areaCode}', [SettingsController::class, 'manageRoutes'])->name('manage_routes');
         Route::post('/delete-item', [SettingsController::class, 'deleteKddkConfigItem'])->name('delete_item');
+        Route::post('/clear-audit', [SettingsController::class, 'clearAuditLogs'])->name('clear_audit');
     });
 
 });
