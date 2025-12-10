@@ -93,7 +93,7 @@
                                 @endcan
 
                                 {{-- Tombol Hapus --}}
-                                @can('delete', $user)
+                                @can('delete-user-data', $user)
                                     <a href="#" 
                                        class="text-red-600 hover:text-red-900" 
                                        data-delete-url="{{ route('manajemen-pengguna.users.destroy', $user) }}" 

@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const routeHeader = e.target.closest('[data-action="toggle-route-map"]');
         if (routeHeader) {
             e.preventDefault(); e.stopPropagation(); 
-            const targetId = routeHeader.dataset.target; // route-RB-A1
+            const targetId = routeHeader.dataset.target;
             const areaCode = routeHeader.dataset.areaCode;
             const routeCode = routeHeader.dataset.routeCode;
             const displayCode = routeHeader.dataset.displayCode;
@@ -137,11 +137,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const content = document.getElementById(targetId);
             if(content) {
                 const isHidden = content.classList.contains('hidden');
+                // 1. Tampilkan / Sembunyikan Kontainer
                 content.classList.toggle('hidden');
                 if(icon) icon.classList.toggle('rotate-180');
                 
-                if (!content.classList.contains('hidden') && displayCode) updateBreadcrumb(displayCode);
-                toggleMapLayer(targetId, areaCode, routeCode, isHidden);
+                // 2. Jika MEMBUKA dan BELUM LOAD -> Fetch AJAX
+            if (isHidden) {
+                if (displayCode) updateBreadcrumb(displayCode);
+                toggleMapLayer(targetId, areaCode, routeCode, true); // Load Peta
+
+                // CEK STATUS LOAD
+                if (content.dataset.loaded === "false") {
+                    loadRouteTableData(targetId, areaCode, routeCode);
+                }
+                } else {
+                    // Jika menutup
+                    toggleMapLayer(targetId, areaCode, routeCode, false); // Hapus Peta
+                }
             }
             return;
         }
@@ -251,6 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        
         // J. CONTEXT MENU ACTIONS (KLIK KANAN MENU)
         // 1. Pindah via Menu
         if (e.target.closest('#ctx-btn-move')) {
@@ -305,6 +318,53 @@ document.addEventListener('DOMContentLoaded', () => {
             // Jangan tutup jika klik di dalam menu itu sendiri (opsional)
             if (!e.target.closest('#custom-context-menu')) {
                 contextMenu.classList.add('hidden');
+            }
+        }
+
+        // 4. Cek apakah yang diklik adalah tombol export (atau anaknya)
+        const btn = e.target.closest('#btn-export-trigger');
+        const dropdown = document.getElementById('export-dropdown-menu');
+
+        // Skenario A: Klik Tombol Export
+        if (btn && dropdown) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const isHidden = dropdown.classList.contains('hidden');
+
+            if (isHidden) {
+                // 1. Tampilkan
+                dropdown.classList.remove('hidden');
+                
+                // 2. PINDAHKAN KE BODY (Agar Z-Index Menang Mutlak dari Peta)
+                document.body.appendChild(dropdown);
+                
+                // 3. Hitung Posisi Tombol
+                const rect = btn.getBoundingClientRect();
+                
+                // 4. Set Posisi Fixed (Menempel pada layar, bukan container)
+                dropdown.style.position = 'fixed';
+                dropdown.style.zIndex = '99999'; // Paling Atas
+                dropdown.style.top = (rect.bottom + 5) + 'px'; // Di bawah tombol
+                dropdown.style.left = (rect.right - dropdown.offsetWidth) + 'px'; // Rata kanan tombol
+            } else {
+                // Sembunyikan
+                dropdown.classList.add('hidden');
+            }
+            return;
+        }
+
+        // Skenario B: Klik Item di dalam Dropdown (Excel/CSV)
+        if (e.target.closest('.export-item') && dropdown) {
+            // Biarkan link bekerja (download), tapi tutup dropdown
+            setTimeout(() => dropdown.classList.add('hidden'), 200);
+            return;
+        }
+
+        // Skenario C: Klik di Luar (Tutup Dropdown)
+        if (dropdown && !dropdown.classList.contains('hidden')) {
+            if (!dropdown.contains(e.target)) {
+                dropdown.classList.add('hidden');
             }
         }
 
@@ -369,8 +429,143 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    document.addEventListener('change', function(e) {
+        if (e.target && e.target.id === 'csv-selection-detail') {
+            const fileInput = e.target;
+            const file = fileInput.files[0];
+            
+            if (!file) return;
+
+            const reader = new FileReader();
+            
+            reader.onload = function(event) {
+                const text = event.target.result;
+                const lines = text.split(/\r\n|\n/);
+                
+                let totalInCsv = 0;
+                let newAdded = 0;
+                
+                // 1. ITERASI DATA FILE (Bukan Data Tabel)
+                lines.forEach(line => {
+                    const cleanId = line.trim().replace(/[^0-9]/g, '');
+                    
+                    // Validasi panjang IDPEL (11-13 digit)
+                    if (cleanId.length >= 10) { 
+                        totalInCsv++;
+                        
+                        // 2. MASUKKAN KE MEMORI (STATE) LANGSUNG
+                        // Ini intinya! Data tersimpan di RAM browser, tidak peduli halaman berapa.
+                        if (!selectionState.items.has(cleanId)) {
+                            selectionState.items.set(cleanId, { jenis: 'UPLOAD_CSV' });
+                            newAdded++;
+                        }
+                    }
+                });
+
+                // 3. Update Visual Halaman INI Saja (Opsional, agar user tidak bingung)
+                // Hanya mencentang yang kebetulan sedang tampil. Sisanya biarkan di memori.
+                if (typeof syncSelectionUI === 'function') {
+                    syncSelectionUI();
+                }
+                
+                // 4. Update Tombol Grouping (Tampilkan Jumlah Total Memori)
+                if (typeof toggleGroupButton === 'function') {
+                    toggleGroupButton(); 
+                }
+
+                fileInput.value = ''; // Reset input
+                
+                // 5. Tampilkan Pesan Sukses
+                // Pesan ini menegaskan bahwa SEMUA data sudah masuk
+                showBeautifulUploadSuccess(totalInCsv, selectionState.items.size);
+            };
+
+            reader.readAsText(file);
+        }
+    });
+
+    // --- FUNGSI PEMBUAT MODAL CANTIK (INJECT KE DOM) ---
+    function showBeautifulUploadSuccess(totalCsv, foundDom) {
+        // Hapus modal lama jika ada
+        const existing = document.getElementById('custom-upload-modal');
+        if (existing) existing.remove();
+
+        // Template HTML Modal (Tailwind)
+        const modalHtml = `
+            <div id="custom-upload-modal" class="fixed inset-0 z-[10000] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 transition-opacity duration-300 opacity-0">
+                <div class="relative w-full max-w-xs sm:max-w-sm transform rounded-2xl bg-white dark:bg-gray-800 shadow-2xl transition-all duration-300 scale-90 opacity-0" id="custom-upload-card">
+                    
+                    <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-green-400 to-emerald-600 rounded-t-2xl"></div>
+
+                    <div class="p-6 text-center">
+                        <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-50 dark:bg-green-900/20 ring-8 ring-green-50 dark:ring-green-900/10">
+                            <i class="fas fa-file-csv text-3xl text-green-500 animate-pulse"></i>
+                        </div>
+
+                        <h3 class="mb-1 text-xl font-extrabold text-gray-900 dark:text-white tracking-tight">Upload Berhasil!</h3>
+                        <p class="text-xs text-gray-400 mb-5">Data seleksi telah diproses.</p>
+                        
+                        <div class="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-6 border border-gray-100 dark:border-gray-600">
+                            <div class="flex justify-between items-center border-b border-gray-200 dark:border-gray-600 pb-2 mb-2">
+                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wide">Total di File</span>
+                                <span class="text-base font-mono font-bold text-gray-800 dark:text-gray-200">${totalCsv}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wide">Dicentang</span>
+                                <span class="text-base font-mono font-bold text-green-600">+${foundDom}</span>
+                            </div>
+                        </div>
+
+                        <p class="text-[10px] text-gray-400 mb-4 italic">
+                            *Hanya data yang tampil di halaman ini yang dicentang otomatis.
+                        </p>
+
+                        <button id="btn-close-upload-modal" class="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-500/30 transition-all duration-200 hover:bg-indigo-700 hover:-translate-y-0.5 focus:ring-4 focus:ring-indigo-300">
+                            Selesai
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Masukkan ke Body
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // Elemen
+        const modal = document.getElementById('custom-upload-modal');
+        const card = document.getElementById('custom-upload-card');
+        const btn = document.getElementById('btn-close-upload-modal');
+
+        // Animasi Masuk (Fade In & Scale Up)
+        requestAnimationFrame(() => {
+            modal.classList.remove('opacity-0');
+            card.classList.remove('scale-90', 'opacity-0');
+            card.classList.add('scale-100', 'opacity-100');
+        });
+
+        // Fungsi Tutup
+        const closeModal = () => {
+            modal.classList.add('opacity-0');
+            card.classList.remove('scale-100');
+            card.classList.add('scale-95'); // Efek zoom out dikit saat tutup
+            setTimeout(() => modal.remove(), 300);
+        };
+
+        btn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+
     // Custom Submit Generator (Capture Phase: true)
     document.addEventListener('submit', function(e) {
+
+        if (e.target.id === 'rbm-form') {
+            e.preventDefault(); 
+            e.stopPropagation(); 
+            handleMainFormSubmit(e.target);
+        }
+
         if (e.target.id === 'kddk-generator-form') {
             e.preventDefault(); 
             e.stopPropagation(); 
@@ -448,7 +643,36 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch(fetchUrl)
             .then(res => res.json())
             .then(points => {
-                const newLayer = L.featureGroup();
+                // Gunakan Marker Cluster Group dengan Opsi Custom
+                const newLayer = L.markerClusterGroup({
+                    disableClusteringAtZoom: 18, // Pada zoom 18, paksa pecah semua jadi marker
+                    spiderfyOnMaxZoom: true,     // Efek jaring laba-laba jika titik bertumpuk di zoom maksimal
+                    showCoverageOnHover: false,  // Matikan area biru saat hover (biar bersih)
+                    chunkedLoading: true         // Load bertahap agar browser tidak freeze
+                });
+
+                // [LOGIKA BARU] 1. Hitung Centroid (Titik Tengah Rata-rata)
+                let sumLat = 0, sumLng = 0, validCount = 0;
+                points.forEach(p => {
+                    const lat = parseFloat(p.lat);
+                    const lng = parseFloat(p.lng);
+                    if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
+                        sumLat += lat;
+                        sumLng += lng;
+                        validCount++;
+                    }
+                });
+
+                // Titik Pusat
+                let centerPoint = null;
+                if (validCount > 0) {
+                    centerPoint = L.latLng(sumLat / validCount, sumLng / validCount);
+                }
+
+                // Ambang Batas Anomali (2 KM = 2000 Meter)
+                const ANOMALY_THRESHOLD_METERS = 2000; 
+                let anomalyCount = 0;
+                
                 const isRoute = !!routeCode; 
 
                 const colorMap = {
@@ -467,19 +691,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 points.forEach(pt => {
                     // Ambil digit ke-7 (Hari) dari KDDK (misal A1A RB AA1 -> A)
                     // Panjang KDDK = 12. Digit 7 ada di index 6 (0-based)
-                    const dayCode = pt.seq ? pt.seq.charAt(0) : 'A'; // Fallback logic jika seq beda
+                    const dayChar = pt.seq ? pt.seq.charAt(0) : 'A'; // Fallback logic jika seq beda
                     
                     // Atau ambil dari parameter routeCode jika tersedia (lebih akurat)
-                    const dayChar = routeCode ? routeCode.charAt(1) : 'A'; 
+                    const routeChar  = routeCode ? routeCode.charAt(1) : dayChar;
                     
                     // Tentukan warna
-                    const colorClass = colorMap[dayChar] || 'text-gray-800 border-gray-600';
+                    const colorClass = colorMap[routeChar] || 'text-gray-800 border-gray-600';
+                    let isAnomaly = false;
+
+                    // [LOGIKA BARU] 2. Cek Jarak ke Pusat
+                    if (centerPoint) {
+                        const ptLatLng = L.latLng(pt.lat, pt.lng);
+                        const distance = centerPoint.distanceTo(ptLatLng); // Meter
+                        
+                        if (distance > ANOMALY_THRESHOLD_METERS) {
+                            isAnomaly = true;
+                            anomalyCount++;
+                            // Ubah style jadi MERAH & BERKEDIP
+                            colorClass = 'marker-outlier animate-marker-pulse'; 
+                        }
+                    }
 
                     const iconHtml = `<div class="flex items-center justify-center w-5 h-5 bg-white border-2 ${colorClass} rounded-full text-[8px] font-bold shadow-sm" style="opacity: 0.9;">${pt.seq}</div>`;
                     
                     const icon = L.divIcon({ className: 'custom-map-marker', html: iconHtml, iconSize: [20, 20], iconAnchor: [10, 10] });
                     const marker = L.marker([pt.lat, pt.lng], { icon: icon });
-                    marker.bindPopup(pt.info);
+
+                    // Tambahkan Info Jarak di Popup jika Anomali
+                    let popupContent = pt.info;
+                    if (isAnomaly) {
+                        popupContent += `<div class="mt-2 p-1 bg-red-100 text-red-700 text-[10px] font-bold rounded text-center border border-red-200"><i class="fas fa-exclamation-triangle"></i> Lokasi Jauh (>2KM)</div>`;
+                    }
+                    marker.bindPopup(popupContent);
+                    // Simpan status anomali di marker options agar bisa dihitung ulang nanti
+                    marker.options.isAnomaly = isAnomaly;
                     newLayer.addLayer(marker);
                 });
 
@@ -496,16 +742,53 @@ document.addEventListener('DOMContentLoaded', () => {
     function fitBoundsToAll() {
         if (!rbmMap) return;
         const group = L.featureGroup();
-        Object.values(activeLayers).forEach(layer => layer.eachLayer(m => group.addLayer(m)));
-        if (group.getLayers().length > 0) rbmMap.fitBounds(group.getBounds().pad(0.1));
+        Object.values(activeLayers).forEach(layer => {
+            // Karena layer sekarang adalah ClusterGroup, kita ambil bounds-nya langsung
+            if (layer.getBounds().isValid()) {
+                // Hack: Tambahkan dummy marker di sudut bounds agar featureGroup bisa kalkulasi
+                const bounds = layer.getBounds();
+                L.marker(bounds.getSouthWest()).addTo(group);
+                L.marker(bounds.getNorthEast()).addTo(group);
+            }
+        });
+        if (group.getLayers().length > 0) {
+            rbmMap.fitBounds(group.getBounds().pad(0.1));
+        }
     }
 
     function updateTotalPoints() {
         const countSpan = document.getElementById('map-count');
+        const alertBox = document.getElementById('anomaly-alert');
+        const alertCount = document.getElementById('anomaly-count');
+        
         if (!countSpan) return;
+        
         let total = 0;
-        Object.values(activeLayers).forEach(layer => total += layer.getLayers().length);
+        let totalAnomalies = 0;
+
+        Object.values(activeLayers).forEach(layer => {
+            // Hitung total marker
+            total += layer.getLayers().length;
+            
+            // Hitung anomali (iterate layer members)
+            layer.eachLayer(function(layer) {
+                if (layer.options.isAnomaly) {
+                    totalAnomalies++;
+                }
+            });
+        });
+
         countSpan.textContent = total + ' Titik';
+
+        // Tampilkan/Sembunyikan Alert Anomali
+        if (alertBox && alertCount) {
+            if (totalAnomalies > 0) {
+                alertCount.textContent = totalAnomalies;
+                alertBox.classList.remove('hidden');
+            } else {
+                alertBox.classList.add('hidden');
+            }
+        }
     }
 
     function updateMapTitleWrapper() {
@@ -549,9 +832,8 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshActiveTab();
     }
 
-    // 3. Refresh Logic
     // 3. REFRESH LOGIC (DENGAN DETEKSI URL OTOMATIS & STATE RESTORE)
-    function refreshActiveTab() {
+    function refreshActiveTab(successMessage = null) {
         if (typeof App === 'undefined' || !App.Utils || !App.Tabs) return;
         
         const activeTab = App.Utils.getActiveTabName();
@@ -664,6 +946,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 3. Kembalikan Posisi Scroll (Terakhir)
                 const newScroll = newContent.querySelector('.overflow-y-auto');
                 if (newScroll) newScroll.scrollTop = state.scroll;
+
+                if (successMessage) {
+                    const notifContainer = newContent.querySelector('#kddk-notification-container');
+                    if (notifContainer) {
+                        notifContainer.innerHTML = `
+                            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4 flex items-center shadow-sm animate-fade-in-down" role="alert">
+                                <i class="fas fa-check-circle mr-2 text-xl"></i>
+                                <span class="block sm:inline font-bold">${successMessage}</span>
+                                <button onclick="this.parentElement.remove();" class="absolute top-0 bottom-0 right-0 px-4 py-3">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        `;
+                        // Auto hide dalam 5 detik
+                        setTimeout(() => { if(notifContainer.firstChild) notifContainer.firstChild.remove(); }, 5000);
+                    } else {
+                        // Fallback jika container hilang
+                        alert(successMessage);
+                    }
+                }
             });
         }
     }
@@ -707,6 +1009,60 @@ document.addEventListener('DOMContentLoaded', () => {
         executeAjax(urlInput.value, { idpel: idpel });
     }
 
+    // [FUNGSI BARU] MENANGANI SUBMIT FORM UTAMA (TOMBOL SIMPAN TOOLBAR)
+    function handleMainFormSubmit(form) {
+        // 1. Cari tombol submit di DALAM form
+        let submitBtn = form.querySelector('button[type="submit"]');
+
+        // 2. Jika tidak ketemu, cari tombol di LUAR form yang terhubung (via attribute form="id")
+        if (!submitBtn && form.id) {
+            submitBtn = document.querySelector(`button[form="${form.id}"]`);
+        }
+
+        // Safety check jika tombol benar-benar tidak ada
+        if (!submitBtn) {
+            console.error("Tombol Submit tidak ditemukan!");
+            return; 
+        }
+
+        const originalText = submitBtn.innerHTML;
+        
+        // Ubah tombol jadi Loading
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+        const formData = new FormData(form);
+        const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': token
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            // Kembalikan tombol
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+
+            if (data.success) {
+                // PANGGIL REFRESH DENGAN PESAN SUKSES
+                refreshActiveTab(data.message);
+            } else {
+                alert('Gagal: ' + data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+            alert('Terjadi kesalahan server.');
+        });
+    }
+
     // ============================================================
     // 6. GENERATOR KDDK (CUSTOM SUBMIT)
     // ============================================================
@@ -729,6 +1085,7 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(data => {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
+            
             if (data.success) {
                 const processedCount = selectionState.items.size;
                 window.closeKddkModal();
@@ -945,6 +1302,85 @@ document.addEventListener('DOMContentLoaded', () => {
                 contextMenu.style.top = `${y}px`;
             }
         }
+        
+    });
+
+    // ============================================================
+    // 9. KEYBOARD SHORTCUTS (DEBUG VERSION)
+    // ============================================================
+    document.addEventListener('keydown', function(e) {
+        
+        // Cek elemen apa yang sedang fokus
+        const activeTag = document.activeElement.tagName;
+        const isInput = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+        
+        // 1. ESCAPE (Tutup Modal / Clear Selection)
+        if (e.key === 'Escape') {
+            const openModals = document.querySelectorAll('.fixed.flex:not(.hidden)');
+            if (openModals.length > 0) {
+                e.preventDefault();
+                openModals.forEach(m => { m.classList.add('hidden'); m.classList.remove('flex'); });
+                return;
+            }
+            if (!isInput) {
+                window.clearBulkSelection();
+                const searchInput = document.getElementById('kddk-search-input');
+                if (searchInput) {
+                    searchInput.value = '';
+                    if(typeof handleKddkSearch === 'function') handleKddkSearch('');
+                    searchInput.blur(); // Lepas fokus
+                }
+            }
+        }
+
+        // 2. CTRL + F (Fokus Pencarian)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+            e.preventDefault();
+            const searchInput = document.getElementById('kddk-search-input');
+            if (searchInput) {
+                searchInput.focus();
+                searchInput.select();
+            } else {
+                console.warn('Gagal: Input pencarian (kddk-search-input) tidak ditemukan.');
+            }
+        }
+
+        // 3. CTRL + S (Simpan Form)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            const saveBtn = document.querySelector('button[form="rbm-form"]');
+            if (saveBtn) {
+                console.log('Action: Clicking Save Button...');
+                saveBtn.click();
+            } else {
+                console.warn('Gagal: Tombol Simpan (form="rbm-form") tidak ditemukan.');
+            }
+        }
+
+        // 4. CTRL + P (Cetak Lembar Kerja)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+            e.preventDefault();
+            const printBtn = document.getElementById('btn-print-worksheet');
+            if (printBtn) {
+                printBtn.click(); // Klik tombol aslinya biar logic-nya jalan
+            } else if (typeof window.printWorksheetCheck === 'function') {
+                window.printWorksheetCheck();
+            } else {
+                console.warn('Gagal: Fungsi Cetak tidak ditemukan.');
+            }
+        }
+
+        // 5. DELETE (Hapus Massal)
+        if (e.key === 'Delete' && !isInput) {
+            const checkedCount = document.querySelectorAll('.select-item-row:checked').length;
+            if (checkedCount > 0) {
+                e.preventDefault();
+                window.executeBulkRemove();
+            } else {
+                console.log('Info: Tidak ada item yang dicentang untuk dihapus.');
+            }
+        }
+
     });
 
     window.clearBulkSelection = function() {
@@ -966,16 +1402,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.openKddkModal = function() {
         const selectedIds = Array.from(selectionState.items.keys());
-        if (selectedIds.length === 0) { alert("Pilih minimal satu pelanggan."); return; }
+
+        if (selectedIds.length === 0) { 
+            alert("Pilih atau Upload minimal satu pelanggan."); 
+            return; 
+        }
+
         const container = document.getElementById('hidden-inputs-container');
         if(container) {
             container.innerHTML = '';
+
             selectedIds.forEach(id => {
-                const i = document.createElement('input'); i.type='hidden'; i.name='selected_idpels[]'; i.value=id; container.appendChild(i);
+                const i = document.createElement('input'); 
+                i.type='hidden'; 
+                i.name='selected_idpels[]'; // Ini yang dikirim ke Controller
+                i.value=id; 
+                container.appendChild(i);
             });
         }
         const modal = document.getElementById('modal-create-kddk');
-        if(modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); if(typeof updateSequenceAndGenerate === 'function') updateSequenceAndGenerate(); }
+        if(modal) { 
+            modal.classList.remove('hidden'); 
+            modal.classList.add('flex'); 
+            
+            // Update Label Jumlah di Modal
+            const countLabel = document.getElementById('count-selected');
+            if(countLabel) countLabel.textContent = selectedIds.length; // Tulis "200"
+
+            if(typeof updateSequenceAndGenerate === 'function') updateSequenceAndGenerate(); 
+        }
     }
     
     window.closeKddkModal = function() {
@@ -1069,6 +1524,14 @@ document.addEventListener('DOMContentLoaded', () => {
         moveModal.classList.remove('flex');
         idpelEl.dataset.mode = '';
     }
+
+    //Tutup Dropdown saat Scroll (Agar tidak melayang aneh)
+    window.addEventListener('scroll', function() {
+        const dropdown = document.getElementById('export-dropdown-menu');
+        if (dropdown && !dropdown.classList.contains('hidden')) {
+            dropdown.classList.add('hidden');
+        }
+    }, true);
 
     // Generator Internal Helper
     function updateRouteOptions() {
@@ -1222,58 +1685,142 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function handleKddkSearch(val) {
-        const term = val.toLowerCase().trim();
-        const allRows = document.querySelectorAll('.draggable-idpel'); 
-        const allRouteContainers = document.querySelectorAll('.route-container');
-        const allAreaContainers = document.querySelectorAll('.area-container');
-        const allRouteBodies = document.querySelectorAll('div[id^="route-"]');
-        const allAreaBodies = document.querySelectorAll('div[id^="area-"]');
-        if (term.length === 0) {
-            allRows.forEach(row => row.classList.remove('hidden'));
-            allRouteContainers.forEach(el => el.classList.remove('hidden'));
-            allAreaContainers.forEach(el => el.classList.remove('hidden'));
-            allRouteBodies.forEach(el => el.classList.add('hidden'));
-            allAreaBodies.forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.icon-chevron, .icon-chevron-sub').forEach(i => i.classList.remove('rotate-180'));
-            return;
-        }
-        allRouteContainers.forEach(el => el.classList.add('hidden'));
-        allAreaContainers.forEach(el => el.classList.add('hidden'));
-        allRows.forEach(row => {
-            const rowText = row.innerText.toLowerCase();
-            if (rowText.includes(term)) {
-                row.classList.remove('hidden');
-                const routeBody = row.closest('div[id^="route-"]');
-                if (routeBody) {
-                    const routeContainer = routeBody.closest('.route-container');
-                    if (routeContainer) {
-                        routeContainer.classList.remove('hidden');
-                        routeBody.classList.remove('hidden'); 
-                        routeContainer.querySelector('.icon-chevron-sub')?.classList.add('rotate-180');
-                    }
-                    const digit6Body = routeBody.closest('div[id^="d6-"]');
-                    if(digit6Body) {
-                         const digit6Container = digit6Body.closest('.digit6-container');
-                         if(digit6Container) {
-                              digit6Container.classList.remove('hidden');
-                              digit6Body.classList.remove('hidden');
-                              digit6Container.querySelector('.icon-chevron-d6')?.classList.add('rotate-180');
-                         }
-                         const areaBody = digit6Body.closest('div[id^="area-"]');
-                         if (areaBody) {
-                            const areaContainer = areaBody.closest('.area-container');
-                            if (areaContainer) {
-                                areaContainer.classList.remove('hidden');
-                                areaBody.classList.remove('hidden'); 
-                                areaContainer.querySelector('.icon-chevron')?.classList.add('rotate-180');
-                            }
-                         }
-                    }
+    const searchInput = document.getElementById('kddk-search-input');
+    const searchResults = document.getElementById('search-results-dropdown');
+    const resultsList = document.getElementById('search-results-list');
+    const clearBtn = document.getElementById('clear-search-btn');
+    let searchTimeout = null;
+
+        if (searchInput) {
+            // Event Ketik
+            searchInput.addEventListener('input', function(e) {
+                const keyword = e.target.value.trim();
+                
+                // Toggle tombol X
+                if(keyword.length > 0) clearBtn.classList.remove('hidden');
+                else clearBtn.classList.add('hidden');
+
+                // Reset Timeout (Debounce)
+                if (searchTimeout) clearTimeout(searchTimeout);
+
+                if (keyword.length < 3) {
+                    searchResults.classList.add('hidden');
+                    return;
                 }
-            } else {
-                row.classList.add('hidden');
+
+                // Tunggu user berhenti mengetik 500ms
+                searchTimeout = setTimeout(() => {
+                    performServerSearch(keyword);
+                }, 500);
+            });
+
+            // Event Tombol Clear
+            if(clearBtn) {
+                clearBtn.addEventListener('click', function() {
+                    searchInput.value = '';
+                    searchResults.classList.add('hidden');
+                    clearBtn.classList.add('hidden');
+                    // Opsional: Tutup semua accordion yang terbuka
+                });
             }
-        });
+        }
+
+        function performServerSearch(keyword) {
+            const url = document.getElementById('api-search-customer').value;
+            resultsList.innerHTML = '<li class="p-3 text-center text-gray-500"><i class="fas fa-spinner fa-spin"></i> Mencari...</li>';
+            searchResults.classList.remove('hidden');
+
+            fetch(`${url}?keyword=${encodeURIComponent(keyword)}`)
+                .then(res => res.json())
+                .then(data => {
+                    resultsList.innerHTML = '';
+                    if (data.length === 0) {
+                        resultsList.innerHTML = '<li class="p-3 text-center text-gray-500">Tidak ditemukan.</li>';
+                        return;
+                    }
+
+                    data.forEach(item => {
+                        const li = document.createElement('li');
+                        li.className = "p-2 hover:bg-indigo-50 dark:hover:bg-gray-700 cursor-pointer flex justify-between items-center";
+                        li.innerHTML = `
+                            <div>
+                                <div class="font-bold text-indigo-600">${item.idpel}</div>
+                                <div class="text-xs text-gray-500 truncate w-48">${item.text.split(' - ')[1]}</div>
+                            </div>
+                            <span class="text-[10px] bg-gray-100 px-1 rounded border">Rute ${item.route_code}</span>
+                        `;
+                        
+                        // KLIK HASIL -> BUKA RUTE OTOMATIS
+                        li.addEventListener('click', () => {
+                            navigateToCustomer(item);
+                        });
+                        
+                        resultsList.appendChild(li);
+                    });
+                })
+                .catch(err => {
+                    console.error(err);
+                    resultsList.innerHTML = '<li class="p-3 text-center text-red-500">Error memuat data.</li>';
+                });
+        }
+
+        function navigateToCustomer(item) {
+            // 1. Tutup Dropdown
+            searchResults.classList.add('hidden');
+            searchInput.value = item.idpel; // Set input jadi IDPEL terpilih
+
+            // 2. Buka Area (Level 1)
+            const areaBody = document.getElementById(item.target_area_id);
+            if (areaBody && areaBody.classList.contains('hidden')) {
+                const toggleBtn = document.querySelector(`[data-target="${item.target_area_id}"]`);
+                if (toggleBtn) toggleBtn.click(); // Simulasi klik agar arrow berputar
+            }
+
+            // 3. Buka Digit 6 (Level 2)
+            setTimeout(() => {
+                const d6Body = document.getElementById(item.target_d6_id);
+                if (d6Body && d6Body.classList.contains('hidden')) {
+                    const toggleBtn = document.querySelector(`[data-target="${item.target_d6_id}"]`);
+                    if (toggleBtn) toggleBtn.click();
+                }
+
+                // 4. Buka Rute (Level 3 - AJAX LOAD)
+                setTimeout(() => {
+                    const routeBody = document.getElementById(item.target_route_id);
+                    // Jika rute tertutup, klik untuk buka (ini akan memicu Lazy Load)
+                    if (routeBody && routeBody.classList.contains('hidden')) {
+                        const toggleBtn = document.querySelector(`[data-target="${item.target_route_id}"]`);
+                        if (toggleBtn) toggleBtn.click();
+                    } else if (routeBody && !routeBody.classList.contains('hidden')) {
+                        // Jika sudah terbuka tapi belum diload (kasus jarang)
+                        if (routeBody.dataset.loaded === 'false') {
+                            loadRouteTableData(item.target_route_id, item.area_code, item.route_code);
+                        }
+                    }
+
+                    // 5. Scroll & Highlight (Tunggu AJAX Selesai - Estimasi 1 detik)
+                    setTimeout(() => {
+                        const row = document.querySelector(`tr[data-idpel="${item.idpel}"]`);
+                        if (row) {
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            // Efek Kedip Kuning
+                            row.classList.add('bg-yellow-200', 'dark:bg-yellow-900');
+                            setTimeout(() => row.classList.remove('bg-yellow-200', 'dark:bg-yellow-900'), 3000);
+                        } else {
+                            // Retry sekali lagi jika loading lambat
+                            setTimeout(() => {
+                                const rowRetry = document.querySelector(`tr[data-idpel="${item.idpel}"]`);
+                                if (rowRetry) {
+                                    rowRetry.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    rowRetry.classList.add('bg-yellow-200');
+                                }
+                            }, 1000);
+                        }
+                    }, 800);
+
+                }, 300); // Delay D6 -> Rute
+            }, 300); // Delay Area -> D6
+        }
     }
 
     function performReorderIdpel(idpel, targetIdpel, prefix) {
@@ -1286,6 +1833,142 @@ document.addEventListener('DOMContentLoaded', () => {
             target_idpel: targetIdpel,
             route_prefix: prefix
         });
+    }
+
+    function loadRouteTableData(targetId, area, route) {
+        const tbody = document.getElementById(`tbody-${targetId}`);
+        const apiUrl = document.getElementById('api-route-table').value;
+        const container = document.getElementById(targetId);
+
+        if (!tbody || !apiUrl) return;
+
+        // Tampilkan Spinner
+        tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-indigo-500"><i class="fas fa-spinner fa-spin mr-2"></i> Memuat data...</td></tr>';
+
+        // Fetch
+        fetch(`${apiUrl}?area=${area}&route=${route}`)
+            .then(res => res.text())
+            .then(html => {
+                tbody.innerHTML = html;
+                container.dataset.loaded = "true"; // Tandai sudah load agar tidak load ulang
+            })
+            .catch(err => {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-red-500 text-xs p-2">Gagal memuat data.</td></tr>`;
+                console.error(err);
+            });
+    }
+
+    window.openHistoryModal = function() {
+        const modal = document.getElementById('modal-history');
+        const content = document.getElementById('history-content');
+        const url = document.getElementById('history-route').value;
+        
+        if (!modal || !content || !url) return;
+
+        // Tampilkan Modal
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        
+        // Reset konten ke loading
+        content.innerHTML = '<div class="h-full flex items-center justify-center"><i class="fas fa-spinner fa-spin text-3xl text-indigo-300"></i></div>';
+
+        // Fetch Data
+        fetch(url)
+            .then(res => res.text())
+            .then(html => {
+                content.innerHTML = html;
+            })
+            .catch(err => {
+                content.innerHTML = '<div class="text-center text-red-500 mt-10">Gagal memuat riwayat.</div>';
+                console.error(err);
+            });
+    }
+
+    window.printWorksheetCheck = function() {
+        // 1. Cari Area yang Terbuka (Header dengan panah berputar)
+        const openAreaIcon = document.querySelector('.area-header .icon-chevron.rotate-180');
+        
+        if (!openAreaIcon) {
+            alert("Harap BUKA salah satu AREA terlebih dahulu untuk mencetak.");
+            return;
+        }
+
+        const areaHeader = openAreaIcon.closest('.area-header');
+        const areaCode = areaHeader.dataset.areaCode;
+        const areaTargetId = areaHeader.dataset.target; // ID konten area (misal: area-RB)
+        const unitUp = document.querySelector('input[name="unitup"]').value;
+
+        // 2. Cari Rute yang Terbuka DI DALAM Area tersebut
+        // Kita cari di dalam container Area yang sedang aktif
+        const areaContent = document.getElementById(areaTargetId);
+        let routeParam = "";
+        
+        if (areaContent) {
+            // Cari header rute yang panahnya berputar (artinya sedang dibuka)
+            const openRouteIcon = areaContent.querySelector('.route-header .icon-chevron-sub.rotate-180');
+            
+            if (openRouteIcon) {
+                const routeHeader = openRouteIcon.closest('.route-header');
+                const routeCode = routeHeader.dataset.routeCode; // Ambil kode rute (misal: A1)
+                
+                // Tambahkan parameter route ke URL
+                if (routeCode) {
+                    routeParam = `&route=${routeCode}`;
+                }
+            }
+        }
+
+        // 3. Buka Halaman Cetak
+        if (areaCode && unitUp) {
+            const url = `/team/matrix-kddk/print-worksheet/${unitUp}?area=${areaCode}${routeParam}`;
+            window.open(url, '_blank');
+        }
+    }
+
+    // FUNGSI CEK EXPORT (FILTER SESUAI YANG DIBUKA)
+    window.exportRbmCheck = function(format) {
+        // 1. Ambil Unit ID
+        const unitUp = document.querySelector('input[name="unitup"]').value;
+        
+        // 2. Cari Area yang Terbuka (Header dengan panah berputar)
+        const openAreaIcon = document.querySelector('.area-header .icon-chevron.rotate-180');
+        
+        let urlParams = `?format=${format}`;
+        
+        if (openAreaIcon) {
+            // Jika ada Area terbuka, ambil kodenya
+            const areaHeader = openAreaIcon.closest('.area-header');
+            const areaCode = areaHeader.dataset.areaCode;
+            const areaTargetId = areaHeader.dataset.target;
+            
+            urlParams += `&area=${areaCode}`;
+
+            // 3. Cek apakah ada Rute yang terbuka di dalam Area itu?
+            const areaContent = document.getElementById(areaTargetId);
+            if (areaContent) {
+                const openRouteIcon = areaContent.querySelector('.route-header .icon-chevron-sub.rotate-180');
+                if (openRouteIcon) {
+                    const routeHeader = openRouteIcon.closest('.route-header');
+                    const routeCode = routeHeader.dataset.routeCode;
+                    urlParams += `&route=${routeCode}`;
+                }
+            }
+        } else {
+            // Jika tidak ada area terbuka, tanya user apakah mau download SEMUA?
+            // Atau bisa diblokir jika data terlalu besar.
+            if (!confirm("Anda tidak memilih Area/Rute spesifik. Download SELURUH data unit ini?")) {
+                return;
+            }
+        }
+
+        // 4. Buka URL Export
+        // Base URL: /team/matrix-kddk/export-rbm/{unit}
+        const baseUrl = `/team/matrix-kddk/export-rbm/${encodeURIComponent(unitUp)}`;
+        window.open(baseUrl + urlParams, '_blank');
+        
+        // Tutup dropdown setelah klik
+        const dropdown = document.getElementById('export-dropdown-menu');
+        if(dropdown) dropdown.classList.add('hidden');
     }
 
 });

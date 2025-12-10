@@ -207,48 +207,80 @@ class MatrixKddkController extends Controller
         // 2. Ambil Data Pelanggan
         $rawCustomers = DB::table('mapping_kddk')
             ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
-            ->select(
-                'mapping_kddk.idpel', 
-                'mapping_kddk.kddk', 
-                'mapping_kddk.user_pendataan',
-                'master_data_pelanggan.nomor_meter_kwh', 
-                'master_data_pelanggan.nomor_meter_kwh',
-                'master_data_pelanggan.nomor_meter_kwh'
-            )
+            ->selectRaw('
+                SUBSTRING(mapping_kddk.kddk, 4, 2) as area, 
+                SUBSTRING(mapping_kddk.kddk, 6, 1) as digit6, 
+                SUBSTRING(mapping_kddk.kddk, 7, 1) as digit7,
+                COUNT(*) as total_pelanggan,
+                MIN(mapping_kddk.kddk) as first_kddk,
+                MIN(mapping_kddk.user_pendataan) as assigned_user
+            ')
             ->where('master_data_pelanggan.unitup', $unitCode)
+            ->where('mapping_kddk.enabled', 1)
             ->whereNotNull('mapping_kddk.kddk')
-            ->where('mapping_kddk.kddk', '!=', '')
-            ->whereRaw('LENGTH(mapping_kddk.kddk) >= 5')
-            ->orderBy('mapping_kddk.kddk') 
+            ->whereRaw('LENGTH(mapping_kddk.kddk) >= 7') // Pastikan panjang minimal cukup
+            ->groupBy('area', 'digit6', 'digit7')
+            ->orderBy('area')
+            ->orderBy('digit6')
+            ->orderBy('digit7')
             ->get();
 
-        // 3. GROUPING 3 LEVEL: AREA -> DIGIT 6 -> DIGIT 7
-        $groupedData = $rawCustomers->groupBy(function($item) {
-            // Level 1: Area (Digit 4-5)
-            return substr($item->kddk, 3, 2); 
-        })->map(function($areaGroup) {
-            // Level 2: Digit 6 (Kelompok Rute A, B, C...)
-            return $areaGroup->groupBy(function($item) {
-                return substr($item->kddk, 5, 1); 
-            })->map(function($digit6Group) {
-                // Level 3: Digit 7 (Sub Rute A, B, C...)
-                return $digit6Group->groupBy(function($item) {
-                    return substr($item->kddk, 6, 1); 
-                });
-            });
-        });
+        // 3. Format: $groupedData[AREA][D6][D7] = ['count' => 15, 'first_kddk' => '...', 'assigned' => '...']
+        $groupedData = [];
+        foreach ($rawCustomers as $row) {
+            $groupedData[$row->area][$row->digit6][$row->digit7] = [
+                'count' => $row->total_pelanggan,
+                'first_kddk' => $row->first_kddk,
+                'user_id' => $row->assigned_user
+            ];
+        }
 
         // Config & Officers
+        $user = Auth::user();
         $kddkConfig = \App\Models\AppSetting::findValue('kddk_config_data', auth()->user()->hierarchy_level_code, []);
         $areaLabels = collect($kddkConfig['areas'] ?? [])->pluck('label', 'code');
         $officers = \App\Models\User::whereHas('role', fn($q) => $q->where('name', 'appuser'))->get();
 
-        $viewData = compact('unitCode', 'hierarchy', 'groupedData', 'officers', 'areaLabels','kddkConfig');
+        // Ambil Base Prefix untuk display (UP3+ULP+Sub) dari hirarki
+        $basePrefix = ($hierarchy->parent->kddk_code ?? '?') . ($hierarchy->kddk_code ?? '?') . 'A';
+
+        $viewData = compact('unitCode', 'hierarchy', 'groupedData', 'officers', 'areaLabels', 'kddkConfig', 'basePrefix');
+        
 
         if ($request->has('is_ajax')) {
             return view('team.matrix_kddk.partials.rbm_manage_content', $viewData);
         }
         return view('team.matrix_kddk.rbm_manage', $viewData);
+    }
+
+    /**
+     * [METODE BARU] API Lazy Load Tabel Pelanggan per Rute
+     * Dipanggil via AJAX saat user klik Rute
+     */
+    public function getRouteTable(Request $request, $unit)
+    {
+        $unitCode = urldecode($unit);
+        $area = $request->area;   // Misal: RB
+        $route = $request->route; // Misal: A1 (Digit 6 + 7)
+
+        // Query Detail Pelanggan (Hanya untuk rute ini)
+        $data = DB::table('mapping_kddk')
+            ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+            ->select(
+                'mapping_kddk.kddk',
+                'master_data_pelanggan.idpel',
+                'master_data_pelanggan.nomor_meter_kwh',
+                'mapping_kddk.latitudey',
+                'mapping_kddk.longitudex'
+            )
+            ->where('master_data_pelanggan.unitup', $unitCode)
+            ->where('mapping_kddk.enabled', 1)
+            ->where('mapping_kddk.kddk', 'like', '___' . $area . $route . '%')
+            ->orderBy('mapping_kddk.kddk', 'asc')
+            ->get();
+
+        // Render Partial View (Hanya baris TR)
+        return view('team.matrix_kddk.partials.route_table_rows', compact('data'))->render();
     }
 
     // --- 4. METHOD BARU: AJAX MAP DATA ---
@@ -311,57 +343,78 @@ class MatrixKddkController extends Controller
     public function exportRbm(Request $request, $unit)
     {
         $unitCode = urldecode($unit);
-        $filename = "RBM_DATA_{$unitCode}_" . date('Ymd_His') . ".csv";
+        $format = $request->query('format', 'excel'); // Default Excel
+        $area = $request->area;
+        $route = $request->route;
+        $timestamp = now()->format('Ymd_His');
+        
+        // 1. Query Data
+        $query = DB::table('mapping_kddk')
+            ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+            ->select(
+                'mapping_kddk.kddk',
+                'mapping_kddk.latitudey',
+                'mapping_kddk.longitudex',
+                'master_data_pelanggan.idpel',
+                'master_data_pelanggan.tarif',
+                'master_data_pelanggan.daya',
+                'master_data_pelanggan.nomor_meter_kwh',
+                'master_data_pelanggan.unitup'
+            )
+            ->where('master_data_pelanggan.unitup', $unitCode)
+            ->where('mapping_kddk.enabled', 1)
+            ->orderBy('mapping_kddk.kddk', 'asc');
 
-        $headers = [
-            "Content-type" => "text/csv",
-            "Content-Disposition" => "attachment; filename=$filename",
-            "Pragma" => "no-cache",
-            "Cache-Control" => "must-revalidate, post-check=0, pre-check=0",
-            "Expires" => "0"
-        ];
+        if ($area) {
+            $query->where('mapping_kddk.kddk', 'like', '___' . $area . '%');
+            // Tambahkan info ke nama file agar jelas
+            $timestamp = $area . ($route ? "_{$route}_" : "_") . $timestamp;
+        }
+        
+        if ($route) {
+            $query->where('mapping_kddk.kddk', 'like', '_____' . $route . '%');
+        }
+        
+        $data = $query->get();
 
-        $columns = ['KDDK', 'No Urut', 'ID Pelanggan', 'Nama', 'Alamat', 'No Meter', 'Latitude', 'Longitude', 'Petugas'];
+        if ($data->isEmpty()) {
+            return back()->with('error', 'Tidak ada data untuk diexport.');
+        }
 
-        $callback = function() use ($unitCode, $columns) {
-            $file = fopen('php://output', 'w');
-            fputcsv($file, $columns);
+        // ==========================================
+        // OPSI 1: EXPORT CSV (Pipa Delimiter)
+        // ==========================================
+        if ($format === 'csv') {
+            $filename = "RBM_{$unitCode}_{$timestamp}.csv";
+            
+            // Header CSV (Sesuai request)
+            $csvContent = "IDPEL|KDDK|LATITUDE|LONGITUDE\n";
 
-            DB::table('mapping_kddk')
-                ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
-                ->select(
-                    'mapping_kddk.kddk',
-                    'mapping_kddk.idpel',
-                    'master_data_pelanggan.nomor_meter_kwh',
-                    'master_data_pelanggan.alamat',
-                    'master_data_pelanggan.nomor_meter_kwh',
-                    'mapping_kddk.latitudey',
-                    'mapping_kddk.longitudex',
-                    'mapping_kddk.user_pendataan'
-                )
-                ->where('master_data_pelanggan.unitup', $unitCode)
-                ->orderBy('mapping_kddk.kddk')
-                ->chunk(1000, function($rows) use ($file) {
-                    foreach ($rows as $row) {
-                        $seq = substr($row->kddk, 7, 3);
-                        fputcsv($file, [
-                            $row->kddk,
-                            $seq,
-                            $row->idpel,
-                            $row->nomor_meter_kwh,
-                            $row->nomor_meter_kwh,
-                            $row->nomor_meter_kwh,
-                            $row->latitudey,
-                            $row->longitudex,
-                            $row->user_pendataan
-                        ]);
-                    }
-                });
+            foreach ($data as $row) {
+                // Pastikan KDDK 12 digit, Lat/Long tidak null
+                $kddk = $row->kddk;
+                $lat = $row->latitudey ?? '0';
+                $long = $row->longitudex ?? '0';
+                
+                // Susun baris dengan pemisah pipa
+                $csvContent .= "{$row->idpel}|{$kddk}|{$lat}|{$long}\n";
+            }
 
-            fclose($file);
-        };
+            // Return text response sebagai file download
+            return response($csvContent, 200, [
+                'Content-Type' => 'text/csv',
+                'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            ]);
+        }
 
-        return response()->stream($callback, 200, $headers);
+        // ==========================================
+        // OPSI 2: EXPORT EXCEL (Default HTML)
+        // ==========================================
+        $filename = "RBM_{$unitCode}_{$timestamp}.xls";
+        return response(view('team.matrix_kddk.export_excel', compact('data', 'unitCode')), 200, [
+            'Content-Type' => 'application/vnd.ms-excel',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
     }
 
     /**
@@ -461,36 +514,76 @@ class MatrixKddkController extends Controller
         $selectedIdpels = $request->selected_idpels;
         $unitup = $request->unitup;
 
-        // 2. Cari Nomor Urut Terakhir di Database untuk Rute ini
-        // Kita cari MAX dari digit ke-8,9,10
+        // [LOGIKA BARU - TAHAP 1]
+        // Filter IDPEL: Mana yang perlu di-update sequence-nya?
+        // Kita hanya akan memproses IDPEL yang:
+        // 1. Belum punya KDDK sama sekali.
+        // 2. ATAU Punya KDDK, tapi Prefix-nya BEDA dengan target ($prefix).
+
+        // Ambil data existing dari database untuk pengecekan
+        $existingMappings = DB::table('mapping_kddk')
+            ->whereIn('idpel', $inputOrderedIdpels)
+            ->pluck('kddk', 'idpel');
+
+        $idpelsToProcess = [];
+        $skippedCount = 0;
+
+        foreach ($inputOrderedIdpels as $idpel) {
+            $currentKddk = $existingMappings[$idpel] ?? null;
+            
+            if ($currentKddk) {
+                // Cek Prefix (7 digit awal)
+                $currentPrefix = substr($currentKddk, 0, 7);
+                
+                if ($currentPrefix === $prefix) {
+                    // KASUS: IDPEL sudah ada di Rute yang sama.
+                    // SKIP! Jangan ubah urutannya. Biarkan dia di posisi lama.
+                    $skippedCount++;
+                    continue; 
+                }
+            }
+            
+            // Jika lolos (belum ada atau beda rute), masukkan antrian
+            $idpelsToProcess[] = $idpel;
+        }
+
+        // Validasi: Apakah masih ada data tersisa untuk diproses?
+        if (empty($idpelsToProcess)) {
+            // Jika semua di-skip, kembalikan pesan sukses tanpa perubahan
+            return response()->json([
+                'success' => true, 
+                'message' => "Tidak ada perubahan. Semua ({$skippedCount}) pelanggan sudah berada di rute ini."
+            ]);
+        }
+
+        // [LOGIKA BARU - TAHAP 2]
+        // Validasi ke Master Data (Hanya untuk yang akan diproses)
+        $dbValidIdpels = DB::table('master_data_pelanggan')
+            ->whereIn('idpel', $idpelsToProcess)
+            ->pluck('idpel')
+            ->toArray();
+        
+        // Pertahankan urutan input user (Intersection)
+        $finalOrderedIdpels = array_values(array_intersect($idpelsToProcess, $dbValidIdpels));
+
+        if (empty($finalOrderedIdpels)) {
+            return response()->json(['message' => 'Tidak ada pelanggan valid untuk diproses.'], 422);
+        }
+
+        // 3. Cari Nomor Urut Terakhir (Max Sequence)
+        // Hati-hati! Kita harus mencari sequence tertinggi yang SUDAH ADA di rute ini.
         $lastSequence = DB::table('mapping_kddk')
             ->where('kddk', 'like', $prefix . '%')
             ->max(DB::raw('CAST(SUBSTRING(kddk, 8, 3) AS UNSIGNED)'));
 
         $startSequence = $lastSequence ? ($lastSequence + 1) : 1;
 
-        // 3. Pastikan IDPEL Valid
-        $validIdpels = DB::table('master_data_pelanggan')
-            ->whereIn('idpel', $selectedIdpels)
-            ->pluck('idpel') // Ambil IDPEL saja
-            // Opsional: Urutkan agar penomoran rapi (misal berdasarkan alamat atau gardu)
-            // ->orderBy('alamat') 
-            ->toArray();
-
-        if (empty($validIdpels)) {
-            return response()->json(['message' => 'Tidak ada pelanggan valid.'], 422);
-        }
-
-        DB::transaction(function() use ($validIdpels, $prefix, $sisipan, $startSequence, $unitup) {
-            
-            // A. Simpan Master Rute (Wadah) - Cukup simpan Prefix-nya sebagai referensi Rute
-            // Atau simpan KDDK pertama sebagai perwakilan? 
-            // Untuk konsep baru ini, MasterKddk sebaiknya menyimpan "RUTE" (7 digit) atau tetap per kode unik.
-            // Agar aman, kita simpan per kode unik yang terbentuk.
+        // 4. Proses Simpan (Transaksi)
+        DB::transaction(function() use ($finalOrderedIdpels, $prefix, $sisipan, $startSequence, $unitup) {
             
             $currentSeq = $startSequence;
 
-            foreach ($validIdpels as $idpel) {
+            foreach ($finalOrderedIdpels as $idpel) {
                 
                 // Generate Kode Unik per Pelanggan
                 // Format: [Prefix 7] + [Urut 3] + [Sisip 2]
@@ -529,7 +622,7 @@ class MatrixKddkController extends Controller
 
                 $currentSeq++; // Lanjut ke nomor berikutnya
 
-                $count = count($validIdpels);
+                $count = count($finalOrderedIdpels);
                     $this->recordActivity(
                     'GENERATE_GROUP', 
                     "Membentuk grup baru untuk {$count} pelanggan di Rute {$prefix}", 
@@ -541,12 +634,17 @@ class MatrixKddkController extends Controller
         $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
         Cache::forget($cacheKey);
 
-        $count = count($validIdpels);
+        $count = count($finalOrderedIdpels);
         $endSeq = $startSequence + $count - 1;
+        
+        $msg = "Berhasil memproses $processedCount data baru.";
+        if ($skippedCount > 0) {
+            $msg .= " ($skippedCount data lama dipertahankan).";
+        }
         
         return response()->json([
             'success' => true, 
-            'message' => "Berhasil generate $count kode. Urutan: " . str_pad($startSequence, 3,'0',0) . " s.d " . str_pad($endSeq, 3,'0',0)
+            'message' => $msg
         ]);
     }
 
@@ -845,6 +943,23 @@ class MatrixKddkController extends Controller
     }
 
     /**
+     * Mengambil Data Riwayat Aktivitas (AJAX)
+     */
+    public function getAuditLogs(Request $request, $unit)
+    {
+        // Ambil 50 log terakhir (Global atau bisa difilter per Unit jika struktur DB mendukung)
+        // Untuk saat ini kita ambil global latest karena tabel audit_log belum ada kolom 'unit_code'
+        // Jika ingin spesifik unit, kita perlu join, tapi untuk monitoring umum latest sudah cukup.
+        
+        $logs = \App\Models\AuditLog::with('user')
+                    ->latest()
+                    ->limit(50)
+                    ->get();
+
+        return view('team.matrix_kddk.partials.audit_log_list', compact('logs'));
+    }
+    
+    /**
      * Helper: Merapikan urutan nomor (sequence) dalam satu rute
      * Contoh: 001, 003, 005 -> menjadi -> 001, 002, 003
      */
@@ -895,6 +1010,111 @@ class MatrixKddkController extends Controller
         }
     }
 
+    /**
+     * Cetak Lembar Kerja Lapangan (Print View)
+     */
+    public function printWorksheet(Request $request, $unit)
+    {
+        $unitCode = urldecode($unit);
+        $area = $request->area;
+        $route = $request->route; // Opsional (bisa cetak per Area atau per Rute spesifik)
+
+        if (!$area) {
+            return back()->with('error', 'Pilih Area terlebih dahulu untuk mencetak.');
+        }
+
+        // 1. Ambil Data Pelanggan (Urut Sesuai Sequence)
+        $query = DB::table('mapping_kddk')
+            ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+            ->select(
+                'mapping_kddk.kddk', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex',
+                'master_data_pelanggan.idpel', 'master_data_pelanggan.nomor_meter_kwh',
+                'master_data_pelanggan.tarif', 'master_data_pelanggan.daya'
+            )
+            ->where('master_data_pelanggan.unitup', $unitCode)
+            ->where('mapping_kddk.enabled', 1);
+
+        if ($area) $query->where('mapping_kddk.kddk', 'like', '___' . $area . '%');
+        if ($route) $query->where('mapping_kddk.kddk', 'like', '_____' . $route . '%');
+
+        // Urutkan berdasarkan Kode Rute Lengkap (Sequence otomatis terurut)
+        $data = $query->orderBy('mapping_kddk.kddk', 'asc')->get();
+
+        if ($data->isEmpty()) {
+            return back()->with('error', 'Tidak ada data pelanggan untuk dicetak.');
+        }
+
+        // 2. Generate Link Navigasi (Titik Awal)
+        // Kita ambil koordinat pelanggan pertama yang valid sebagai titik start navigasi
+        $firstValid = $data->whereNotNull('latitudey')->first();
+        $qrUrl = "";
+        if ($firstValid) {
+            // Link Google Maps Directions
+            $qrUrl = "https://www.google.com/maps/dir/?api=1&destination={$firstValid->latitudey},{$firstValid->longitudex}";
+        }
+
+        // 3. Info Header
+        $info = [
+            'unit' => $unitCode,
+            'area' => $area,
+            'route' => $route ?? 'SEMUA',
+            'total' => $data->count(),
+            'date' => now()->format('d-m-Y H:i')
+        ];
+
+        return view('team.matrix_kddk.print_worksheet', compact('data', 'qrUrl', 'info'));
+    }
+    
+    /**
+     * API Pencarian Global (Untuk Lazy Load)
+     * Mengembalikan lokasi rute pelanggan agar bisa dibuka otomatis
+     */
+    public function searchCustomer(Request $request, $unit)
+    {
+        $term = $request->keyword;
+        $unitCode = urldecode($unit);
+
+        if (strlen($term) < 3) return response()->json([]); // Minimal 3 karakter
+
+        $results = DB::table('mapping_kddk')
+            ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+            ->select(
+                'mapping_kddk.idpel',
+                'mapping_kddk.kddk',
+                'master_data_pelanggan.nomor_meter_kwh'
+            )
+            ->where('master_data_pelanggan.unitup', $unitCode)
+            ->where('mapping_kddk.enabled', 1)
+            ->where(function($q) use ($term) {
+                $q->where('mapping_kddk.idpel', 'like', "%{$term}%")
+                  ->orWhere('master_data_pelanggan.nomor_meter_kwh', 'like', "%{$term}%");
+            })
+            ->limit(20) // Batasi hasil agar ringan
+            ->get()
+            ->map(function($item) {
+                // Parse Lokasi Rute dari KDDK (A1BRBAA...)
+                // Area: Digit 4-5 (RB)
+                // Digit 6: Kelompok (A)
+                // Digit 7: Sub (A)
+                // ID Target DOM: route-RB-AA
+                $area = substr($item->kddk, 3, 2);
+                $digit6 = substr($item->kddk, 5, 1);
+                $digit7 = substr($item->kddk, 6, 1);
+                
+                return [
+                    'idpel' => $item->idpel,
+                    'text' => "{$item->idpel} - {$item->nomor_meter_kwh}",
+                    'target_route_id' => "route-{$area}-{$digit6}{$digit7}", // ID accordion rute
+                    'target_area_id' => "area-{$area}", // ID accordion area
+                    'target_d6_id' => "d6-{$area}-{$digit6}", // ID accordion digit 6
+                    'area_code' => $area,
+                    'route_code' => $digit6 . $digit7
+                ];
+            });
+
+        return response()->json($results);
+    }
+
     // --- Helper Hirarki (Copy dari kode lama Anda) ---
     private function getHierarchyFilterForJoin($user): ?array
     {
@@ -912,4 +1132,5 @@ class MatrixKddkController extends Controller
         }
         return ['column' => 'master_data_pelanggan.unitup', 'code' => $userHierarchyCode];
     }
+    
 }

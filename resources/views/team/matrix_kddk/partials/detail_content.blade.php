@@ -1,36 +1,89 @@
-{{-- PENANDA KONTEKS UNIT (PENTING UNTUK STATE CHECKBOX) --}}
+{{-- PENANDA KONTEKS UNIT --}}
 <input type="hidden" id="page-context-unit" value="{{ $unit }}">
 
-<div class="bg-white dark:bg-gray-800 shadow sm:rounded-lg p-6 relative">
+<div class="bg-white dark:bg-gray-800 shadow-md sm:rounded-xl p-0 relative overflow-hidden">
     
-    {{-- HEADER --}}
-    <div class="flex justify-between items-center mb-6">
-        <div>
-            <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100">
-                Detail Pelanggan: <span class="text-indigo-600">{{ $unit }}</span>
-            </h3>
-            <p class="text-sm text-gray-500">Pilih pelanggan untuk membentuk Kelompok KDDK.</p>
-        </div>
+    {{-- 1. HEADER & TOOLBAR (Menyatu) --}}
+    <div class="p-5 border-b border-gray-100 dark:border-gray-700 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         
-        <div class="flex space-x-2">
-            {{-- TOMBOL BENTUK KDDK (Muncul saat checkbox dicentang) --}}
-            <button onclick="window.confirmGrouping()" id="btn-group-kddk" class="hidden px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded shadow transition flex items-center">
-                <i class="fas fa-layer-group mr-2"></i> Bentuk Group KDDK
-            </button>
+        {{-- BAGIAN KIRI: JUDUL --}}
+        <div>
+            <div class="flex items-center gap-2">
+                <h3 class="text-xl font-extrabold text-gray-900 dark:text-gray-100 tracking-tight">
+                    Detail Pelanggan
+                </h3>
+                <span class="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-bold font-mono">
+                    {{ $unit }}
+                </span>
+            </div>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Manage data dan bentuk kelompok KDDK untuk unit ini.
+            </p>
+        </div>
 
-            <button onclick="App.Tabs.loadTabContent(App.Utils.getActiveTabName(), '{{ route('team.matrix_kddk.index') }}')" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition">
-                <i class="fas fa-arrow-left mr-2"></i> Kembali
-            </button>
+        {{-- BAGIAN KANAN: ACTIONS TOOLBAR --}}
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full xl:w-auto">
+            
+            {{-- A. SEARCH BAR (Modern Style) --}}
+            <form action="{{ route('team.matrix_kddk.details', ['unit' => $unit]) }}" method="GET" 
+                  class="relative w-full sm:w-64 group" 
+                  onsubmit="event.preventDefault(); App.Tabs.loadTabContent(App.Utils.getActiveTabName(), this.action + '?search=' + this.search.value);">
+                
+                {{-- 1. TOMBOL SUBMIT (KACA PEMBESAR - KIRI) --}}
+                <button type="submit" class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400 group-focus-within:text-indigo-500 hover:text-indigo-600 transition-colors bg-transparent border-none cursor-pointer z-10" title="Cari">
+                    <i class="fas fa-search"></i>
+                </button>
+
+                {{-- 2. INPUT FIELD --}}
+                {{-- pr-10 ditambahkan agar teks tidak menabrak tombol X --}}
+                <input type="text" name="search" 
+                       class="block w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg leading-5 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition-all shadow-sm" 
+                       placeholder="Cari IDPEL / Meter..."
+                       value="{{ request('search') }}"
+                       autocomplete="off">
+
+                {{-- 3. TOMBOL CLEAR / RESET (TANDA SILANG - KANAN) --}}
+                {{-- Hanya muncul jika ada request 'search' --}}
+                @if(request('search'))
+                    <button type="button" 
+                            onclick="App.Tabs.loadTabContent(App.Utils.getActiveTabName(), '{{ route('team.matrix_kddk.details', ['unit' => $unit]) }}')"
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-red-500 cursor-pointer z-20 transition-colors"
+                            title="Hapus Pencarian & Reset">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
+                @endif
+            </form>
+
+            {{-- B. BUTTON GROUP --}}
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                
+                {{-- Tombol Upload Seleksi --}}
+                <button type="button" onclick="document.getElementById('csv-selection-detail').click()" 
+                        class="flex-1 sm:flex-none flex items-center justify-center px-3 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 hover:text-indigo-600 transition shadow-sm text-sm font-medium"
+                        title="Upload CSV">
+                    <i class="fas fa-file-upload sm:mr-2 text-green-600"></i>
+                    <span class="sm:inline">Upload</span>
+                </button>
+                <input type="file" id="csv-selection-detail" class="hidden" accept=".csv,.txt">
+
+                {{-- Tombol Bentuk Group (Hidden by Default) --}}
+                <button onclick="window.confirmGrouping()" id="btn-group-kddk" 
+                        class="hidden flex-1 sm:flex-none items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg shadow-md hover:shadow-lg transition transform active:scale-95">
+                    <i class="fas fa-layer-group mr-2"></i> Grouping
+                </button>
+
+                {{-- Tombol Kembali --}}
+                <button onclick="App.Tabs.loadTabContent(App.Utils.getActiveTabName(), '{{ route('team.matrix_kddk.index') }}')" 
+                        class="flex-none flex items-center justify-center px-3 py-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                        title="Kembali ke Index">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
         </div>
     </div>
 
-    <div id="kddk-notification-container"></div>
-    
-    {{-- SEARCH --}}
-    <form action="{{ route('team.matrix_kddk.details', ['unit' => $unit]) }}" method="GET" class="mb-4 flex" onsubmit="event.preventDefault(); App.Tabs.loadTabContent(App.Utils.getActiveTabName(), this.action + '?search=' + this.search.value);">
-        <input type="text" name="search" placeholder="Cari idpelanggan / nomor meter..." class="w-full md:w-1/3 rounded-l-md border-gray-300 dark:bg-gray-700 dark:text-white shadow-sm focus:ring-indigo-500">
-        <button type="submit" class="px-4 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700"><i class="fas fa-search"></i></button>
-    </form>
+    {{-- NOTIFICATION AREA --}}
+    <div id="kddk-notification-container" class="px-6 mt-4"></div>
 
     {{-- TABEL PELANGGAN --}}
     <div class="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">

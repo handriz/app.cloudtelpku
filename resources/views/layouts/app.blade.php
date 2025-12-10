@@ -15,6 +15,24 @@
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
 
+        <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js" defer></script>
+
+<style>
+    .marker-cluster-small { background-color: rgba(181, 226, 140, 0.6); }
+    .marker-cluster-small div { background-color: rgba(110, 204, 57, 0.6); }
+    .marker-cluster-medium { background-color: rgba(241, 211, 87, 0.6); }
+    .marker-cluster-medium div { background-color: rgba(240, 194, 12, 0.6); }
+    .marker-cluster-large { background-color: rgba(253, 156, 115, 0.6); }
+    .marker-cluster-large div { background-color: rgba(241, 128, 23, 0.6); }
+    .marker-cluster div {
+        width: 30px; height: 30px; margin-left: 5px; margin-top: 5px;
+        text-align: center; border-radius: 15px; font: 12px "Helvetica Neue", Arial, Helvetica, sans-serif;
+        display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+    }
+</style>
+
         @vite(['resources/css/app.css', 'resources/js/app.js'])
 <script>
     window.googleMapsApiKey = "{{ env('VITE_GOOGLE_MAPS_API_KEY') }}";

@@ -211,6 +211,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/export-rbm/{unit}', [MatrixKddkController::class, 'exportRbm'])->name('export_rbm');
             Route::post('/bulk-move', [MatrixKddkController::class, 'bulkMove'])->name('bulk_move');
             Route::post('/bulk-remove', [MatrixKddkController::class, 'bulkRemove'])->name('bulk_remove');
+            Route::get('/history/{unit}', [MatrixKddkController::class, 'getAuditLogs'])->name('history');
+            Route::get('/print-worksheet/{unit}', [MatrixKddkController::class, 'printWorksheet'])->name('print_worksheet');
+            Route::get('/route-table/{unit}', [MatrixKddkController::class, 'getRouteTable'])->name('get_route_table');
+            Route::get('/search-customer/{unit}', [MatrixKddkController::class, 'searchCustomer'])->name('search_customer');
 
             // 8. Peta
             Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');

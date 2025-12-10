@@ -72,10 +72,10 @@
             {{-- KONTEN TAB: UMUM --}}
             <div id="content-tab-general" class="setting-tab-content">
                 <div class="mb-4">
-                    <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Periode Data Aktif (Untuk Matriks)</label>
+                    <label class="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Referensi Periode Data</label>
                     <input type="month" name="settings[kddk_active_period]" value="{{ $activePeriodValue }}" 
                            class="w-full md:w-1/3 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 dark:bg-gray-700 dark:text-white">
-                    <p class="text-xs text-gray-500 mt-1">Menentukan bulan dan tahun data yang akan difilter di Matrix KDDK.</p>
+                    <p class="text-xs text-gray-500 mt-1">Menentukan bulan dan tahun data yang akan menjadi key acuan data kerja.</p>
                 </div>
                 @if($isAdminRole)
                 <hr class="my-6 border-gray-200 dark:border-gray-700">
