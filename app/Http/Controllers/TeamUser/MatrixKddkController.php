@@ -313,6 +313,7 @@ class MatrixKddkController extends Controller
                 'lng' => $item->longitudex,
                 'seq' => substr($item->kddk, 7, 3),
                 'kddk' => $item->kddk,
+                'idpel' => $item->idpel,
                 'info' => "
                     <div class='text-xs font-sans'>
                         <div class='border-b border-gray-100 pb-1 mb-1'>
@@ -1111,6 +1112,57 @@ class MatrixKddkController extends Controller
             });
 
         return response()->json($results);
+    }
+
+    /**
+     * SIMPAN URUTAN RUTE BARU (HASIL VISUAL REORDER)
+     */
+    public function saveRouteSequence(Request $request)
+    {
+        $request->validate([
+            'route_prefix' => 'required|string|size:7', // Misal: A1BRBAA
+            'ordered_idpels' => 'required|array|min:1'  // Array IDPEL urut [id1, id2, id3...]
+        ]);
+
+        $prefix = $request->route_prefix;
+        $idpels = $request->ordered_idpels;
+
+        DB::beginTransaction();
+        try {
+            // 1. Ambil data existing untuk menjaga sisipan (opsional) atau reset sisipan
+            // Disini kita reset sisipan ke '00' agar urutan bersih.
+            
+            $seq = 1;
+            foreach ($idpels as $idpel) {
+                // Format KDDK Baru: Prefix(7) + Urut(3) + Sisipan(00)
+                $seqStr = str_pad($seq, 3, '0', STR_PAD_LEFT);
+                $newKddk = $prefix . $seqStr . '00';
+
+                DB::table('mapping_kddk')
+                    ->where('idpel', $idpel)
+                    ->update([
+                        'kddk' => $newKddk,
+                        'updated_at' => now()
+                    ]);
+                
+                $seq++;
+            }
+
+            // Catat Log
+            $count = count($idpels);
+            $this->recordActivity('VISUAL_REORDER', "Mengurutkan ulang visual {$count} pelanggan pada rute {$prefix}", $prefix);
+
+            DB::commit();
+            
+            // Hapus Cache
+            Cache::forget('matrix_index_' . Auth::id() . '_' . date('Y-m'));
+
+            return response()->json(['success' => true, 'message' => "Urutan rute berhasil diperbarui!"]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
+        }
     }
 
     // --- Helper Hirarki (Copy dari kode lama Anda) ---

@@ -9,6 +9,7 @@ import './permission-handler';
 import './matrix-handler';
 import './hierarchy-handler';
 import './settings-handler';
+import './mapping-handler';
 
 Alpine.plugin(collapse);
 window.Alpine = Alpine;

@@ -117,7 +117,7 @@ class MappingKddkController extends Controller
         }    
 
         // 5. Terapkan paginasi
-        $mappings = $query->paginate(15)->withQueryString();
+        $mappings = $query->paginate(10)->withQueryString();
 
         // 6. Siapkan Data Header (Foto, Peta, Status)
         $searchedMapping = null;
@@ -190,7 +190,7 @@ class MappingKddkController extends Controller
             ->whereNotNull('mapping_kddk.latitudey')
             ->whereNotNull('mapping_kddk.longitudex');
 
-        // Jika tidak ada pencarian, kembalikan semua data dalam satu grup 'all'
+        // SKENARIO 1: Tidak Ada Pencarian (Ambil Random Sample)
         if (!$search) {
             $initialCustomers = (clone $baseQuery)
             ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex')
@@ -200,30 +200,58 @@ class MappingKddkController extends Controller
             return response()->json(['searched' => [], 'nearby' => [], 'all' => $initialCustomers]);
         }
 
-        // Jika ADA pencarian, pisahkan logikanya
+        // SKENARIO 2: Ada Pencarian
         $searchedCustomers = (clone $baseQuery)
-            ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex')
+            ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex', 'mapping_kddk.namagd')
             ->when($search, function ($query, $search) {
-                return $query->where('mapping_kddk.idpel', 'like', "%{$search}%")
-                            ->orWhere('mapping_kddk.nokwhmeter', 'like', "%{$search}%");
+                return $query->where(function($q) use ($search) {
+                    $q->where('mapping_kddk.idpel', 'like', "%{$search}%")
+                      ->orWhere('mapping_kddk.nokwhmeter', 'like', "%{$search}%");
+                });
             })->get();
 
         $nearbyCustomers = collect();
 
         if ($searchedCustomers->isNotEmpty()) {
             $centerPoint = $searchedCustomers->first();
-            $lat = $centerPoint->latitudey;
-            $lon = $centerPoint->longitudex;
-            $radius = 0.1; // 100 meter
 
-            // **PERHITUNGAN HAVERSINE HANYA JALAN JIKA ADA SEARCH**
+            $lat = (float) $centerPoint->latitudey;
+            $lon = (float) $centerPoint->longitudex;
+            $radiusKm = 0.2; // 200 meter
+
+            // Hitung Selisih Derajat (Rumus Kasar)
+            // 1 Derajat Latitude ~= 111 km
+            $latChange = $radiusKm / 111;
+            // 1 Derajat Longitude ~= 111 km * cos(latitude)
+            $lonChange = $radiusKm / abs(111 * cos(deg2rad($lat)));
+
+            // Tentukan Batas Kotak (Bounding Box)
+            $minLat = $lat - $latChange;
+            $maxLat = $lat + $latChange;
+            $minLon = $lon - $lonChange;
+            $maxLon = $lon + $lonChange;
+
             $nearbyCustomers = (clone $baseQuery)
-                ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex')
+                ->select(
+                    'mapping_kddk.idpel', 
+                    'mapping_kddk.latitudey', 
+                    'mapping_kddk.longitudex',
+                    'mapping_kddk.namagd'
+                )
+                
+                // [OPTIMASI] Filter Kotak Dulu (Ringan bagi Database)
+                // Menggunakan nama kolom asli sesuai tabel
+                ->whereBetween('mapping_kddk.latitudey', [$minLat, $maxLat])
+                ->whereBetween('mapping_kddk.longitudex', [$minLon, $maxLon])
+                
+                // Hitung Jarak Persis (Haversine) hanya untuk data di dalam kotak
                 ->selectRaw("( 6371 * acos( cos( radians(?) ) * cos( radians( mapping_kddk.latitudey ) ) * cos( radians( mapping_kddk.longitudex ) - radians(?) ) + sin( radians(?) ) * sin( radians( mapping_kddk.latitudey ) ) ) ) AS distance", [$lat, $lon, $lat])
-                ->having("distance", "<", $radius)
-                ->whereIn('mapping_kddk.idpel', $searchedCustomers->pluck('idpel')->toArray(), 'and', true) // Not in searched
-                ->orderBy("distance")
-                ->limit(10)
+                
+                // Exclude data yang sedang dicari agar tidak duplikat
+                ->whereNotIn('mapping_kddk.idpel', $searchedCustomers->pluck('idpel')->toArray())
+                
+                ->orderBy("distance", "asc")
+                ->limit(20) // Batasi 20 tetangga terdekat
                 ->get();
         }
 
@@ -331,6 +359,60 @@ class MappingKddkController extends Controller
         $validatedData['user_pendataan'] = Auth::user()->name;
         $idpel = $validatedData['idpel'];
 
+        // ============================================================
+        // [FITUR BARU] SMART GEO-FENCING (VALIDASI WILAYAH)
+        // ============================================================
+        
+        // A. Cari UnitUP dari Pelanggan ini
+        $customerInfo = MasterDataPelanggan::where('idpel', $idpel)->select('unitup')->first();
+        if ($customerInfo && $customerInfo->unitup) {
+            // B. Cari 1 Titik Referensi (Tetangga) di Unit yang sama
+            // Kita ambil data mapping yang SUDAH VERIFIED (MappingKddk)
+            $referencePoint = MappingKddk::join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+                ->where('master_data_pelanggan.unitup', $customerInfo->unitup)
+                ->where('mapping_kddk.enabled', true) // Hanya yang aktif
+                ->whereNotNull('mapping_kddk.latitudey')
+                ->where('mapping_kddk.idpel', '!=', $idpel) // Jangan bandingkan dengan diri sendiri
+                ->select('mapping_kddk.latitudey', 'mapping_kddk.longitudex')
+                ->inRandomOrder() // Ambil acak biar representatif
+                ->first();
+
+            // C. Jika ada teman se-unit, kita hitung jaraknya
+            if ($referencePoint) {
+                $lat1 = (float) $validatedData['latitudey'];
+                $lon1 = (float) $validatedData['longitudex'];
+                $lat2 = (float) $referencePoint->latitudey;
+                $lon2 = (float) $referencePoint->longitudex;
+
+                // Rumus Haversine Sederhana (Jarak dalam KM)
+                $theta = $lon1 - $lon2;
+                $dist = sin(deg2rad($lat1)) * sin(deg2rad($lat2)) +  cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta));
+                $dist = acos($dist);
+                $dist = rad2deg($dist);
+                $miles = $dist * 60 * 1.1515;
+                $km = $miles * 1.609344;
+
+                // D. Tentukan Batas Toleransi (Misal: 50 KM)
+                // Jika input > 50 KM dari teman se-unitnya, kemungkinan besar SALAH INPUT.
+                if ($km > 50) {
+                    // Hapus file temp karena validasi gagal
+                    if ($request->filled('foto_kwh')) Storage::disk('local')->delete('temp_photos/' . basename($request->input('foto_kwh')));
+                    if ($request->filled('foto_bangunan')) Storage::disk('local')->delete('temp_photos/' . basename($request->input('foto_bangunan')));
+
+                    return response()->json([
+                        'errors' => [
+                            'latitudey' => [
+                                "Koordinat mencurigakan! Titik ini berjarak " . round($km) . " KM dari pusat data unit {$customerInfo->unitup}. Mohon cek kembali Latitude/Longitude Anda."
+                            ]
+                        ]
+                    ], 422);
+                }
+            }
+        }
+        // ============================================================
+        // [AKHIR FITUR BARU]
+        // ============================================================
+        
         $finalPaths = [];
         $tempFilesToDelete = [];
         $newObjectId = null; // Inisialisasi  
@@ -484,9 +566,16 @@ class MappingKddkController extends Controller
         DB::beginTransaction();
         try {
 
+            // [PERBAIKAN 1] LOCKING SUMBER DATA
+            // Gunakan lockForUpdate() agar proses lain tidak bisa membaca baris ini sampai transaksi selesai.
+            // Jika data sudah dihapus proses lain, ini akan error atau return null (aman).
+            $validData = MappingKddk::where('id', $id)->lockForUpdate()->first();
 
-            // 1. Cari data valid di tabel utama
-            $validData = MappingKddk::findOrFail($id);
+            if (!$validData) {
+                DB::rollBack(); // Batalkan jika data ternyata sudah hilang/diproses orang lain
+                return back()->with('error', 'Data tidak ditemukan atau sudah diproses oleh user lain.');
+            }
+
             $idpel = $validData->idpel;
             $objectid = $validData->objectid;
 
@@ -499,16 +588,22 @@ class MappingKddkController extends Controller
             $newKwhPath = null; // Inisialisasi
             $newBangunanPath = null; // Inisialisasi
 
+            // Cek file fisik sebelum pindah (mencegah error jika file hilang manual)
             if ($oldKwhPath && Storage::disk('public')->exists($oldKwhPath)) {
                 $newKwhPath = str_replace('verified', 'unverified', $oldKwhPath);
+                // Pastikan folder tujuan ada
+                $dir = dirname($newKwhPath);
+                if (!Storage::disk('public')->exists($dir)) Storage::disk('public')->makeDirectory($dir);
                 Storage::disk('public')->move($oldKwhPath, $newKwhPath);
-                $tempDataArray['foto_kwh'] = $newKwhPath; // Update path di array
+                $tempDataArray['foto_kwh'] = $newKwhPath;
             }
             
             if ($oldBangunanPath && Storage::disk('public')->exists($oldBangunanPath)) {
                 $newBangunanPath = str_replace('verified', 'unverified', $oldBangunanPath);
+                $dir = dirname($newBangunanPath);
+                if (!Storage::disk('public')->exists($dir)) Storage::disk('public')->makeDirectory($dir);
                 Storage::disk('public')->move($oldBangunanPath, $newBangunanPath);
-                $tempDataArray['foto_bangunan'] = $newBangunanPath; // Update path di array
+                $tempDataArray['foto_bangunan'] = $newBangunanPath;
             }
 
             // 4. Hapus data yang tidak relevan & set status baru
@@ -524,8 +619,7 @@ class MappingKddkController extends Controller
             $tempDataArray['locked_at'] = null;
 
             // 5. GANTI LOGIKA: KUNCI BARIS & INSERT/UPDATE (Anti-Race Condition)
-            // Kita menggunakan objectid sebagai kunci dan lockForUpdate untuk mencegah Job Impor Bulk menimpa serentak.
-            
+            // [PERBAIKAN 2] LOCKING TUJUAN (Anti-Race Condition di Antrian)
             $existingTemp = TemporaryMapping::where('objectid', $objectid)
                                             ->lockForUpdate() // <--- IMPLEMENTASI LOCKING
                                             ->first();
@@ -542,9 +636,13 @@ class MappingKddkController extends Controller
             // 6. Hapus data dari mapping_kddk (tabel utama)
             $validData->delete();
 
+            // 7. Kembalikan status data "superseded" (jika ada) menjadi "verified" kembali
+            // Agar histori data sebelumnya aktif lagi secara otomatis
             MappingKddk::where('idpel', $idpel)
                        ->where('ket_validasi', 'superseded')
-                       ->update(['ket_validasi' => 'verified']);
+                       ->orderByDesc('created_at')
+                       ->limit(1)
+                       ->update(['ket_validasi' => 'verified', 'enabled' => true]);
 
             DB::commit();
 
@@ -616,4 +714,5 @@ class MappingKddkController extends Controller
             return back()->with('error', 'Gagal memproses: ' . $e->getMessage());
         }
     }
+    
 }

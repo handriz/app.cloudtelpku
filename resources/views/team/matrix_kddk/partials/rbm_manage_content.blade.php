@@ -384,6 +384,41 @@
                 </div>
                 <button onclick="document.getElementById('anomaly-alert').classList.add('hidden')" class="text-red-500 hover:text-red-700 ml-2"><i class="fas fa-times"></i></button>
             </div>
+            {{-- TOOLBAR VISUAL REORDER (Overlay di Peta) --}}
+            <div id="map-visual-controls" class="hidden absolute top-4 right-4 z-[5000] flex flex-col space-y-2">
+                
+                {{-- Tombol Mulai Edit --}}
+                <button id="btn-start-reorder" onclick="startVisualReorder()" 
+                        class="bg-white text-indigo-700 font-bold py-2 px-4 rounded shadow-md border border-indigo-200 hover:bg-indigo-50 flex items-center">
+                    <i class="fas fa-draw-polygon mr-2"></i> Mode Urutkan Visual
+                </button>
+
+                {{-- Panel Aksi (Disembunyikan Awalnya) --}}
+                <div id="panel-reorder-actions" class="hidden bg-white p-3 rounded shadow-xl border border-gray-300 w-64 animate-fade-in-down">
+                    <h4 class="text-xs font-bold text-gray-500 uppercase mb-2">Mode Edit Aktif</h4>
+                    <p class="text-[10px] text-gray-600 mb-3">
+                        Klik marker satu per satu sesuai urutan yang diinginkan. Garis biru menunjukkan urutan baru.
+                    </p>
+                    
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold">Terpilih:</span>
+                        <span id="reorder-count" class="text-sm font-bold text-indigo-600">0</span>
+                    </div>
+
+                    <div class="flex space-x-2">
+                        <button onclick="saveVisualReorder()" class="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 rounded">
+                            <i class="fas fa-save mr-1"></i> Simpan
+                        </button>
+                        <button onclick="cancelVisualReorder()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-bold py-2 rounded">
+                            Batal
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Input Hidden untuk menyimpan URL API --}}
+            <input type="hidden" id="api-save-sequence" value="{{ route('team.matrix_kddk.save_sequence') }}">
+
             {{-- Data Map --}}
             <div id="rbm-map-data" data-points="{{ json_encode($mapData ?? []) }}" class="hidden"></div>
             <input type="hidden" id="map-data-url" value="{{ route('team.matrix_kddk.map_data', ['unit' => $unitCode]) }}">

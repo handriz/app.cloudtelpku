@@ -20,6 +20,7 @@ use App\Http\Controllers\TeamUser\MappingValidationController;
 use App\Http\Controllers\TeamUser\ValidationRecapController;
 use App\Http\Controllers\TeamUser\MatrixKddkController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Executive\DashboardRbmController;
 
 /*
 |--------------------------------------------------------------------------
@@ -215,6 +216,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/print-worksheet/{unit}', [MatrixKddkController::class, 'printWorksheet'])->name('print_worksheet');
             Route::get('/route-table/{unit}', [MatrixKddkController::class, 'getRouteTable'])->name('get_route_table');
             Route::get('/search-customer/{unit}', [MatrixKddkController::class, 'searchCustomer'])->name('search_customer');
+            Route::post('/save-sequence', [MatrixKddkController::class, 'saveRouteSequence'])->name('save_sequence');
 
             // 8. Peta
             Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');
@@ -234,8 +236,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // RUTE UNTUK PANEL EKSEKUTIF (Executive User)
     // Menggunakan middleware 'role' yang spesifik
     // ======================================================================
-    Route::prefix('executive')->name('executive.')->middleware('role:executive_user')->group(function () {
-        Route::get('/dashboard', [ExecutiveDashboardController::class, 'index'])->name('dashboard');
+    Route::prefix('executive')->name('executive.')->middleware('role:executive_user,admin')->group(function () {
+        Route::get('/dashboard', [DashboardRbmController::class, 'index'])->name('dashboard');
+
+        // 2. Dashboard Monitoring RBM (Grafik & Statistik)
+        // URL: /executive/monitoring-rbm/18111
+        Route::get('/monitoring-rbm', [DashboardRbmController::class, 'monitoring'])->name('monitoring_rbm');
+
+        // 3. Akses Data Peta (Untuk keperluan visualisasi peta di dashboard)
+        Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');
 
         
     });

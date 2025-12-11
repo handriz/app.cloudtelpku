@@ -44,8 +44,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const observer = new MutationObserver((mutations) => {
         let shouldSync = false;
-        mutations.forEach(m => { if (m.target.id === 'tabs-content' || m.target.closest('#tabs-content')) shouldSync = true; });
+        let dashboardLoaded = false; // Flag baru
+
+        mutations.forEach(m => { 
+            // Cek jika konten tab berubah
+            if (m.target.id === 'tabs-content' || m.target.closest('#tabs-content')) {
+                shouldSync = true;
+                
+                // Cek spesifik apakah Data Dashboard masuk ke DOM?
+                // Kita cek apakah node baru mengandung ID 'dashboard-analytics-data'
+                m.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) { // Element Node
+                        if (node.id === 'dashboard-analytics-data' || node.querySelector('#dashboard-analytics-data')) {
+                            dashboardLoaded = true;
+                        }
+                    }
+                });
+            }
+        });
+        
         if (shouldSync) setTimeout(syncSelectionUI, 50);
+        
+        // [TAMBAHAN] Trigger Chart jika Dashboard terdeteksi
+        if (dashboardLoaded) {
+            setTimeout(initDashboardCharts, 100); 
+        }
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -153,6 +176,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Pastikan Layer Induk (Area) ada di peta
                 loadAreaMap(areaCode, () => {
+                    const btnReorder = document.getElementById('map-visual-controls');
+
                     if (!isHidden) {
                         // SAAT BUKA RUTE:
                         if (displayCode) updateBreadcrumb(displayCode);
@@ -164,9 +189,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // (Opsional) Zoom otomatis ke bounds layer area agar terlihat jelas
                         fitBoundsToLayer(areaLayers[areaCode]);
-                    } 
-                    // SAAT TUTUP RUTE:
-                    // Tidak perlu hapus layer peta. Biarkan Cluster Area tetap ada.
+
+                        if(btnReorder) btnReorder.classList.remove('hidden');
+
+                    } else {
+                    // === SAAT RUTE DITUTUP (CLOSE) ===
+                        
+                        // 1. [BARU] SEMBUNYIKAN TOMBOL REORDER
+                        if(btnReorder) {
+                            btnReorder.classList.add('hidden');
+                            
+                            // Opsional: Jika user lupa simpan/batal, paksa keluar mode edit
+                            if (window.isReorderMode) cancelVisualReorder();
+                        }
+                    }
                 });
             }
             return;
@@ -734,13 +770,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const iconHtml = `<div class="flex items-center justify-center w-6 h-6 bg-white border-2 ${colorClass} rounded-full text-[9px] font-bold shadow-sm" style="opacity: 0.9;">${pt.seq}</div>`;
                     const icon = L.divIcon({ className: 'custom-map-marker', html: iconHtml, iconSize: [24, 24], iconAnchor: [12, 12] });
+                    
                     const marker = L.marker([pt.lat, pt.lng], { icon: icon });
                     
                     marker.kddkData = { 
                         isAnomaly: isAnomaly,
-                        route: routeCodeStr 
+                        route: routeCodeStr,
+                        idpel: pt.idpel,
+                        fullKddk: pt.kddk 
                     };
                     marker.bindPopup(pt.info);
+                    marker.on('click', function(e) {
+                        console.log("Marker diklik!", { 
+        mode: window.isReorderMode, 
+        idpel: this.kddkData.idpel 
+    });
+                        // Cek apakah sedang dalam Mode Reorder (Variabel Global)
+                        if (window.isReorderMode === true) { 
+                            // Tutup popup agar tidak menghalangi pandangan
+                            marker.closePopup(); 
+                            
+                            // Panggil fungsi logika reorder
+                            handleMarkerClickReorder(marker); 
+                        }
+                    });
                     newLayer.addLayer(marker);
                 });
 
@@ -1879,6 +1932,95 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
+    // ============================================================
+    // 10. DASHBOARD CHARTS (APEXCHARTS HANDLER)
+    // ============================================================
+    
+    // Simpan instance chart agar bisa di-destroy saat refresh
+    let chartAreaInstance = null;
+    let chartQualityInstance = null;
+
+    function initDashboardCharts() {
+        // 1. Cari Elemen Data
+        const dataEl = document.getElementById('dashboard-analytics-data');
+        if (!dataEl || typeof ApexCharts === 'undefined') return;
+
+        // 2. Ambil Data dari Atribut Data
+        // Gunakan try-catch untuk antisipasi JSON error
+        let areaLabels = [], areaValues = [];
+        try {
+            areaLabels = JSON.parse(dataEl.dataset.areaLabels);
+            areaValues = JSON.parse(dataEl.dataset.areaValues);
+        } catch (e) { console.error("Gagal parsing data chart", e); }
+
+        const validCount = parseInt(dataEl.dataset.qualityValid) || 0;
+        const invalidCount = parseInt(dataEl.dataset.qualityInvalid) || 0;
+
+        // 3. Render Chart 1: AREA (Bar)
+        const areaChartEl = document.querySelector("#chart-area-bar");
+        if (areaChartEl) {
+            // Hapus chart lama jika ada (mencegah tumpuk)
+            if (chartAreaInstance) chartAreaInstance.destroy();
+
+            const optionsBar = {
+                series: [{ name: 'Pelanggan', data: areaValues }],
+                chart: { 
+                    type: 'bar', 
+                    height: 320, 
+                    toolbar: { show: false }, 
+                    fontFamily: 'Inter, sans-serif',
+                    animations: { enabled: true }
+                },
+                plotOptions: { bar: { borderRadius: 4, horizontal: false, columnWidth: '50%' } },
+                dataLabels: { enabled: false },
+                stroke: { show: true, width: 2, colors: ['transparent'] },
+                xaxis: { categories: areaLabels, title: { text: 'Kode Area' } },
+                yaxis: { title: { text: 'Jumlah' } },
+                fill: { opacity: 1 },
+                colors: ['#6366f1'], // Indigo-500
+                tooltip: { y: { formatter: function (val) { return val + " Plg" } } }
+            };
+
+            chartAreaInstance = new ApexCharts(areaChartEl, optionsBar);
+            chartAreaInstance.render();
+        }
+
+        // 4. Render Chart 2: QUALITY (Donut)
+        const qualityChartEl = document.querySelector("#chart-quality-pie");
+        if (qualityChartEl) {
+            if (chartQualityInstance) chartQualityInstance.destroy();
+
+            const optionsPie = {
+                series: [validCount, invalidCount],
+                chart: { type: 'donut', height: 280, fontFamily: 'Inter, sans-serif' },
+                labels: ['Ada Koordinat', 'Tanpa Koordinat'],
+                colors: ['#10b981', '#ef4444'], // Emerald-500, Red-500
+                dataLabels: { enabled: false },
+                legend: { show: false }, // Kita pakai custom legend HTML
+                plotOptions: {
+                    pie: {
+                        donut: {
+                            size: '70%',
+                            labels: {
+                                show: true,
+                                total: {
+                                    show: true,
+                                    label: 'Total',
+                                    formatter: function (w) {
+                                        return w.globals.seriesTotals.reduce((a, b) => a + b, 0);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            chartQualityInstance = new ApexCharts(qualityChartEl, optionsPie);
+            chartQualityInstance.render();
+        }
+    }
+
     window.openHistoryModal = function() {
         const modal = document.getElementById('modal-history');
         const content = document.getElementById('history-content');
@@ -1992,4 +2134,242 @@ document.addEventListener('DOMContentLoaded', () => {
         if(dropdown) dropdown.classList.add('hidden');
     }
 
+    // ============================================================
+    // 11. VISUAL REORDER LOGIC (FITUR BARU)
+    // ============================================================
+    
+    window.isReorderMode = false;
+    window.reorderList = []; // Menyimpan IDPEL yang diklik: ['5123..', '5124..']
+    window.polylineLayer = null; // Garis penghubung
+    window.currentRoutePrefix = null; // Menyimpan Prefix Rute yang sedang diedit (A1BRBAA)
+
+    // A. Fungsi Memulai Mode Edit
+    window.startVisualReorder = function() {
+        // Validasi: Harus ada Rute yang terbuka (Header Accordion Aktif)
+        const openRouteHeader = document.querySelector('.route-header .icon-chevron-sub.rotate-180');
+        
+        if (!openRouteHeader) {
+            alert("Harap BUKA salah satu RUTE (Accordion) terlebih dahulu untuk mengedit.");
+            return;
+        }
+
+        // [PERBAIKAN] JANGAN ambil prefix dulu. Kita ambil nanti saat klik pertama.
+        window.currentRoutePrefix = null; 
+
+        // UI Updates
+        window.isReorderMode = true;
+        window.reorderList = [];
+        
+        document.getElementById('btn-start-reorder').classList.add('hidden');
+        document.getElementById('panel-reorder-actions').classList.remove('hidden');
+        
+        // Init Polyline Kosong
+        if (window.polylineLayer) rbmMap.removeLayer(window.polylineLayer);
+        window.polylineLayer = L.polyline([], {color: '#4f46e5', weight: 4, dashArray: '10, 10', opacity: 0.7}).addTo(rbmMap);
+        
+        alert("Mode Edit Aktif! Klik marker pertama untuk mengunci Rute.");
+    }
+
+    // B. Fungsi Saat Marker Diklik (Dipasang di listener map)
+    function handleMarkerClickReorder(marker) {
+        if (!window.isReorderMode) return;
+
+        // 1. Debugging Data
+        console.log("DATA MARKER:", marker.kddkData);
+
+        const idpel = marker.kddkData.idpel;
+        const fullKddk = marker.kddkData.fullKddk; 
+
+        // 2. Validasi Keras
+        if (!idpel) {
+            alert("Error: IDPEL tidak ditemukan. Cek Controller 'getMapData'.");
+            return;
+        }
+        if (!fullKddk) {
+            alert("Error: KDDK (Prefix) tidak ditemukan. Cek Controller 'getMapData' pastikan return 'kddk'.");
+            return;
+        }
+
+        // 3. Cek Duplikasi
+        if (window.reorderList.includes(idpel)) return;
+
+        // 4. Logika Penguncian Prefix (DIPERBAIKI)
+        // Ambil 7 karakter pertama. Contoh: '18111A1'
+        const thisMarkerPrefix = fullKddk.substring(0, 7); 
+
+        if (window.currentRoutePrefix === null || window.currentRoutePrefix === undefined) {
+            // KLIK PERTAMA: Kunci Prefix
+            window.currentRoutePrefix = thisMarkerPrefix;
+            console.log("PREFIX TERKUNCI:", window.currentRoutePrefix);
+        } 
+        else if (window.currentRoutePrefix !== thisMarkerPrefix) {
+            // KLIK LANJUTAN: Cek Kesamaan
+            alert(`JANGAN CAMPUR RUTE!\n\nPrefix Terkunci: ${window.currentRoutePrefix}\nPrefix Marker: ${thisMarkerPrefix}`);
+            return; 
+        }
+
+        // 5. Visual Update
+        window.reorderList.push(idpel);
+        
+        const latLng = marker.getLatLng();
+        if (window.polylineLayer) window.polylineLayer.addLatLng(latLng);
+        
+        const seqNum = window.reorderList.length;
+        const newIcon = L.divIcon({
+            className: 'custom-reorder-marker',
+            html: `<div class="flex items-center justify-center w-8 h-8 bg-indigo-600 text-white rounded-full text-sm font-bold border-2 border-white shadow-lg" style="z-index: 9999;">${seqNum}</div>`,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
+        });
+        marker.setIcon(newIcon);
+        
+        document.getElementById('reorder-count').textContent = seqNum + " Item";
+    }
+
+    // C. Simpan Perubahan
+    window.saveVisualReorder = function() {
+        if (window.reorderList.length === 0) {
+            alert("Belum ada urutan yang dibuat.");
+            return;
+        }
+
+        if (!confirm(`Simpan urutan baru untuk ${window.reorderList.length} pelanggan ini?`)) return;
+
+        const url = document.getElementById('api-save-sequence').value;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        // Tombol Loading
+        const btnSave = document.querySelector('#panel-reorder-actions button.bg-green-600');
+        const originalText = btnSave.innerHTML;
+        btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+        btnSave.disabled = true;
+
+        fetch(url, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Accept': 'application/json', 
+                'X-CSRF-TOKEN': csrfToken 
+            },
+            body: JSON.stringify({
+                route_prefix: window.currentRoutePrefix, 
+                ordered_idpels: window.reorderList
+            })
+        })
+        .then(async res => {
+            // 1. Tangkap Error 422 (Validasi Laravel)
+            if (res.status === 422) {
+                const errData = await res.json();
+                let errMsg = "Gagal Validasi:\n";
+                // Loop semua pesan error dari Laravel
+                for (const [field, messages] of Object.entries(errData.errors)) {
+                    errMsg += `- ${messages[0]}\n`;
+                }
+                throw new Error(errMsg);
+            }
+
+            // 2. Tangkap Error Lain (500, 403, dll)
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({})); 
+                const errorMessage = errorData.message || res.statusText || "Server Error";
+                throw new Error(errorMessage);
+            }
+
+            return res.json();
+        })
+        .then(data => {
+            if (data.success) {
+                alert("Berhasil! " + data.message);
+                cancelVisualReorder(); 
+                
+               const openRouteHeader = document.querySelector('.route-header .icon-chevron-sub.rotate-180');if (openRouteHeader) {
+                    const headerEl = openRouteHeader.closest('.route-header');
+                    const targetId = headerEl.dataset.target;     // ID div tabel (route-18111A1-A1)
+                    const areaCode = headerEl.dataset.areaCode;
+                    const routeCode = headerEl.dataset.routeCode;
+                    
+                    // Panggil fungsi load tabel yang sudah ada di matrix-handler.js
+                    // Ini akan me-request ulang HTML tabel via AJAX tanpa reload halaman
+                    if (typeof loadRouteTableData === 'function') {
+                        // Set atribut loaded ke false dulu biar dipaksa reload
+                        const contentDiv = document.getElementById(targetId);
+                        if(contentDiv) contentDiv.dataset.loaded = "false";
+                        
+                        // Load ulang
+                        loadRouteTableData(targetId, areaCode, routeCode);
+                    }
+                }
+                
+            } else {
+                throw new Error(data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert(err.message); // Tampilkan pesan error yang spesifik
+        })
+        .finally(() => {
+            btnSave.innerHTML = originalText;
+            btnSave.disabled = false;
+        });
+    }
+
+    // D. Batal / Keluar
+    window.cancelVisualReorder = function() {
+        window.isReorderMode = false;
+        window.reorderList = [];
+        window.currentRoutePrefix = null;
+        
+        // Hapus garis
+        if (window.polylineLayer) {
+            rbmMap.removeLayer(window.polylineLayer);
+            window.polylineLayer = null;
+        }
+
+        // Reset UI Button
+        document.getElementById('btn-start-reorder').classList.remove('hidden');
+        document.getElementById('panel-reorder-actions').classList.add('hidden');
+        document.getElementById('reorder-count').textContent = "0";
+
+        // Refresh Peta (Reload Layer Area agar icon marker kembali normal)
+        // Cari area code yang aktif
+        const openRouteHeader = document.querySelector('.route-header .icon-chevron-sub.rotate-180');
+        if(openRouteHeader) {
+            const areaCode = openRouteHeader.closest('.route-header').dataset.areaCode;
+            // Force reload map
+            if (areaLayers[areaCode]) {
+                rbmMap.removeLayer(areaLayers[areaCode]);
+                delete areaLayers[areaCode]; // Hapus cache agar reload fresh
+            }
+            loadAreaMap(areaCode); 
+        }
+    }
+
+    window.addEventListener('map:focus', function(e) {
+    const { lat, lng } = e.detail;
+    
+    // Pastikan objek peta (rbmMap atau map) tersedia
+    // Sesuaikan nama variabel peta Anda (misal: window.rbmMap atau window.map)
+    const targetMap = window.rbmMap || window.map; 
+    
+    if (targetMap && lat && lng) {
+        // Efek Terbang (FlyTo) yang halus
+        targetMap.flyTo([lat, lng], 18, {
+            animate: true,
+            duration: 1.5
+        });
+
+        // Opsional: Buka Popup Marker di lokasi tersebut jika ada
+        targetMap.eachLayer(layer => {
+            if (layer instanceof L.Marker) {
+                const lLat = layer.getLatLng().lat;
+                const lLng = layer.getLatLng().lng;
+                // Cek presisi koordinat (toleransi kecil)
+                if (Math.abs(lLat - lat) < 0.00001 && Math.abs(lLng - lng) < 0.00001) {
+                    layer.openPopup();
+                }
+            }
+        });
+    }
+    });
 });

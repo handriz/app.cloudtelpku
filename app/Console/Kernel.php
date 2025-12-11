@@ -33,7 +33,7 @@ class Kernel extends ConsoleKernel
          ->appendOutputTo(storage_path('logs/scheduler-clean.log'));
 
         // 4. Jalankan pembersihan setiap tengah malam
-        $schedule::command('model:prune')->daily();
+        $schedule->command('model:prune')->daily();
     }
 
     /**
