@@ -376,7 +376,7 @@
                 <div class="h-3 w-px bg-gray-300 mx-1"></div>
                 <span class="text-[10px] text-gray-700 font-bold truncate max-w-[200px]" id="map-context-title">Pilih Area/Rute di kiri</span>
             </div>
-            <div id="anomaly-alert" class="hidden absolute top-16 left-4 z-[400] bg-red-100/90 backdrop-blur-sm border border-red-400 text-red-800 px-3 py-2 rounded-lg shadow-lg flex items-center space-x-3 animate-bounce-in-up">
+            <div id="anomaly-alert" class="hidden absolute top-16 left-4 z-[5000] bg-red-100/95 backdrop-blur-md border border-red-400 text-red-800 px-3 py-2 rounded-lg sshadow-2xl flex items-center space-x-3 animate-bounce-in-up">
                 <div class="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs">!</div>
                 <div class="text-xs">
                     <span class="font-bold block">Terdeteksi Anomali!</span>

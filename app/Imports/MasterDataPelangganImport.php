@@ -52,6 +52,7 @@ class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkRea
             'fkmkwh'            => $row['fkmkwh'],
             'jenislayanan'      => $row['jenislayanan'],
             'status_dil'        => $row['status_dil'],
+            'tglnyala_pb'       => $row['tglnyala_pb'],
             'nomor_gardu'       => $row['nomor_gardu'],
             'nama_gardu'        => $row['nama_gardu'],
             'koordinat_x'       => $koordinatX,

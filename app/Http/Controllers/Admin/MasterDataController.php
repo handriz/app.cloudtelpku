@@ -116,6 +116,9 @@ class MasterDataController extends Controller
             'totalSize' => 'required|integer',
         ]);
 
+        // 1. Tangkap input checkbox (default false jika tidak dicentang)
+        $isLastBatch = $request->boolean('isLastBatch'); // Pastikan nama param sesuai dengan kiriman JS/Form
+
         $fileName = $validated['fileName'];
         $totalChunks = $validated['totalChunks'];
         $tempDir = 'temp_uploads/' . $fileName;
@@ -148,7 +151,7 @@ class MasterDataController extends Controller
             }
 
             // Mengirim path file dan ID user yang sedang login ke Job
-            ProcessPelangganImport::dispatch($finalPath, auth()->id());
+            ProcessPelangganImport::dispatch($finalPath, auth()->id(), $isLastBatch);
 
             ob_end_clean();
 

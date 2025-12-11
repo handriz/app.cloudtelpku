@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Variabel Peta Multi-Layer
     let rbmMap = null;
-    const activeLayers = {}; // Simpan layer aktif: { 'area-RB': LayerGroup, 'route-A1': LayerGroup }
+    const areaLayers = {}; // Simpan layer aktif: { 'area-RB': LayerGroup, 'route-A1': LayerGroup }
     let sequenceController = null; // Untuk abort fetch sequence
 
     function updateBreadcrumb(displayCode) {
@@ -89,20 +89,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const areaHeader = e.target.closest('[data-action="toggle-area-map"]');
         if (areaHeader) {
             e.preventDefault();
-            const targetId = areaHeader.dataset.target; // area-RB
-            const areaCode = areaHeader.dataset.areaCode;
+            const targetId = areaHeader.dataset.target; // ID Area (misal: area-RB)
+            const areaCode = areaHeader.dataset.areaCode; // Kode Area (misal: RB)
             const displayCode = areaHeader.dataset.displayCode;
             const icon = areaHeader.querySelector('.icon-chevron');
             
             const content = document.getElementById(targetId);
             if(content) {
-                const isHidden = content.classList.contains('hidden'); 
-                content.classList.toggle('hidden');
+                // Toggle Tampilan HTML Utama
+                const isNowHidden = content.classList.toggle('hidden');
+                // Putar Icon Panah Utama
                 if(icon) icon.classList.toggle('rotate-180');
 
-                // Update Breadcrumb & Peta
-                if (!content.classList.contains('hidden') && displayCode) updateBreadcrumb(displayCode);
-                toggleMapLayer(targetId, areaCode, null, isHidden);
+                if (!isNowHidden) {
+                    // BUKA: Update Breadcrumb & Tampilkan Bola Cluster Area
+                    if (displayCode) updateBreadcrumb(displayCode);
+                    loadAreaMap(areaCode);                    
+                } else {
+                    // TUTUP: Hapus Layer Area dari Peta (Bersih)
+                    removeAreaMap(areaCode);
+                    
+                    // Reset UI Anak (Tutup semua accordion rute di dalamnya)
+                    const childAccordions = content.querySelectorAll('[id^="route-"]');
+                    childAccordions.forEach(el => el.classList.add('hidden'));
+                    const childIcons = content.querySelectorAll('.icon-chevron-sub, .icon-chevron-d6');
+                    childIcons.forEach(el => el.classList.remove('rotate-180'));
+                }
             }
             return;
         }
@@ -128,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const routeHeader = e.target.closest('[data-action="toggle-route-map"]');
         if (routeHeader) {
             e.preventDefault(); e.stopPropagation(); 
-            const targetId = routeHeader.dataset.target;
+            const targetId = routeHeader.dataset.target; 
             const areaCode = routeHeader.dataset.areaCode;
             const routeCode = routeHeader.dataset.routeCode;
             const displayCode = routeHeader.dataset.displayCode;
@@ -136,24 +148,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const content = document.getElementById(targetId);
             if(content) {
-                const isHidden = content.classList.contains('hidden');
-                // 1. Tampilkan / Sembunyikan Kontainer
-                content.classList.toggle('hidden');
+                const isHidden = content.classList.toggle('hidden');
                 if(icon) icon.classList.toggle('rotate-180');
                 
-                // 2. Jika MEMBUKA dan BELUM LOAD -> Fetch AJAX
-            if (isHidden) {
-                if (displayCode) updateBreadcrumb(displayCode);
-                toggleMapLayer(targetId, areaCode, routeCode, true); // Load Peta
-
-                // CEK STATUS LOAD
-                if (content.dataset.loaded === "false") {
-                    loadRouteTableData(targetId, areaCode, routeCode);
-                }
-                } else {
-                    // Jika menutup
-                    toggleMapLayer(targetId, areaCode, routeCode, false); // Hapus Peta
-                }
+                // Pastikan Layer Induk (Area) ada di peta
+                loadAreaMap(areaCode, () => {
+                    if (!isHidden) {
+                        // SAAT BUKA RUTE:
+                        if (displayCode) updateBreadcrumb(displayCode);
+                        
+                        // Load Tabel Pelanggan (AJAX)
+                        if (content.dataset.loaded === "false") {
+                            loadRouteTableData(targetId, areaCode, routeCode);
+                        }
+                        
+                        // (Opsional) Zoom otomatis ke bounds layer area agar terlihat jelas
+                        fitBoundsToLayer(areaLayers[areaCode]);
+                    } 
+                    // SAAT TUTUP RUTE:
+                    // Tidak perlu hapus layer peta. Biarkan Cluster Area tetap ada.
+                });
             }
             return;
         }
@@ -578,102 +592,114 @@ document.addEventListener('DOMContentLoaded', () => {
     // 4. LOGIKA PETA (MULTI-LAYER)
     // ============================================================
     
-    function toggleMapLayer(layerId, areaCode, routeCode, isVisible) {
+    function loadAreaMap(areaCode, callback = null) {
         const mapContainer = document.getElementById('rbm-map');
         const urlInput = document.getElementById('map-data-url');
+        
         if (!mapContainer || !urlInput) return;
 
-        // Init Peta
+        // 1. Init Map (Jika belum ada)
         if (!rbmMap) {
             mapContainer.innerHTML = ''; 
             rbmMap = L.map('rbm-map').setView([0.5071, 101.4478], 13);
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles © Esri'
             }).addTo(rbmMap);
-            const resizeObserver = new ResizeObserver(() => {
-                if (rbmMap) rbmMap.invalidateSize();
-            });
+            const resizeObserver = new ResizeObserver(() => { if (rbmMap) rbmMap.invalidateSize(); });
             resizeObserver.observe(mapContainer);
             
-            // Listener tambahan untuk popup close
+            // Fix Popup Close (Agar tidak reload halaman)
             mapContainer.addEventListener('click', function(e) {
                 if (e.target.closest('.leaflet-popup-close-button') || e.target.closest('a')) {
-                    e.stopPropagation(); // Mencegah reload halaman
+                    e.stopPropagation();
                 }
             });
-
-            setTimeout(() => rbmMap.invalidateSize(), 200);
-            mapContainer.addEventListener('click', function(e) {
-                if (e.target.closest('.leaflet-popup-close-button') || e.target.closest('a')) {
-                    e.stopPropagation(); // Biarkan Leaflet kerja, tapi jangan lapor ke TabManager
-                    // e.preventDefault(); // Opsional, Leaflet biasanya sudah handle ini
-                }
-            });
-
-        } else {
-             if (rbmMap.getContainer() !== mapContainer) {
-                rbmMap.remove(); rbmMap = null;
-                for (let k in activeLayers) delete activeLayers[k]; 
-                toggleMapLayer(layerId, areaCode, routeCode, isVisible); 
-                return;
-             }
         }
 
-        // Hapus Layer
-        if (!isVisible) {
-            if (activeLayers[layerId]) {
-                rbmMap.removeLayer(activeLayers[layerId]);
-                delete activeLayers[layerId];
-                updateTotalPoints();
-                updateMapTitleWrapper();
+        // 2. Cek apakah Layer Area sudah ada di memori?
+        if (areaLayers[areaCode]) {
+            // Jika sudah ada tapi belum tampil di peta, tambahkan
+            if (!rbmMap.hasLayer(areaLayers[areaCode])) {
+                rbmMap.addLayer(areaLayers[areaCode]);
             }
+            // Jalankan callback (misal: lanjut buka tabel rute)
+            if (callback) callback();
+            updateTotalPoints();
+            updateMapTitleWrapper();
             return;
         }
 
-        // Tambah Layer
-        if (activeLayers[layerId]) return; 
-
+        // 3. Fetch Data Baru (Jika belum ada di memori)
         const countSpan = document.getElementById('map-count');
-        if(countSpan) countSpan.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        if(countSpan) countSpan.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
 
-        const urlBase = urlInput.value;
-        let fetchUrl = `${urlBase}?area=${areaCode}`;
-        if (routeCode) fetchUrl += `&route=${routeCode}`;
+        // URL meminta data "Area" (Grosiran)
+        const fetchUrl = `${urlInput.value}?area=${areaCode}`; 
 
-        fetch(fetchUrl)
+        fetch(`${urlInput.value}?area=${areaCode}`)
             .then(res => res.json())
             .then(points => {
-                // Gunakan Marker Cluster Group dengan Opsi Custom
+                
+                // A. Setup Cluster
                 const newLayer = L.markerClusterGroup({
-                    disableClusteringAtZoom: 18, // Pada zoom 18, paksa pecah semua jadi marker
-                    spiderfyOnMaxZoom: true,     // Efek jaring laba-laba jika titik bertumpuk di zoom maksimal
-                    showCoverageOnHover: false,  // Matikan area biru saat hover (biar bersih)
-                    chunkedLoading: true         // Load bertahap agar browser tidak freeze
+                    disableClusteringAtZoom: 19,
+                    spiderfyOnMaxZoom: true,
+                    showCoverageOnHover: false, // Kita ganti dengan Tooltip Custom
+                    chunkedLoading: true,
+                    maxClusterRadius: 60
                 });
 
-                // [LOGIKA BARU] 1. Hitung Centroid (Titik Tengah Rata-rata)
+                // B. Event Hover pada Cluster (FITUR BARU)
+                newLayer.on('clustermouseover', function (a) {
+                    const markers = a.layer.getAllChildMarkers();
+                    const routeCounts = {};
+                    
+                    // Hitung jumlah per rute dalam cluster ini
+                    markers.forEach(m => {
+                        const r = m.kddkData.route || '??';
+                        routeCounts[r] = (routeCounts[r] || 0) + 1;
+                    });
+
+                    // Susun HTML Tooltip
+                    let tooltipContent = '<div class="text-xs font-sans min-w-[100px]">';
+                    tooltipContent += '<div class="font-bold border-b border-gray-400 mb-1 pb-1">Isi Cluster Ini:</div>';
+                    
+                    // Sortir rute agar rapi
+                    Object.keys(routeCounts).sort().forEach(r => {
+                        tooltipContent += `<div class="flex justify-between items-center">
+                            <span class="font-mono text-indigo-200 font-bold mr-2">Rute ${r}</span>
+                            <span class="bg-white text-black px-1 rounded text-[9px] font-bold">${routeCounts[r]}</span>
+                        </div>`;
+                    });
+                    tooltipContent += '</div>';
+
+                    // Tampilkan Tooltip
+                    L.tooltip({
+                        direction: 'top',
+                        className: 'bg-gray-900 text-white border border-gray-600 shadow-xl opacity-90 p-2 rounded',
+                        offset: [0, -10]
+                    })
+                    .setContent(tooltipContent)
+                    .setLatLng(a.latlng)
+                    .addTo(rbmMap);
+                });
+
+                // Hapus tooltip saat mouse pergi
+                newLayer.on('clustermouseout', function () {
+                    rbmMap.eachLayer(function (layer) {
+                        if (layer instanceof L.Tooltip) rbmMap.removeLayer(layer);
+                    });
+                });
+
+
+                // C. Hitung Pusat & Loop Marker
                 let sumLat = 0, sumLng = 0, validCount = 0;
                 points.forEach(p => {
-                    const lat = parseFloat(p.lat);
-                    const lng = parseFloat(p.lng);
-                    if (!isNaN(lat) && !isNaN(lng) && lat !== 0) {
-                        sumLat += lat;
-                        sumLng += lng;
-                        validCount++;
-                    }
+                    const lat = parseFloat(p.lat); const lng = parseFloat(p.lng);
+                    if (lat && lng) { sumLat += lat; sumLng += lng; validCount++; }
                 });
-
-                // Titik Pusat
-                let centerPoint = null;
-                if (validCount > 0) {
-                    centerPoint = L.latLng(sumLat / validCount, sumLng / validCount);
-                }
-
-                // Ambang Batas Anomali (2 KM = 2000 Meter)
-                const ANOMALY_THRESHOLD_METERS = 2000; 
-                let anomalyCount = 0;
-                
-                const isRoute = !!routeCode; 
+                const centerPoint = validCount > 0 ? L.latLng(sumLat/validCount, sumLng/validCount) : null;
+                const ANOMALY_THRESHOLD = 2000;
 
                 const colorMap = {
                     'A': 'text-green-800 border-green-600',
@@ -689,70 +715,59 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 
                 points.forEach(pt => {
-                    // Ambil digit ke-7 (Hari) dari KDDK (misal A1A RB AA1 -> A)
-                    // Panjang KDDK = 12. Digit 7 ada di index 6 (0-based)
-                    const dayChar = pt.seq ? pt.seq.charAt(0) : 'A'; // Fallback logic jika seq beda
-                    
-                    // Atau ambil dari parameter routeCode jika tersedia (lebih akurat)
-                    const routeChar  = routeCode ? routeCode.charAt(1) : dayChar;
-                    
-                    // Tentukan warna
-                    const colorClass = colorMap[routeChar] || 'text-gray-800 border-gray-600';
+                    // Parsing Kode Rute (Digit 6 & 7 dari KDDK)
+                    // Asumsi KDDK: UP3(1) ULP(1) SUB(1) AREA(2) RUTE(2) ...
+                    // Contoh: A1A RB A1 ... -> Index 5 dan 6 adalah "A1"
+                    // Pastikan pt.kddk dikirim dari controller (sudah kita cek ada)
+                    const routeCodeStr = pt.kddk ? pt.kddk.substring(5, 7) : '??';
+                    const dayChar = pt.seq ? pt.seq.charAt(0) : 'A'; 
+                    let colorClass = colorMap[dayChar] || 'text-gray-800 border-gray-600';
                     let isAnomaly = false;
 
-                    // [LOGIKA BARU] 2. Cek Jarak ke Pusat
                     if (centerPoint) {
-                        const ptLatLng = L.latLng(pt.lat, pt.lng);
-                        const distance = centerPoint.distanceTo(ptLatLng); // Meter
-                        
-                        if (distance > ANOMALY_THRESHOLD_METERS) {
+                        const dist = centerPoint.distanceTo([pt.lat, pt.lng]);
+                        if (dist > ANOMALY_THRESHOLD) {
                             isAnomaly = true;
-                            anomalyCount++;
-                            // Ubah style jadi MERAH & BERKEDIP
-                            colorClass = 'marker-outlier animate-marker-pulse'; 
+                            colorClass = 'marker-outlier animate-marker-pulse';
                         }
                     }
 
-                    const iconHtml = `<div class="flex items-center justify-center w-5 h-5 bg-white border-2 ${colorClass} rounded-full text-[8px] font-bold shadow-sm" style="opacity: 0.9;">${pt.seq}</div>`;
-                    
-                    const icon = L.divIcon({ className: 'custom-map-marker', html: iconHtml, iconSize: [20, 20], iconAnchor: [10, 10] });
+                    const iconHtml = `<div class="flex items-center justify-center w-6 h-6 bg-white border-2 ${colorClass} rounded-full text-[9px] font-bold shadow-sm" style="opacity: 0.9;">${pt.seq}</div>`;
+                    const icon = L.divIcon({ className: 'custom-map-marker', html: iconHtml, iconSize: [24, 24], iconAnchor: [12, 12] });
                     const marker = L.marker([pt.lat, pt.lng], { icon: icon });
-
-                    // Tambahkan Info Jarak di Popup jika Anomali
-                    let popupContent = pt.info;
-                    if (isAnomaly) {
-                        popupContent += `<div class="mt-2 p-1 bg-red-100 text-red-700 text-[10px] font-bold rounded text-center border border-red-200"><i class="fas fa-exclamation-triangle"></i> Lokasi Jauh (>2KM)</div>`;
-                    }
-                    marker.bindPopup(popupContent);
-                    // Simpan status anomali di marker options agar bisa dihitung ulang nanti
-                    marker.options.isAnomaly = isAnomaly;
+                    
+                    marker.kddkData = { 
+                        isAnomaly: isAnomaly,
+                        route: routeCodeStr 
+                    };
+                    marker.bindPopup(pt.info);
                     newLayer.addLayer(marker);
                 });
 
-                activeLayers[layerId] = newLayer;
-                newLayer.addTo(rbmMap);
+                // Simpan ke Variabel Global & Tampilkan
+                areaLayers[areaCode] = newLayer;
+                rbmMap.addLayer(newLayer);
+
+                if (callback) callback();
+                else fitBoundsToLayer(newLayer); // Zoom ke area ini
                 
-                fitBoundsToAll();
                 updateTotalPoints();
                 updateMapTitleWrapper();
             })
             .catch(err => console.error("Map Error:", err));
     }
 
-    function fitBoundsToAll() {
-        if (!rbmMap) return;
-        const group = L.featureGroup();
-        Object.values(activeLayers).forEach(layer => {
-            // Karena layer sekarang adalah ClusterGroup, kita ambil bounds-nya langsung
-            if (layer.getBounds().isValid()) {
-                // Hack: Tambahkan dummy marker di sudut bounds agar featureGroup bisa kalkulasi
-                const bounds = layer.getBounds();
-                L.marker(bounds.getSouthWest()).addTo(group);
-                L.marker(bounds.getNorthEast()).addTo(group);
-            }
-        });
-        if (group.getLayers().length > 0) {
-            rbmMap.fitBounds(group.getBounds().pad(0.1));
+    function removeAreaMap(areaCode) {
+        if (areaLayers[areaCode] && rbmMap) {
+            rbmMap.removeLayer(areaLayers[areaCode]); // Hapus visual
+            updateTotalPoints();
+            updateMapTitleWrapper();
+        }
+    }
+
+    function fitBoundsToLayer(layer) {
+        if (layer && layer.getBounds().isValid()) {
+            rbmMap.fitBounds(layer.getBounds().pad(0.1));
         }
     }
 
@@ -766,21 +781,18 @@ document.addEventListener('DOMContentLoaded', () => {
         let total = 0;
         let totalAnomalies = 0;
 
-        Object.values(activeLayers).forEach(layer => {
-            // Hitung total marker
-            total += layer.getLayers().length;
-            
-            // Hitung anomali (iterate layer members)
-            layer.eachLayer(function(layer) {
-                if (layer.options.isAnomaly) {
-                    totalAnomalies++;
-                }
-            });
+        // Hitung dari semua layer AREA yang sedang aktif
+        Object.values(areaLayers).forEach(layer => {
+            if (rbmMap && rbmMap.hasLayer(layer)) {
+                total += layer.getLayers().length;
+                layer.eachLayer(m => {
+                    if (m.kddkData && m.kddkData.isAnomaly) totalAnomalies++;
+                });
+            }
         });
 
         countSpan.textContent = total + ' Titik';
 
-        // Tampilkan/Sembunyikan Alert Anomali
         if (alertBox && alertCount) {
             if (totalAnomalies > 0) {
                 alertCount.textContent = totalAnomalies;
@@ -793,11 +805,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateMapTitleWrapper() {
         const titleEl = document.getElementById('map-context-title');
-        const count = Object.keys(activeLayers).length;
+        let activeCount = 0;
+        let lastArea = '';
+        
+        Object.keys(areaLayers).forEach(code => {
+            if (rbmMap && rbmMap.hasLayer(areaLayers[code])) {
+                activeCount++;
+                lastArea = code;
+            }
+        });
+
         if (titleEl) {
-            if (count === 0) titleEl.textContent = "Pilih Area/Rute";
-            else if (count === 1) titleEl.textContent = Object.keys(activeLayers)[0].replace('area-', 'Area ').replace('route-', 'Rute ');
-            else titleEl.textContent = `${count} Wilayah Ditampilkan`;
+            if (activeCount === 0) titleEl.textContent = "Pilih Area/Rute";
+            else if (activeCount === 1) titleEl.textContent = `Area ${lastArea}`;
+            else titleEl.textContent = `${activeCount} Area Ditampilkan`;
         }
     }
 

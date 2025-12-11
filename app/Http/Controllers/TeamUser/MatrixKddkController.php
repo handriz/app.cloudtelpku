@@ -312,6 +312,7 @@ class MatrixKddkController extends Controller
                 'lat' => $item->latitudey,
                 'lng' => $item->longitudex,
                 'seq' => substr($item->kddk, 7, 3),
+                'kddk' => $item->kddk,
                 'info' => "
                     <div class='text-xs font-sans'>
                         <div class='border-b border-gray-100 pb-1 mb-1'>
@@ -498,6 +499,7 @@ class MatrixKddkController extends Controller
 
     /**
      * PROSES SIMPAN: Grouping KDDK (Auto Sequence per Pelanggan)
+     * FIXED: Urutan sesuai input, Smart Skip, dan Perbaikan Variabel.
      */
     public function storeKddkGroup(Request $request)
     {
@@ -511,16 +513,11 @@ class MatrixKddkController extends Controller
 
         $prefix = strtoupper($request->prefix_code); // Contoh: A1BRBAA
         $sisipan = $request->sisipan; // Contoh: 00
-        $selectedIdpels = $request->selected_idpels;
+        $inputOrderedIdpels = $request->selected_idpels; // Array urutan user (CSV/Klik)
         $unitup = $request->unitup;
 
-        // [LOGIKA BARU - TAHAP 1]
-        // Filter IDPEL: Mana yang perlu di-update sequence-nya?
-        // Kita hanya akan memproses IDPEL yang:
-        // 1. Belum punya KDDK sama sekali.
-        // 2. ATAU Punya KDDK, tapi Prefix-nya BEDA dengan target ($prefix).
-
-        // Ambil data existing dari database untuk pengecekan
+        // [LOGIKA 1] Filter IDPEL: Mana yang perlu diproses?
+        // Cek data existing di mapping
         $existingMappings = DB::table('mapping_kddk')
             ->whereIn('idpel', $inputOrderedIdpels)
             ->pluck('kddk', 'idpel');
@@ -535,15 +532,15 @@ class MatrixKddkController extends Controller
                 // Cek Prefix (7 digit awal)
                 $currentPrefix = substr($currentKddk, 0, 7);
                 
-                if ($currentPrefix === $prefix) {
                     // KASUS: IDPEL sudah ada di Rute yang sama.
                     // SKIP! Jangan ubah urutannya. Biarkan dia di posisi lama.
+                if ($currentPrefix === $prefix) {
                     $skippedCount++;
                     continue; 
                 }
             }
             
-            // Jika lolos (belum ada atau beda rute), masukkan antrian
+            /// Masukkan ke antrian jika belum ada atau pindah rute
             $idpelsToProcess[] = $idpel;
         }
 
@@ -557,13 +554,13 @@ class MatrixKddkController extends Controller
         }
 
         // [LOGIKA BARU - TAHAP 2]
-        // Validasi ke Master Data (Hanya untuk yang akan diproses)
+        // Validasi ke Master Data & Pertahankan Urutan
         $dbValidIdpels = DB::table('master_data_pelanggan')
             ->whereIn('idpel', $idpelsToProcess)
             ->pluck('idpel')
             ->toArray();
         
-        // Pertahankan urutan input user (Intersection)
+        // Gunakan array_intersect untuk memfilter, tapi tetap pakai urutan $idpelsToProcess
         $finalOrderedIdpels = array_values(array_intersect($idpelsToProcess, $dbValidIdpels));
 
         if (empty($finalOrderedIdpels)) {
@@ -622,12 +619,9 @@ class MatrixKddkController extends Controller
 
                 $currentSeq++; // Lanjut ke nomor berikutnya
 
+                // [LOG AKTIVITAS] Diletakkan di luar loop agar efisien (Bulk Log)
                 $count = count($finalOrderedIdpels);
-                    $this->recordActivity(
-                    'GENERATE_GROUP', 
-                    "Membentuk grup baru untuk {$count} pelanggan di Rute {$prefix}", 
-                    $prefix
-                );
+                
             }
         });
 
@@ -636,10 +630,14 @@ class MatrixKddkController extends Controller
 
         $count = count($finalOrderedIdpels);
         $endSeq = $startSequence + $count - 1;
-        
-        $msg = "Berhasil memproses $processedCount data baru.";
+
+        // 3. Format Pesan
+        $seqStartStr = str_pad($startSequence, 3, '0', STR_PAD_LEFT);
+        $seqEndStr   = str_pad($endSeq, 3, '0', STR_PAD_LEFT);
+
+        $msg = "Berhasil memproses $count data baru. (Urutan: $seqStartStr s.d $seqEndStr)";
         if ($skippedCount > 0) {
-            $msg .= " ($skippedCount data lama dipertahankan).";
+            $msg .= " - $skippedCount data lama dipertahankan.";
         }
         
         return response()->json([
