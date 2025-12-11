@@ -236,6 +236,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // ======================================================================
     Route::prefix('executive')->name('executive.')->middleware('role:executive_user')->group(function () {
         Route::get('/dashboard', [ExecutiveDashboardController::class, 'index'])->name('dashboard');
+
+        
     });
 
     // ======================================================================

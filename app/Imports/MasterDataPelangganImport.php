@@ -8,6 +8,8 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithUpserts;
 use Maatwebsite\Excel\Concerns\WithCustomCsvSettings; 
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
+use Carbon\Carbon;
 
 class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkReading, WithUpserts, WithCustomCsvSettings
 {
@@ -16,6 +18,30 @@ class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkRea
     *
     * @return \Illuminate\Database\Eloquent\Model|null
     */
+
+    private function convertExcelDate($value)
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        // Jika bentuk angka (serial number Excel)
+        if (is_numeric($value)) {
+            try {
+                return ExcelDate::excelToDateTimeObject($value)->format('Y-m-d');
+            } catch (\Exception $e) {
+                return null;
+            }
+        }
+
+        // Jika bentuk string tanggal normal
+        try {
+            return date('Y-m-d', strtotime($value));
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+    
     public function model(array $row)
     {
         $koordinatX = $row['koordinat_x'];
@@ -52,7 +78,7 @@ class MasterDataPelangganImport implements ToModel, WithHeadingRow, WithChunkRea
             'fkmkwh'            => $row['fkmkwh'],
             'jenislayanan'      => $row['jenislayanan'],
             'status_dil'        => $row['status_dil'],
-            'tglnyala_pb'       => $row['tglnyala_pb'],
+            'tglnyala_pb'        => $this->convertExcelDate($row['tglnyala_pb'] ?? null),
             'nomor_gardu'       => $row['nomor_gardu'],
             'nama_gardu'        => $row['nama_gardu'],
             'koordinat_x'       => $koordinatX,
