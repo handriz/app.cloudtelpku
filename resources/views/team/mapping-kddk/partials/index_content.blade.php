@@ -4,6 +4,7 @@
 --}}
 
 <div id="kddk-notification-container" class="px-6"></div>
+<input type="hidden" id="api-map-coordinates" value="{{ route('team.mapping-kddk.coordinates') }}">
 
 <div class="space-y-4 h-full flex flex-col">
 
@@ -59,21 +60,37 @@
     {{-- FIXED: Tambahkan 'overflow-hidden' di sini untuk mencegah anak elemen keluar jalur --}}
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[500px] overflow-hidden"> 
         
-        {{-- KOLOM KIRI: PETA --}}
-        {{-- FIXED: Tambahkan 'z-0' agar tidak menutupi elemen lain jika ada glitch --}}
+        {{-- KOLOM KIRI: PETA (Dominan) --}}
         <div class="lg:col-span-8 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden relative group z-0">
+            
+            {{-- 1. KONTAINER PETA --}}
             <div id="rbm-map" class="w-full h-full z-0"></div>
             
-            {{-- Overlay Info --}}
+            {{-- 2. [BARU] OVERLAY ERROR (Muncul jika Koordinat Invalid) --}}
+            <div id="map-error-overlay" class="hidden absolute inset-0 z-[100] bg-gray-50/90 dark:bg-gray-800/95 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 animate-fade-in">
+                <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-3 shadow-sm">
+                    <i class="fas fa-map-marker-slash text-2xl"></i>
+                </div>
+                <h3 class="text-lg font-bold text-gray-700 dark:text-gray-200">Lokasi Tidak Tersedia</h3>
+                <p class="text-sm text-gray-500 dark:text-gray-400 max-w-xs mt-1">
+                    Data pelanggan ini belum memiliki titik koordinat (Latitude/Longitude kosong atau 0).
+                </p>
+                <button type="button" id="btn-input-manual" class="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 shadow-lg transition transform active:scale-95 flex items-center">
+                    <i class="fas fa-edit mr-2"></i> Input Manual Sekarang
+                </button>
+            </div>
+
+            {{-- 3. OVERLAY INFO KOORDINAT (Floating) --}}
             <div class="absolute bottom-4 left-4 bg-white/90 dark:bg-gray-900/90 backdrop-blur px-3 py-2 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 text-xs z-[400] flex items-center space-x-3">
                 <div class="flex flex-col">
                     <span class="text-gray-500 uppercase text-[10px] font-bold">Koordinat Terpilih</span>
                     <span id="detail-lat-lon" class="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                        {{ (isset($searchedMapping) && $searchedMapping->latitudey) ? number_format($searchedMapping->latitudey, 6) . ', ' . number_format($searchedMapping->longitudex, 6) : '-' }}
+                        {{-- Default state --}}
+                        -
                     </span>
                 </div>
                 <div class="h-6 w-px bg-gray-300"></div>
-                <button type="button" id="google-street-view-link" class="text-gray-500 hover:text-orange-500 transition {{ (isset($searchedMapping) && $searchedMapping->latitudey) ? '' : 'hidden pointer-events-none opacity-50' }}" title="Buka Street View">
+                <button type="button" id="google-street-view-link" class="text-gray-500 hover:text-orange-500 transition hidden pointer-events-none opacity-50" title="Buka Street View">
                     <i class="fas fa-street-view text-2xl"></i>
                 </button>
             </div>
@@ -186,7 +203,8 @@
                         <tr class="group hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer transition-colors"
                             onclick="selectMappingRow(this, {{ json_encode($map) }})"
                             data-lat="{{ $map->latitudey ?? 0 }}"
-                            data-lon="{{ $map->longitudex ?? 0 }}">
+                            data-lon="{{ $map->longitudex ?? 0 }}"
+                            data-edit-url="{{ route('team.mapping.edit', $map->id) }}">
                             
                             <td class="px-6 py-3 whitespace-nowrap text-xs text-gray-500">{{ $mappings->firstItem() + $index }}</td>
                             
@@ -224,14 +242,17 @@
                             <td class="px-6 py-3 whitespace-nowrap text-right text-sm font-medium" onclick="event.stopPropagation()">
                                 <div class="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     {{-- Tombol Aksi (Edit, Invalidate, dll) --}}
-                                    <a href="{{ route('team.mapping.edit', $map) }}" class="text-gray-400 hover:text-indigo-600 transition" title="Edit">
+                                    <button type="button" 
+                                            onclick="event.stopPropagation(); openEditModal('{{ route('team.mapping.edit', $map->id) }}')" 
+                                            class="text-gray-400 hover:text-indigo-600 transition" 
+                                            title="Edit Data">
                                         <i class="fas fa-pencil-alt"></i>
-                                    </a>
+                                    </button>
                                     
                                     @if($map->enabled)
                                         <form action="{{ route('team.mapping-kddk.invalidate', $map->id) }}" method="POST" class="inline" data-custom-handler="invalidate-action">
                                             @csrf
-                                            <button type="submit" class="text-gray-400 hover:text-yellow-500 transition" title="Tarik Kembali">
+                                            <button type="submit" onclick="event.stopPropagation()" class="text-gray-400 hover:text-yellow-500 transition" title="Tarik Kembali">
                                                 <i class="fas fa-undo"></i>
                                             </button>
                                         </form>
@@ -363,3 +384,41 @@
     </div>
     
 </div>
+
+<style>
+    /* ... style scrollbar yang lama ... */
+
+    /* KUSTOMISASI POPUP PETA */
+    
+    /* Hilangkan margin/padding bawaan Leaflet agar Tailwind berfungsi penuh */
+    .pretty-popup .leaflet-popup-content-wrapper {
+        padding: 0 !important; /* Paksa 0 */
+        border-radius: 0.5rem; /* Sedikit lebih kotak (Rounded-lg) */
+        overflow: hidden;
+    }
+    
+    .pretty-popup .leaflet-popup-content {
+        margin: 0 !important;
+        width: 100% !important;
+        line-height: 1.2; /* Rapatkan jarak antar baris */
+    }
+
+    /* Ubah tombol close menjadi lebih modern */
+    .pretty-popup .leaflet-popup-close-button {
+        top: 4px !important;    /* Naikkan ke atas */
+        right: 4px !important;  /* Geser ke kanan */
+        color: #9ca3af !important;
+        font-size: 14px !important; /* Perkecil ikon */
+        z-index: 10; /* Pastikan di atas konten */
+    }
+    
+    .pretty-popup .leaflet-popup-close-button:hover {
+        color: #ef4444 !important;
+    }
+
+    /* Panah kecil di bawah popup */
+    .pretty-popup .leaflet-popup-tip {
+        background: white;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+</style>

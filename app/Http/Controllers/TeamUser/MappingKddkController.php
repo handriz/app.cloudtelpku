@@ -541,12 +541,97 @@ class MappingKddkController extends Controller
 
     public function edit(string $id)
     {
-        //
+        // Cari data berdasarkan ID
+        $mapping = MappingKddk::findOrFail($id);
+        
+        // Return view edit dengan membawa data mapping
+        // Pastikan path view sesuai dengan struktur folder Bapak
+        return view('team.mapping-kddk.partials.edit', compact('mapping'));
     }
 
     public function update(Request $request, string $id)
     {
-        //
+        $mapping = MappingKddk::findOrFail($id);
+
+        // Validasi Input
+        $validator = Validator::make($request->all(), [
+            // IDPEL biasanya tidak boleh diubah saat edit, jadi kita skip validasi IDPEL
+            'latitudey'     => ['required', 'numeric', 'between:-90,90'],
+            'longitudex'    => ['required', 'numeric', 'between:-180,180'],
+            'ket_survey'    => 'required|string',
+            // Foto opsional saat edit (kalau tidak diupload, pakai yang lama)
+            'foto_kwh_input' => 'nullable|image|max:5120', 
+            'foto_bangunan_input' => 'nullable|image|max:5120',
+        ]);
+
+        if ($validator->fails()) {
+            if ($request->expectsJson()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+            return back()->withErrors($validator)->withInput();
+        }
+
+        DB::beginTransaction();
+        try {
+            $dataToUpdate = [
+                'latitudey' => $request->latitudey,
+                'longitudex' => $request->longitudex,
+                'ket_survey' => $request->ket_survey,
+                'user_pendataan' => Auth::user()->name, // Update user terakhir yang edit
+            ];
+
+            // LOGIKA UPLOAD FOTO (Jika ada file baru)
+            // Menggunakan method uploadTemporaryPhoto logic atau manual storage
+            // Disini kita pakai logic simpel direct storage agar aman
+            
+            // 1. Foto KWH
+            if ($request->hasFile('foto_kwh_input')) {
+                // Hapus foto lama jika ada
+                if ($mapping->foto_kwh && Storage::disk('public')->exists($mapping->foto_kwh)) {
+                    Storage::disk('public')->delete($mapping->foto_kwh);
+                }
+                
+                $file = $request->file('foto_kwh_input');
+                $filename = $mapping->objectid . '_' . $mapping->idpel . '_foto_app.' . $file->getClientOriginalExtension();
+                $path = "mapping_photos/verified/{$mapping->idpel}/{$filename}";
+                
+                Storage::disk('public')->put($path, file_get_contents($file));
+                $dataToUpdate['foto_kwh'] = $path;
+            }
+
+            // 2. Foto Bangunan
+            if ($request->hasFile('foto_bangunan_input')) {
+                if ($mapping->foto_bangunan && Storage::disk('public')->exists($mapping->foto_bangunan)) {
+                    Storage::disk('public')->delete($mapping->foto_bangunan);
+                }
+
+                $file = $request->file('foto_bangunan_input');
+                $filename = $mapping->objectid . '_' . $mapping->idpel . '_foto_persil.' . $file->getClientOriginalExtension();
+                $path = "mapping_photos/verified/{$mapping->idpel}/{$filename}";
+                
+                Storage::disk('public')->put($path, file_get_contents($file));
+                $dataToUpdate['foto_bangunan'] = $path;
+            }
+
+            // Simpan Update
+            $mapping->update($dataToUpdate);
+
+            DB::commit();
+
+            if ($request->expectsJson()) {
+                return response()->json(['success' => true, 'message' => 'Data berhasil diperbarui!']);
+            }
+            return redirect()->route('team.mapping.index')->with('success', 'Data berhasil diperbarui!');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Gagal update mapping ID {$id}: " . $e->getMessage());
+            
+            if ($request->expectsJson()) {
+                return response()->json(['errors' => ['server' => [$e->getMessage()]]], 500);
+            }
+            return back()->with('error', 'Gagal update: ' . $e->getMessage());
+        }
     }
 
     public function destroy(string $id)
