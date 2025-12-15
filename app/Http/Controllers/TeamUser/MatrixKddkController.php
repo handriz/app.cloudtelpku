@@ -608,8 +608,24 @@ class MatrixKddkController extends Controller
                         'updated_at' => now()
                     ]);
                 } else {
+                    $newObjectId = null;
+                    $isUnique = false;
+
+                    // Loop sampai dapat ID unik
+                    do {
+                        // Generate 6 Karakter Acak (Huruf Besar & Angka)
+                        // Contoh: X9A2B1
+                        $newObjectId = strtoupper(Str::random(6)); 
+                        
+                        // Cek apakah sudah ada di DB?
+                        $exists = DB::table('mapping_kddk')->where('objectid', $newObjectId)->exists();
+                        if (!$exists) {
+                            $isUnique = true;
+                        }
+                    } while (!$isUnique);
+
                     DB::table('mapping_kddk')->insert([
-                        'objectid' => (string) Str::uuid(),
+                        'objectid' => $newObjectId,
                         'idpel' => $idpel,
                         'kddk' => $fullKddk,
                         'enabled' => true,
