@@ -99,19 +99,16 @@
                     e.stopPropagation(); // Agar tidak men-trigger klik baris lagi
 
                     // Ambil URL langsung dari atribut data-edit-url di baris tabel (Tahap 1)
+                    const isVerified = row.getAttribute('data-verified') === '1';
                     const editUrl = row.dataset.editUrl;
                     
-                    if (editUrl) {
-                        // Panggil fungsi buka modal yang sudah kita buat kemarin
-                        if (typeof window.openEditModal === 'function') {
-                            window.openEditModal(editUrl);
-                        } else {
-                            // Fallback jika fungsi belum load
-                            window.location.href = editUrl;
-                        }
+                    if (isVerified) {
+                        window.showToast("Data ini Terkunci (Verified). Silakan 'Tarik Kembali' dulu dari tabel.", "error");
                     } else {
-                        // Tampilkan Toast Keren (Tahap 2)
-                        window.showToast("Anda tidak memiliki akses untuk mengedit data ini.", "error");
+                        const editUrl = row.dataset.editUrl;
+                        if (editUrl) {
+                            window.openEditModal(editUrl);
+                        }
                     }
                 };
             }

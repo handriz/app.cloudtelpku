@@ -30,7 +30,7 @@ class MappingKddkController extends Controller
 
         // 2. Tentukan Tipe Pencarian (IDPEL Search vs Other/No Search)
         $isIdpelSearch = false;
-        if ($search && is_numeric($search) && strlen($search) == 12) {
+        if ($search && is_numeric($search) && strlen($search) == 10) {
             // Cek apakah IDPEL ini ada & boleh diakses user
             $existsQuery = MappingKddk::query()->where('mapping_kddk.idpel', $search)
                 ->when(!$user->hasRole('admin'), function ($query) use ($hierarchyFilter) {
@@ -64,7 +64,7 @@ class MappingKddkController extends Controller
                 CASE 
                     WHEN mapping_kddk.ket_validasi = 'verified' THEN 1
                     WHEN mapping_kddk.ket_validasi = 'superseded' THEN 2
-                    WHEN mapping_kddk.ket_validasi = 'recalled_1' THEN 3
+                    WHEN mapping_kddk.ket_validasi = 'recalled' THEN 3
                     WHEN mapping_kddk.ket_validasi = 'rejected' THEN 4
                     ELSE 5
                 END ASC
@@ -84,7 +84,7 @@ class MappingKddkController extends Controller
                             CASE mapping_kddk.ket_validasi
                                 WHEN 'verified' THEN 1
                                 WHEN 'superseded' THEN 2
-                                WHEN 'recalled_1' THEN 3
+                                WHEN 'recalled' THEN 3
                                 WHEN 'rejected' THEN 4
                                 ELSE 5
                             END ASC, -- Prioritas 2: Status 'verified'
@@ -118,19 +118,26 @@ class MappingKddkController extends Controller
 
         // 5. Terapkan paginasi
         $mappings = $query->paginate(10)->withQueryString();
+        $pageIdpels = $mappings->pluck('idpel')->unique()->toArray();
+        $activeIdpels = [];
+        if (!empty($pageIdpels)) {
+            $activeIdpels = MappingKddk::whereIn('idpel', $pageIdpels)
+                                ->where('enabled', true) // Pastikan cek true/1
+                                ->pluck('idpel')
+                                ->toArray();
+        }
 
         // 6. Siapkan Data Header (Foto, Peta, Status)
         $searchedMapping = null;
         $mappingStatus = null;
-        $searchedIdpel = null;
+        $searchedIdpel = $search;
         
         if ($search) {
-            $searchedIdpel = $search;
             
             // 6a. Coba cari data yang 'enabled' DULU untuk IDPEL ini
             $focusedQuery = MappingKddk::query()
                 ->where('mapping_kddk.idpel', $searchedIdpel)
-                ->where('mapping_kddk.enabled', true) // Prioritas: Enabled = 1
+                ->orderBy('mapping_kddk.enabled', 'desc') 
                 ->latest() // Ambil yang terbaru jika ada beberapa yang enabled (jarang)
                 ->first();
             
@@ -165,7 +172,7 @@ class MappingKddkController extends Controller
         // 8. Siapkan semua data yang dibutuhkan oleh view
         $viewData = compact(
             'mappings', 'totalMappingEnabled', 'totalPelanggan', 'mappingPercentage',
-            'search', 'sortColumn', 'sortDirection', 'mappingStatus', 'searchedIdpel', 'searchedMapping'
+            'search', 'sortColumn', 'sortDirection', 'mappingStatus', 'searchedIdpel', 'searchedMapping','activeIdpels'
         );
 
         // 9. Logika untuk membedakan request biasa dan AJAX
@@ -330,6 +337,7 @@ class MappingKddkController extends Controller
     }
 
     const MANUAL_ID_OFFSET = 2000000; // Mulai ID manual dari 10 Juta + 1
+
     public function store(Request $request)
     {
         // 1. Validasi Data (user_pendataan tidak perlu divalidasi dari input)
@@ -358,6 +366,17 @@ class MappingKddkController extends Controller
         $validatedData = $validator->validated();
         $validatedData['user_pendataan'] = Auth::user()->name;
         $idpel = $validatedData['idpel'];
+
+        // Cek Spamming (1 Menit)
+        $isSpamming = MappingKddk::where('idpel', $idpel)
+                        ->where('user_pendataan', Auth::user()->name)
+                        ->where('ket_validasi', 'unverified')
+                        ->where('created_at', '>=', now()->subMinutes(1)) // Cek dalam 1 menit terakhir
+                        ->exists();
+
+        if ($isSpamming) {
+            return response()->json(['errors' => ['idpel' => ['Anda baru saja mengirim data untuk IDPEL ini. Mohon cek daftar data sebelum mengirim ulang.']]], 422);
+        }
 
         // ============================================================
         // [FITUR BARU] SMART GEO-FENCING (VALIDASI WILAYAH)
@@ -409,24 +428,29 @@ class MappingKddkController extends Controller
                 }
             }
         }
-        // ============================================================
-        // [AKHIR FITUR BARU]
-        // ============================================================
-        
+
+        // --- LOGIKA STATUS: FIRST-COME FIRST-SERVED ---
+        $existingCount = MappingKddk::where('idpel', $idpel)->count();
+        $statusValidasi = ($existingCount == 0) ? 'verified' : 'unverified';
+        $isEnabled = ($existingCount == 0) ? true : false;
+
         $finalPaths = [];
         $tempFilesToDelete = [];
-        $newObjectId = null; // Inisialisasi  
-        $errors = []; // Tampung error
+        $newObjectId = null;
+        $errors = []; // Tampung error     
 
         DB::beginTransaction();
         try {
+            // 1. Generate Object ID Baru
             DB::table('objectid_sequence')->insert(['created_at' => now()]);
             $sequenceId = DB::getPdo()->lastInsertId();
-
             $newObjectId = $sequenceId + self::MANUAL_ID_OFFSET;
-
             $validatedData['objectid'] = $newObjectId;
 
+            // 2. [LOGIC BARU] ENFORCE HISTORY LIMIT (Hapus data lama sebelum simpan baru)
+            $this->enforceHistoryLimit($idpel, 2);
+
+            // 3. Pindahkan Foto
             foreach (['foto_kwh', 'foto_bangunan'] as $photoType) {
                 $tempFilename = $validatedData[$photoType];
                 $tempPathRelative = 'temp_photos/' . basename($tempFilename);
@@ -434,11 +458,15 @@ class MappingKddkController extends Controller
 
                 if (Storage::disk('local')->exists($tempPathRelative)) {
                     $extension = pathinfo($tempFilename, PATHINFO_EXTENSION);
+                    // Masuk folder 'verified' jika data pertama, 'unverified' jika susulan
+                    $folderTujuan = ($statusValidasi === 'verified') ? 'verified' : 'unverified';
+
                     if (empty($extension) || !in_array(strtolower($extension), ['jpg', 'jpeg', 'png'])) {
                         throw new \Exception("Ekstensi file '{$tempFilename}' tidak valid.");
                     }
+
                     $newFilename = $newObjectId . '_' . $idpel . '_' . ($photoType === 'foto_kwh' ? 'foto_app' : 'foto_persil') . '.' . $extension;
-                    $finalRelativePath = "mapping_photos/unverified/{$idpel}/{$newFilename}";
+                    $finalRelativePath = "mapping_photos/{$folderTujuan}/{$idpel}/{$newFilename}";
 
                     $fileContent = Storage::disk('local')->get($tempPathRelative);
                     if ($fileContent === false) throw new \Exception("Gagal membaca file sementara: $tempPathRelative");
@@ -450,20 +478,34 @@ class MappingKddkController extends Controller
                     throw new \Exception("File sementara '{$tempFilename}' tidak ditemukan.");
                 }
             }
+
+            // 4. Siapkan Data Final untuk MappingKddk
             unset($validatedData['foto_kwh'], $validatedData['foto_bangunan']);
             $finalData = array_merge($validatedData, $finalPaths);
-            TemporaryMapping::create($finalData);
+
+            // Set Status
+            $finalData['ket_validasi'] = $statusValidasi;
+            $finalData['enabled'] = $isEnabled;
+
+            MappingKddk::create($finalData);
 
             DB::commit();
 
+            // Cleanup
             foreach($tempFilesToDelete as $tempPath) {
                 if (Storage::disk('local')->exists($tempPath)) {
                     Storage::disk('local')->delete($tempPath);
                 }
             }
-            return response()->json(['success' => true,'message' => 'Data mapping berhasil ditambahkan!']);
+
+            $msg = ($isEnabled) 
+                ? 'Data PERTAMA berhasil disimpan dan AKTIF di Peta!' 
+                : 'Data berhasil disimpan sebagai DRAFT (Menunggu Validasi/Promote).';
+
+            return response()->json(['success' => true, 'message' => $msg]);
 
         } catch (\Exception $e) {
+
             // 7. Rollback jika gagal
             DB::rollBack();
             if (isset($finalPaths['foto_kwh'])) Storage::disk('public')->delete($finalPaths['foto_kwh']);
@@ -472,6 +514,44 @@ class MappingKddkController extends Controller
             Log::error("Gagal store mapping KDDK (Controller): " . $e->getMessage());
             return response()->json(['errors' => ['server' => [substr($e->getMessage(), 0, 200)]]], 422);
         }            
+    }
+
+    /**
+     * Helper: Batasi histori.
+     * UPDATE: Jangan pernah menghapus data yang 'enabled' (Data Master di Peta).
+     */
+    private function enforceHistoryLimit($idpel, $keepLimit = 2)
+    {
+        $histories = MappingKddk::where('idpel', $idpel)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        if ($histories->count() > $keepLimit) {
+            $deletedCount = 0;
+            
+            foreach ($histories->reverse() as $record) {
+                if ($histories->count() - $deletedCount <= $keepLimit) break;
+
+                // [SAFETY UPDATE]
+                // 1. Jangan hapus data yang tampil di peta (enabled=true)
+                // 2. Jangan hapus data yang verified (valid)
+                if ($record->enabled || $record->ket_validasi === 'verified') {
+                    continue; 
+                }
+
+                // Hapus Fisik & DB
+                if ($record->foto_kwh && Storage::disk('public')->exists($record->foto_kwh)) {
+                    Storage::disk('public')->delete($record->foto_kwh);
+                }
+                if ($record->foto_bangunan && Storage::disk('public')->exists($record->foto_bangunan)) {
+                    Storage::disk('public')->delete($record->foto_bangunan);
+                }
+
+                $record->delete();
+                $deletedCount++;
+                Log::info("Auto-cleanup: Menghapus draft lama IDPEL {$idpel}.");
+            }
+        }
     }
 
     public function uploadTemporaryPhoto(Request $request)
@@ -553,13 +633,19 @@ class MappingKddkController extends Controller
     {
         $mapping = MappingKddk::findOrFail($id);
 
-        // Validasi Input
+        // User harus melakukan 'Invalidate' dulu jika ingin mengubah data ini.
+        if ($mapping->enabled == true || $mapping->ket_validasi === 'verified') {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Data VERIFIED terkunci. Silakan "Tarik Kembali" (Invalidate) data ini terlebih dahulu untuk melakukan revisi.'], 403);
+            }
+            return back()->with('error', 'Data VERIFIED terkunci. Silakan "Tarik Kembali" data ini terlebih dahulu.');
+        }
+
+        // 1. Validasi Input
         $validator = Validator::make($request->all(), [
-            // IDPEL biasanya tidak boleh diubah saat edit, jadi kita skip validasi IDPEL
             'latitudey'     => ['required', 'numeric', 'between:-90,90'],
             'longitudex'    => ['required', 'numeric', 'between:-180,180'],
             'ket_survey'    => 'required|string',
-            // Foto opsional saat edit (kalau tidak diupload, pakai yang lama)
             'foto_kwh_input' => 'nullable|image|max:5120', 
             'foto_bangunan_input' => 'nullable|image|max:5120',
         ]);
@@ -571,52 +657,85 @@ class MappingKddkController extends Controller
             return back()->withErrors($validator)->withInput();
         }
 
+        // Array penampung file untuk cleanup
+        $filesToDeleteOnCommit = [];   // File lama (hapus jika sukses)
+        $filesToDeleteOnRollback = []; // File baru (hapus jika gagal)
+
         DB::beginTransaction();
         try {
             $dataToUpdate = [
                 'latitudey' => $request->latitudey,
                 'longitudex' => $request->longitudex,
                 'ket_survey' => $request->ket_survey,
-                'user_pendataan' => Auth::user()->name, // Update user terakhir yang edit
+                'user_pendataan' => Auth::user()->name, 
             ];
 
-            // LOGIKA UPLOAD FOTO (Jika ada file baru)
-            // Menggunakan method uploadTemporaryPhoto logic atau manual storage
-            // Disini kita pakai logic simpel direct storage agar aman
-            
-            // 1. Foto KWH
+            // Pastikan ObjectID dan IDPEL ada untuk penamaan
+            $objectId = $mapping->objectid ?? 'UNKNOWN'; 
+            $idpel = $mapping->idpel;
+
+            // --- LOGIKA UPDATE FOTO KWH ---
             if ($request->hasFile('foto_kwh_input')) {
-                // Hapus foto lama jika ada
+                $file = $request->file('foto_kwh_input');
+                $ext = $file->getClientOriginalExtension();
+                
+                // Format Nama: OBJECTID_IDPEL_foto_app.ext
+                $filename = "{$objectId}_{$idpel}_foto_app.{$ext}";
+                
+                // Folder: Tetap di verified karena ini tabel MappingKddk
+                $path = "mapping_photos/verified/{$idpel}/{$filename}";
+                
+                // 1. Simpan File Baru Dulu (Overwrite jika nama sama tidak masalah, karena konten terganti)
+                // Gunakan 'putFileAs' atau 'put' dengan konten
+                Storage::disk('public')->put($path, file_get_contents($file));
+                
+                // Catat file baru ini untuk dihapus jika nanti DB error
+                $filesToDeleteOnRollback[] = $path;
+
+                // Catat file lama untuk dihapus NANTI setelah commit sukses
+                // Cek apakah file lama ada & path-nya beda (atau sama)
                 if ($mapping->foto_kwh && Storage::disk('public')->exists($mapping->foto_kwh)) {
-                    Storage::disk('public')->delete($mapping->foto_kwh);
+                    // PENTING: Jika nama file baru == nama file lama, jangan masukkan ke list hapus!
+                    // Karena file lama sudah tertimpa oleh file baru di baris Storage::put di atas.
+                    if ($mapping->foto_kwh !== $path) {
+                        $filesToDeleteOnCommit[] = $mapping->foto_kwh;
+                    }
                 }
                 
-                $file = $request->file('foto_kwh_input');
-                $filename = $mapping->objectid . '_' . $mapping->idpel . '_foto_app.' . $file->getClientOriginalExtension();
-                $path = "mapping_photos/verified/{$mapping->idpel}/{$filename}";
-                
-                Storage::disk('public')->put($path, file_get_contents($file));
                 $dataToUpdate['foto_kwh'] = $path;
             }
 
-            // 2. Foto Bangunan
+            // --- LOGIKA UPDATE FOTO BANGUNAN ---
             if ($request->hasFile('foto_bangunan_input')) {
-                if ($mapping->foto_bangunan && Storage::disk('public')->exists($mapping->foto_bangunan)) {
-                    Storage::disk('public')->delete($mapping->foto_bangunan);
-                }
-
                 $file = $request->file('foto_bangunan_input');
-                $filename = $mapping->objectid . '_' . $mapping->idpel . '_foto_persil.' . $file->getClientOriginalExtension();
-                $path = "mapping_photos/verified/{$mapping->idpel}/{$filename}";
+                $ext = $file->getClientOriginalExtension();
+                
+                $filename = "{$objectId}_{$idpel}_foto_persil.{$ext}";
+                $path = "mapping_photos/verified/{$idpel}/{$filename}";
                 
                 Storage::disk('public')->put($path, file_get_contents($file));
+                $filesToDeleteOnRollback[] = $path;
+
+                if ($mapping->foto_bangunan && Storage::disk('public')->exists($mapping->foto_bangunan)) {
+                    if ($mapping->foto_bangunan !== $path) {
+                        $filesToDeleteOnCommit[] = $mapping->foto_bangunan;
+                    }
+                }
+                
                 $dataToUpdate['foto_bangunan'] = $path;
             }
 
-            // Simpan Update
+            // Simpan Update ke Database
             $mapping->update($dataToUpdate);
 
             DB::commit();
+
+            // --- SUKSES: BERSIH-BERSIH FILE LAMA ---
+            foreach ($filesToDeleteOnCommit as $oldFile) {
+                if (Storage::disk('public')->exists($oldFile)) {
+                    Storage::disk('public')->delete($oldFile);
+                }
+            }
 
             if ($request->expectsJson()) {
                 return response()->json(['success' => true, 'message' => 'Data berhasil diperbarui!']);
@@ -625,6 +744,14 @@ class MappingKddkController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            
+            // --- GAGAL: HAPUS FILE BARU YANG TERLANJUR DIUPLOAD ---
+            foreach ($filesToDeleteOnRollback as $newFile) {
+                if (Storage::disk('public')->exists($newFile)) {
+                    Storage::disk('public')->delete($newFile);
+                }
+            }
+
             Log::error("Gagal update mapping ID {$id}: " . $e->getMessage());
             
             if ($request->expectsJson()) {
@@ -639,10 +766,86 @@ class MappingKddkController extends Controller
         //
     }
 
+    public function promoteToValid(Request $request, $id)
+    {
+        // Gunakan lockForUpdate agar aman dari race condition saat promote
+        $dataToPromote = MappingKddk::where('id', $id)->lockForUpdate()->firstOrFail();
+        $idpel = $dataToPromote->idpel;
+
+        DB::beginTransaction();
+        try {
+            
+            $updatedPaths = [];
+
+            // 1. PINDAHKAN FILE FISIK (Unverified -> Verified)
+            foreach (['foto_kwh', 'foto_bangunan'] as $field) {
+                $oldPath = $dataToPromote->$field;
+                
+                // Cek apakah file ada dan berada di folder unverified
+                if ($oldPath && strpos($oldPath, 'unverified') !== false && Storage::disk('public')->exists($oldPath)) {
+                    $newPath = str_replace('unverified', 'verified', $oldPath);
+                    
+                    // Pastikan folder tujuan ada
+                    $directory = dirname($newPath);
+                    if (!Storage::disk('public')->exists($directory)) {
+                        Storage::disk('public')->makeDirectory($directory);
+                    }
+                    
+                    // Pindahkan file
+                    if(Storage::disk('public')->move($oldPath, $newPath)) {
+                        $updatedPaths[$field] = $newPath;
+                    }
+                }
+            }
+
+            // 2. Nonaktifkan (Supersede) data LAMA yang sedang aktif
+            MappingKddk::where('idpel', $idpel)
+                    ->where('id', '!=', $id)
+                    ->where(function ($query) {
+                        $query->where('enabled', true)
+                           ->orWhere('ket_validasi', 'verified');
+                        })
+                       ->update([
+                            'enabled' => false,
+                            'ket_validasi' => 'superseded'
+                        ]);
+
+            // 3. Aktifkan (Promosikan) data BARU
+            $dataToPromote->enabled = true;
+            $dataToPromote->ket_validasi = 'verified'; 
+
+            // Update path foto baru (jika ada yang berpindah)
+            if (!empty($updatedPaths)) {
+                $dataToPromote->fill($updatedPaths);
+            }
+
+            $dataToPromote->save();
+
+            // 4. Bersihkan Histori Sampah (PENTING)
+            // Karena sekarang sudah ada master baru, kita buang draft/sampah lama yang berlebih
+            $this->enforceHistoryLimit($idpel, 2);
+
+            DB::commit();
+
+            if ($request->expectsJson()) {
+                 return response()->json(['message' => 'Data Object Id ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.'], 200);
+            }
+
+            return back()->with('success', 'Data Object Id ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Gagal promote data ID {$id}: " . $e->getMessage());
+            if ($request->expectsJson()) {
+                 return response()->json(['error' => 'Gagal memproses: ' . $e->getMessage()], 500);
+            }
+            return back()->with('error', 'Gagal memproses: ' . $e->getMessage());
+        }
+    }
+
     public function invalidate(Request $request, $id)
     {
         $user = Auth::user();
-        // Ambil alasan dari input, atau buat default
         $reason = $request->input('reason');
         if (empty($reason)) {
             $reason = 'Data ditarik kembali oleh ' . $user->name . ' untuk validasi ulang.';
@@ -651,91 +854,63 @@ class MappingKddkController extends Controller
         DB::beginTransaction();
         try {
 
-            // [PERBAIKAN 1] LOCKING SUMBER DATA
-            // Gunakan lockForUpdate() agar proses lain tidak bisa membaca baris ini sampai transaksi selesai.
-            // Jika data sudah dihapus proses lain, ini akan error atau return null (aman).
+            // 1. LOCK DATA SUMBER
             $validData = MappingKddk::where('id', $id)->lockForUpdate()->first();
 
             if (!$validData) {
-                DB::rollBack(); // Batalkan jika data ternyata sudah hilang/diproses orang lain
+                DB::rollBack();
                 return back()->with('error', 'Data tidak ditemukan atau sudah diproses oleh user lain.');
             }
 
-            $idpel = $validData->idpel;
-            $objectid = $validData->objectid;
-
-            // 2. Salin data ke array untuk tabel temporer
-            $tempDataArray = $validData->toArray();
-
-            // 3. Pindahkan foto dari 'verified' kembali ke 'unverified'
+            // 2. PINDAHKAN FILE FISIK (Verified -> Unverified)
+            $pathsToUpdate = [];
             $oldKwhPath = $validData->foto_kwh;
             $oldBangunanPath = $validData->foto_bangunan;
-            $newKwhPath = null; // Inisialisasi
-            $newBangunanPath = null; // Inisialisasi
+            $newKwhPath = null; $newBangunanPath = null;
 
-            // Cek file fisik sebelum pindah (mencegah error jika file hilang manual)
-            if ($oldKwhPath && Storage::disk('public')->exists($oldKwhPath)) {
+            $tempDataArray = $validData->toArray();
+
+            // 1. PINDAHKAN FILE BALIK KE UNVERIFIED
+            if ($oldKwhPath && strpos($oldKwhPath, 'verified') !== false && Storage::disk('public')->exists($oldKwhPath)) {
                 $newKwhPath = str_replace('verified', 'unverified', $oldKwhPath);
-                // Pastikan folder tujuan ada
                 $dir = dirname($newKwhPath);
                 if (!Storage::disk('public')->exists($dir)) Storage::disk('public')->makeDirectory($dir);
-                Storage::disk('public')->move($oldKwhPath, $newKwhPath);
-                $tempDataArray['foto_kwh'] = $newKwhPath;
+                if (!Storage::disk('public')->move($oldKwhPath, $newKwhPath)) throw new \Exception("Gagal pindah file KWH.");
+                $pathsToUpdate['foto_kwh'] = $newKwhPath;
             }
             
-            if ($oldBangunanPath && Storage::disk('public')->exists($oldBangunanPath)) {
+            if ($oldBangunanPath && strpos($oldBangunanPath, 'verified') !== false && Storage::disk('public')->exists($oldBangunanPath)) {
                 $newBangunanPath = str_replace('verified', 'unverified', $oldBangunanPath);
                 $dir = dirname($newBangunanPath);
                 if (!Storage::disk('public')->exists($dir)) Storage::disk('public')->makeDirectory($dir);
-                Storage::disk('public')->move($oldBangunanPath, $newBangunanPath);
-                $tempDataArray['foto_bangunan'] = $newBangunanPath;
+                if (!Storage::disk('public')->move($oldBangunanPath, $newBangunanPath)) throw new \Exception("Gagal pindah file Bangunan.");
+                $pathsToUpdate['foto_bangunan'] = $newBangunanPath;
             }
 
-            // 4. Hapus data yang tidak relevan & set status baru
-            unset($tempDataArray['id'], $tempDataArray['created_at'], $tempDataArray['updated_at']);
-            
-            // --- Logika Status Baru ---
-            // Kita set status baru sebagai "recalled" (ditarik)
-            $tempDataArray['ket_validasi'] = 'recalled_1'; 
-            $tempDataArray['enabled'] = false;
-            $tempDataArray['validation_notes'] = $reason; 
-            $tempDataArray['validation_data'] = null;   
-            $tempDataArray['locked_by'] = null;     
-            $tempDataArray['locked_at'] = null;
+            // 2. UPDATE STATUS (SINGLE TABLE - NO DELETE)
+            $updateData = [
+                'ket_validasi'     => 'recalled', // Status turun
+                'enabled'          => false,      // Hilang dari peta
+                'locked_by'        => null,
+                'locked_at'        => null
+            ];
 
-            // 5. GANTI LOGIKA: KUNCI BARIS & INSERT/UPDATE (Anti-Race Condition)
-            // [PERBAIKAN 2] LOCKING TUJUAN (Anti-Race Condition di Antrian)
-            $existingTemp = TemporaryMapping::where('objectid', $objectid)
-                                            ->lockForUpdate() // <--- IMPLEMENTASI LOCKING
-                                            ->first();
-                                            
-            if ($existingTemp) {
-                // Jika baris sudah ada (mungkin Job sedang mengunci atau sudah ada di antrian), update saja
-                $existingTemp->fill($tempDataArray);
-                $existingTemp->save();
-            } else {
-                // Jika baris tidak ada, buat record baru di antrian
-                TemporaryMapping::create($tempDataArray); 
+            // Gabungkan dengan path foto baru (jika ada yang berubah)
+            if (!empty($pathsToUpdate)) {
+                $updateData = array_merge($updateData, $pathsToUpdate);
             }
 
-            // 6. Hapus data dari mapping_kddk (tabel utama)
-            $validData->delete();
-
-            // 7. Kembalikan status data "superseded" (jika ada) menjadi "verified" kembali
-            // Agar histori data sebelumnya aktif lagi secara otomatis
-            MappingKddk::where('idpel', $idpel)
-                       ->where('ket_validasi', 'superseded')
-                       ->orderByDesc('created_at')
-                       ->limit(1)
-                       ->update(['ket_validasi' => 'verified', 'enabled' => true]);
+            // Eksekusi Update
+            $validData->update($updateData);
 
             DB::commit();
 
-            if ($request->expectsJson()) {
-                 return response()->json(['message' => 'Data IDPEL ' . $idpel . ' berhasil ditarik kembali ke antrian validasi. Data lama kini siap untuk dipromosikan ulang.'], 200);
-            }
+            $msg = ($fallbackData) 
+                ? 'Data ditarik kembali. Data pengganti telah diaktifkan otomatis.' 
+                : 'Data ditarik kembali. Tidak ada data pengganti tersedia (Peta Kosong).';
 
-            return back()->with('success', 'Data IDPEL ' . $idpel . ' berhasil ditarik kembali ke antrian validasi.');
+            if ($request->expectsJson()) return response()->json(['message' => $msg], 200);
+            return back()->with('success', $msg);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -754,49 +929,6 @@ class MappingKddkController extends Controller
             }
             
             return back()->with('error', 'Gagal menarik data: ' . $e->getMessage());
-        }
-    }
-
-    public function promoteToValid(Request $request, $id)
-    {
-        $dataToPromote = MappingKddk::findOrFail($id);
-        $idpel = $dataToPromote->idpel;
-
-        DB::beginTransaction();
-        try {
-            // 1. Nonaktifkan (Supersede) data LAMA yang sedang aktif
-            // Cari data dengan IDPEL yang sama & enabled = true
-            MappingKddk::where('idpel', $idpel)
-                    ->where('id', '!=', $id)
-                    ->where(function ($query) {
-                        $query->where('enabled', true)
-                           ->orWhere('ket_validasi', 'verified');
-                        })
-                       ->update([
-                            'enabled' => false,
-                            'ket_validasi' => 'superseded'
-                        ]);
-
-            // 2. Aktifkan (Promosikan) data BARU
-            $dataToPromote->enabled = true;
-            // Pastikan ket_validasi adalah 'verified' (atau 'valid' jika Anda mau, tapi 'verified' sudah cukup)
-            $dataToPromote->ket_validasi = 'verified'; 
-            $dataToPromote->save();
-
-            DB::commit();
-            if ($request->expectsJson()) {
-                 return response()->json(['message' => 'Data Object ID ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.'], 200);
-            }
-
-            return back()->with('success', 'Data Object ID ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error("Gagal promote data ID {$id}: " . $e->getMessage());
-            if ($request->expectsJson()) {
-                 return response()->json(['error' => 'Gagal memproses: ' . $e->getMessage()], 500);
-            }
-            return back()->with('error', 'Gagal memproses: ' . $e->getMessage());
         }
     }
     

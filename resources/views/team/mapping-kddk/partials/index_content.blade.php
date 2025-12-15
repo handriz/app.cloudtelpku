@@ -46,7 +46,7 @@
         </div>
 
         {{-- Actions (Kanan) --}}
-        <div class="md:col-span-4 flex justify-end space-x-2">
+        <div class="md:col-span-4 flex justify-end items-center space-x-2">
             <a href="" class="btn-secondary-sm" data-modal-link="true">
                 <i class="fas fa-file-import mr-2"></i> Upload
             </a>
@@ -57,7 +57,6 @@
     </div>
 
     {{-- 2. WORKSPACE: MAP & INSPECTOR (Split View) --}}
-    {{-- FIXED: Tambahkan 'overflow-hidden' di sini untuk mencegah anak elemen keluar jalur --}}
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[500px] overflow-hidden"> 
         
         {{-- KOLOM KIRI: PETA (Dominan) --}}
@@ -66,7 +65,7 @@
             {{-- 1. KONTAINER PETA --}}
             <div id="rbm-map" class="w-full h-full z-0"></div>
             
-            {{-- 2. [BARU] OVERLAY ERROR (Muncul jika Koordinat Invalid) --}}
+            {{-- 2. OVERLAY ERROR (Muncul jika Koordinat Invalid) --}}
             <div id="map-error-overlay" class="hidden absolute inset-0 z-[100] bg-gray-50/90 dark:bg-gray-800/95 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6 animate-fade-in">
                 <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-3 shadow-sm">
                     <i class="fas fa-map-marker-slash text-2xl"></i>
@@ -85,7 +84,6 @@
                 <div class="flex flex-col">
                     <span class="text-gray-500 uppercase text-[10px] font-bold">Koordinat Terpilih</span>
                     <span id="detail-lat-lon" class="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                        {{-- Default state --}}
                         -
                     </span>
                 </div>
@@ -97,11 +95,9 @@
         </div>
 
         {{-- KOLOM KANAN: INSPECTOR PANEL --}}
-        {{-- FIXED: 'min-h-0' sangat penting agar flex container bisa menyusut --}}
         <div class="lg:col-span-4 flex flex-col gap-4 h-full min-h-0">
             
             {{-- Tab Switcher & Foto Wrapper --}}
-            {{-- FIXED: 'min-h-0' ditambahkan di sini juga --}}
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex-1 flex flex-col overflow-hidden p-1 min-h-0">
                 
                 {{-- Tombol Tab --}}
@@ -115,7 +111,6 @@
                 </div>
 
                 {{-- Area Foto KWH --}}
-                {{-- FIXED: Pastikan img memiliki 'object-contain' dan parent 'overflow-hidden' --}}
                 <div id="inspector-kwh" class="relative flex-1 bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden group border border-gray-100 dark:border-gray-600 min-h-0">
                     <img id="detail-foto-kwh" 
                          src="{{ (isset($searchedMapping) && $searchedMapping->foto_kwh) ? Storage::disk('public')->url($searchedMapping->foto_kwh) : '' }}" 
@@ -204,7 +199,8 @@
                             onclick="selectMappingRow(this, {{ json_encode($map) }})"
                             data-lat="{{ $map->latitudey ?? 0 }}"
                             data-lon="{{ $map->longitudex ?? 0 }}"
-                            data-edit-url="{{ route('team.mapping.edit', $map->id) }}">
+                            data-edit-url="{{ route('team.mapping.edit', $map->id) }}"
+                            data-verified="{{ ($map->enabled || $map->ket_validasi == 'verified') ? '1' : '0' }}">
                             
                             <td class="px-6 py-3 whitespace-nowrap text-xs text-gray-500">{{ $mappings->firstItem() + $index }}</td>
                             
@@ -223,14 +219,12 @@
                             </td>
                             
                             <td class="px-6 py-3 whitespace-nowrap text-xs text-gray-500">
-                                {{-- Cek apakah created_at ada isinya? --}}
                                 @if($map->created_at)
                                     {{ $map->created_at->format('d M Y') }}
                                     <span class="text-[10px] text-gray-400 block">
                                         {{ $map->created_at->format('H:i') }}
                                     </span>
                                 @else
-                                    {{-- Jika null, tampilkan tanda strip --}}
                                     <span class="text-gray-400">-</span>
                                 @endif
                             </td>
@@ -241,31 +235,62 @@
 
                             <td class="px-6 py-3 whitespace-nowrap text-right text-sm font-medium" onclick="event.stopPropagation()">
                                 <div class="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {{-- Tombol Aksi (Edit, Invalidate, dll) --}}
-                                    <button type="button" 
-                                            onclick="event.stopPropagation(); openEditModal('{{ route('team.mapping.edit', $map->id) }}')" 
-                                            class="text-gray-400 hover:text-indigo-600 transition" 
-                                            title="Edit Data">
-                                        <i class="fas fa-pencil-alt"></i>
-                                    </button>
                                     
-                                    @if($map->enabled)
+                                @php
+                                    // Cek apakah IDPEL ini punya "Raja" (Data Aktif) di database?
+                                    $hasActiveMaster = in_array($map->idpel, $activeIdpels);
+                                @endphp
+
+                                    {{-- SKENARIO A: DATA INI ADALAH RAJA (YANG SEDANG AKTIF) --}}
+                                @if($map->enabled || $map->ket_validasi == 'verified')
+                                        
+                                        {{-- Tombol Revisi (Wajib ada untuk menurunkan tahta) --}}
                                         <form action="{{ route('team.mapping-kddk.invalidate', $map->id) }}" method="POST" class="inline" data-custom-handler="invalidate-action">
                                             @csrf
-                                            <button type="submit" onclick="event.stopPropagation()" class="text-gray-400 hover:text-yellow-500 transition" title="Tarik Kembali">
-                                                <i class="fas fa-undo"></i>
+                                            <button type="submit" 
+                                                    onclick="event.stopPropagation(); return confirm('Tarik kembali status Validasi? Peta akan kosong sampai Anda memilih pengganti.');" 
+                                                    class="text-yellow-500 hover:text-yellow-600 transition flex items-center bg-yellow-50 px-2 py-1 rounded border border-yellow-200" 
+                                                    title="Tarik Kembali">
+                                                <i class="fas fa-undo mr-1"></i> Revisi
                                             </button>
                                         </form>
+
+                                    {{-- KONDISI 2: Data MATI / NON-AKTIF (Unverified / Recalled / Superseded) --}}
+                                @else
+
+                                    {{-- Tombol Edit (Tetap muncul agar bisa perbaiki data draft) --}}
+                                     @if($map->ket_validasi !== 'superseded')
+                                            <button type="button" 
+                                                    onclick="event.stopPropagation(); openEditModal('{{ route('team.mapping.edit', $map->id) }}')" 
+                                                    class="text-gray-400 hover:text-indigo-600 transition" 
+                                                    title="Edit Data">
+                                                <i class="fas fa-pencil-alt fa-lg"></i>
+                                            </button>
                                     @endif
-                                    
-                                    @if(!$map->enabled && $map->ket_validasi == 'verified')
-                                         <form action="{{ route('team.mapping-kddk.promote', $map->id) }}" method="POST" class="inline" data-custom-handler="promote-action">
+                                    {{-- 
+                                        LOGIKA TOMBOL PROMOTE (SET AKTIF):
+                                        Hanya muncul jika TIDAK ADA data aktif lain untuk pelanggan ini.
+                                        (Artinya: Tahta sedang kosong, silakan pilih salah satu untuk naik tahta).
+                                    --}}
+
+                                    @if(!$hasActiveMaster)
+                                        <form action="{{ route('team.mapping-kddk.promote', $map->id) }}" method="POST" class="inline">
                                             @csrf
-                                            <button type="submit" class="text-gray-400 hover:text-green-500 transition" title="Set Aktif">
-                                                <i class="fas fa-check-circle"></i>
+                                            <button type="submit" 
+                                                    onclick="return confirm('Jadikan data ini sebagai DATA UTAMA di Peta?');"
+                                                    class="text-green-500 hover:text-green-600 bg-green-50 px-2 py-1 rounded border border-green-200 flex items-center" 
+                                                    title="Set Aktif (Tampilkan di Peta)">
+                                                <i class="fas fa-check-circle mr-1"></i> Set Aktif
                                             </button>
                                         </form>
+                                    @else
+                                        {{-- Opsi: Tampilkan status terkunci jika mau --}}
+                                            <span class="text-xs text-gray-400 italic mr-2" title="Ada data lain yang sedang aktif">
+                                                <i class="fas fa-lock"></i> Locked
+                                            </span>
                                     @endif
+
+                                @endif
                                 </div>
                             </td>
                         </tr>
@@ -295,22 +320,21 @@
     .btn-secondary-sm { @apply inline-flex items-center px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg font-bold text-xs text-gray-700 dark:text-gray-200 uppercase tracking-widest hover:bg-gray-50 dark:hover:bg-gray-600 transition; }
 </style>
 
+{{-- ====================================================== --}}
+{{-- MODAL AREA (TANPA SECURITY MODAL) --}}
+{{-- ====================================================== --}}
+
+    {{-- MODAL KONFIRMASI STANDAR --}}
     <div id="custom-confirm-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden items-center justify-center p-4 z-50">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md">
-            
-            {{-- Header Modal --}}
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <h3 id="custom-confirm-title" class="text-lg font-semibold text-gray-900 dark:text-gray-100">Konfirmasi Tindakan</h3>
             </div>
-
-            {{-- Body Pesan --}}
             <div class="p-6">
                 <p id="custom-confirm-message" class="text-sm text-gray-700 dark:text-gray-300">
                     Apakah Anda yakin ingin melanjutkan tindakan ini?
                 </p>
             </div>
-
-            {{-- Footer (Tombol) --}}
             <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900 flex justify-end space-x-3 rounded-b-lg">
                 <button id="custom-confirm-cancel" type="button" class="px-4 py-2 bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-500">
                     Batal
@@ -322,57 +346,33 @@
         </div>
     </div>
 
-    {{-- ====================================================== --}}
-    {{-- MODAL UNTUK GOOGLE STREET VIEW --}}
-    {{-- ====================================================== --}}
+    {{-- MODAL GOOGLE STREET VIEW --}}
     <div id="street-view-modal" class="fixed top-10 right-10 hidden z-50">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[50vw] h-[75vh] flex flex-col relative border dark:border-gray-700">
-            
-            {{-- Tombol Close (dibuat lebih besar dan mudah di-klik) --}}
             <button id="street-view-close-button" class="absolute -top-3 -right-3 bg-red-500 hover:bg-red-700 text-white rounded-full p-2 z-10 w-8 h-8 flex items-center justify-center">
                 <i class="fas fa-times"></i>
             </button>
-
-            {{-- Header Modal --}}
             <div id="street-view-header" class="px-6 py-3 border-b border-gray-200 dark:border-gray-700 cursor-move">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Google Street View</h3>
             </div>
-
-            {{-- Konten Iframe --}}
-            <div class="flex-grow p-1"> {{-- p-1 agar ada sedikit padding --}}
-                <iframe id="street-view-iframe" 
-                        src="" 
-                        frameborder="0" 
-                        allowfullscreen="" 
-                        loading="lazy"
-                        referrerpolicy="no-referrer-when-downgrade"
-                        class="w-full h-full rounded-md"></iframe>
+            <div class="flex-grow p-1">
+                <iframe id="street-view-iframe" src="" frameborder="0" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class="w-full h-full rounded-md"></iframe>
             </div>
         </div>
     </div>
 
     {{-- MODAL IMAGE VIEWER (INTERACTIVE) --}}
     <div id="image-viewer-modal" class="fixed inset-0 z-[9999] hidden bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center transition-opacity duration-300 opacity-0 pointer-events-none">
-        
-        {{-- Tombol Close --}}
         <button type="button" onclick="closeImageViewer()" class="absolute top-4 right-4 z-50 text-white/70 hover:text-white transition transform hover:scale-110 bg-black/50 rounded-full w-10 h-10 flex items-center justify-center">
             <i class="fas fa-times text-xl"></i>
         </button>
-
-        {{-- Container Gambar (Area Drag & Zoom) --}}
-        {{-- PENTING: overflow-hidden agar gambar tidak keluar layar --}}
         <div id="image-container" class="relative w-full h-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing">
-            
-            {{-- Gambar Target --}}
-            {{-- PENTING: transition-transform diatur via JS nanti agar drag tidak delay --}}
             <img id="image-viewer-img" src="" 
              class="max-w-full max-h-full object-contain origin-center select-none"
              draggable="false" 
              oncontextmenu="return false;"
              style="transform: translate(0px, 0px) scale(1) rotate(0deg); touch-action: none; user-select: none; -webkit-user-drag: none;">
         </div>
-
-        {{-- Toolbar Kontrol (Floating di Bawah) --}}
         <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-900/80 backdrop-blur-md border border-gray-700 rounded-full px-4 py-2 flex items-center space-x-4 shadow-2xl pointer-events-auto z-50">
             <button onclick="adjustImage('zoom', -0.2)" class="text-white hover:text-indigo-400"><i class="fas fa-search-minus"></i></button>
             <button onclick="resetImageState()" class="text-xs font-bold text-gray-400 hover:text-white border border-gray-600 px-2 py-0.5 rounded">RESET</button>
@@ -386,37 +386,27 @@
 </div>
 
 <style>
-    /* ... style scrollbar yang lama ... */
-
     /* KUSTOMISASI POPUP PETA */
-    
-    /* Hilangkan margin/padding bawaan Leaflet agar Tailwind berfungsi penuh */
     .pretty-popup .leaflet-popup-content-wrapper {
-        padding: 0 !important; /* Paksa 0 */
-        border-radius: 0.5rem; /* Sedikit lebih kotak (Rounded-lg) */
+        padding: 0 !important;
+        border-radius: 0.5rem;
         overflow: hidden;
     }
-    
     .pretty-popup .leaflet-popup-content {
         margin: 0 !important;
         width: 100% !important;
-        line-height: 1.2; /* Rapatkan jarak antar baris */
+        line-height: 1.2;
     }
-
-    /* Ubah tombol close menjadi lebih modern */
     .pretty-popup .leaflet-popup-close-button {
-        top: 4px !important;    /* Naikkan ke atas */
-        right: 4px !important;  /* Geser ke kanan */
+        top: 4px !important;
+        right: 4px !important;
         color: #9ca3af !important;
-        font-size: 14px !important; /* Perkecil ikon */
-        z-index: 10; /* Pastikan di atas konten */
+        font-size: 14px !important;
+        z-index: 10;
     }
-    
     .pretty-popup .leaflet-popup-close-button:hover {
         color: #ef4444 !important;
     }
-
-    /* Panah kecil di bawah popup */
     .pretty-popup .leaflet-popup-tip {
         background: white;
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
