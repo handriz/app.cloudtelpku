@@ -1,5 +1,6 @@
 // resources/js/matrix-handler.js
 
+
 /**
  * ====================================================================
  * 1. VARIABEL GLOBAL & STATE
@@ -18,8 +19,8 @@
     window.tempUploadResults = [];
 
     // Variabel Peta (Leaflet)
-    let rbmMap = null;
-    const areaLayers = {}; 
+    let rbmMap = null; // Aman, ini cuma wadah kosong (placeholder)
+    const areaLayers = {}; // Aman, object kosong
     let sequenceController = null;
 
 /**
@@ -240,13 +241,13 @@
                     
                     if (countMapped > 0) {
                         // KASUS: Semua sudah ada KDDK -> TAMPILKAN MODAL WARNING
-                        window.showGenericWarning(`
+                        showGenericWarning(`
                             <strong>${countMapped} Data</strong> di file ini SUDAH memiliki Group KDDK.<br>
                             <span class="text-xs mt-2 block text-yellow-600">Tidak ada data baru yang bisa diproses.</span>
                         `);
                     }else {
                         // KASUS: Data tidak ditemukan di DB -> TAMPILKAN MODAL WARNING
-                        window.showGenericWarning(`
+                        showGenericWarning(`
                             <strong>Tidak ditemukan data valid.</strong><br>
                             Pastikan IDPEL terdaftar di Unit ini dan formatnya benar.
                         `);
@@ -650,6 +651,18 @@
         }
     };
 
+    window.performReorderIdpel = function(idpel, targetIdpel, prefix) {
+        const urlInput = document.getElementById('reorder-route');
+        if (!urlInput) return;
+        
+        // Panggil Execute Ajax
+        executeAjax(urlInput.value, { 
+            idpel: idpel, 
+            target_idpel: targetIdpel,
+            route_prefix: prefix
+        });
+    }
+
 /**
  * ====================================================================
  * 5. LOGIKA GENERATOR KDDK (SEQUENCE & PREFIX)
@@ -874,21 +887,21 @@
         }
     };
 
-    window.showGenericWarning = function(message) {
-    const modal = document.getElementById('modal-warning-generic');
-    const msgEl = document.getElementById('warning-modal-message');
-    
-    if (modal && msgEl) {
-        msgEl.innerHTML = message; // Gunakan innerHTML agar bisa bold
-        modal.classList.remove('hidden');
-        modal.classList.remove('opacity-0'); // Pastikan opacity reset
-        modal.classList.add('flex');
-        modal.classList.add('opacity-100');
-    } else {
-        // Fallback jika modal HTML belum ada
-        alert(message.replace(/<[^>]*>?/gm, '')); 
+    function showGenericWarning(message) {
+        const modal = document.getElementById('modal-warning-generic');
+        const msgEl = document.getElementById('warning-modal-message');
+        
+        if (modal && msgEl) {
+            msgEl.innerHTML = message; // Gunakan innerHTML agar bisa bold
+            modal.classList.remove('hidden');
+            modal.classList.remove('opacity-0'); // Pastikan opacity reset
+            modal.classList.add('flex');
+            modal.classList.add('opacity-100');
+        } else {
+            // Fallback jika modal HTML belum ada
+            alert(message.replace(/<[^>]*>?/gm, '')); 
+        }
     }
-    };
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -1366,79 +1379,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     });
 
-    // --- FUNGSI PEMBUAT MODAL CANTIK (INJECT KE DOM) ---
-    function showBeautifulUploadSuccess(totalCsv, foundDom) {
-        // Hapus modal lama jika ada
-        const existing = document.getElementById('custom-upload-modal');
-        if (existing) existing.remove();
-
-        // Template HTML Modal (Tailwind)
-        const modalHtml = `
-            <div id="custom-upload-modal" class="fixed inset-0 z-[10000] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm p-4 transition-opacity duration-300 opacity-0">
-                <div class="relative w-full max-w-xs sm:max-w-sm transform rounded-2xl bg-white dark:bg-gray-800 shadow-2xl transition-all duration-300 scale-90 opacity-0" id="custom-upload-card">
-                    
-                    <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-green-400 to-emerald-600 rounded-t-2xl"></div>
-
-                    <div class="p-6 text-center">
-                        <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-50 dark:bg-green-900/20 ring-8 ring-green-50 dark:ring-green-900/10">
-                            <i class="fas fa-file-csv text-3xl text-green-500 animate-pulse"></i>
-                        </div>
-
-                        <h3 class="mb-1 text-xl font-extrabold text-gray-900 dark:text-white tracking-tight">Upload Berhasil!</h3>
-                        <p class="text-xs text-gray-400 mb-5">Data seleksi telah diproses.</p>
-                        
-                        <div class="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-6 border border-gray-100 dark:border-gray-600">
-                            <div class="flex justify-between items-center border-b border-gray-200 dark:border-gray-600 pb-2 mb-2">
-                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wide">Total di File</span>
-                                <span class="text-base font-mono font-bold text-gray-800 dark:text-gray-200">${totalCsv}</span>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-xs font-bold text-gray-500 uppercase tracking-wide">Dicentang</span>
-                                <span class="text-base font-mono font-bold text-green-600">+${foundDom}</span>
-                            </div>
-                        </div>
-
-                        <p class="text-[10px] text-gray-400 mb-4 italic">
-                            *Hanya data yang tampil di halaman ini yang dicentang otomatis.
-                        </p>
-
-                        <button id="btn-close-upload-modal" class="inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-500/30 transition-all duration-200 hover:bg-indigo-700 hover:-translate-y-0.5 focus:ring-4 focus:ring-indigo-300">
-                            Selesai
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        // Masukkan ke Body
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-
-        // Elemen
-        const modal = document.getElementById('custom-upload-modal');
-        const card = document.getElementById('custom-upload-card');
-        const btn = document.getElementById('btn-close-upload-modal');
-
-        // Animasi Masuk (Fade In & Scale Up)
-        requestAnimationFrame(() => {
-            modal.classList.remove('opacity-0');
-            card.classList.remove('scale-90', 'opacity-0');
-            card.classList.add('scale-100', 'opacity-100');
-        });
-
-        // Fungsi Tutup
-        const closeModal = () => {
-            modal.classList.add('opacity-0');
-            card.classList.remove('scale-100');
-            card.classList.add('scale-95'); // Efek zoom out dikit saat tutup
-            setTimeout(() => modal.remove(), 300);
-        };
-
-        btn.addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
-    }
-
     // Custom Submit Generator (Capture Phase: true)
     document.addEventListener('submit', function(e) {
 
@@ -1465,6 +1405,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const urlInput = document.getElementById('map-data-url');
         
         if (!mapContainer || !urlInput) return;
+
+        if (rbmMap && rbmMap.getContainer() !== mapContainer) {
+            console.log("Cleaning up stale map reference...");
+            rbmMap.remove(); // Hapus instance Leaflet lama
+            rbmMap = null;   // Reset variabel global
+            
+            // Opsional: Bersihkan cache layer juga agar dimuat ulang
+            for (const key in areaLayers) {
+                delete areaLayers[key];
+            }
+        }
 
         // 1. Init Map (Jika belum ada)
         if (!rbmMap) {
@@ -1847,11 +1798,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // 7. DRAG & DROP LOGIC
+    // 7. DRAG & DROP LOGIC (REVISI LAZY LOAD ELEMENT)
     // ============================================================
     let draggedIdpel = null;
     let originKddk = null;
-    const removeZone = document.getElementById('remove-drop-zone');
 
     document.addEventListener('dragstart', function(e) {
         const row = e.target.closest('.draggable-idpel');
@@ -1861,6 +1811,8 @@ document.addEventListener('DOMContentLoaded', () => {
             row.classList.add('opacity-50', 'bg-yellow-100'); 
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', draggedIdpel);
+
+            const removeZone = document.getElementById('remove-drop-zone');
             if(removeZone) {
                 removeZone.classList.remove('hidden');
                 setTimeout(() => { removeZone.classList.remove('opacity-0', 'translate-y-10'); }, 10);
@@ -1876,6 +1828,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const indicator = zone.querySelector('.drop-indicator');
             if(indicator) indicator.classList.add('hidden');
         });
+
+        const removeZone = document.getElementById('remove-drop-zone');     
         if(removeZone) {
             removeZone.classList.add('opacity-0', 'translate-y-10');
             setTimeout(() => removeZone.classList.add('hidden'), 300);
@@ -2356,19 +2310,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 300); // Delay Area -> D6
         }
     }
-
-    function performReorderIdpel(idpel, targetIdpel, prefix) {
-        const urlInput = document.getElementById('reorder-route');
-        if (!urlInput) return;
-        
-        // Panggil Execute Ajax
-        executeAjax(urlInput.value, { 
-            idpel: idpel, 
-            target_idpel: targetIdpel,
-            route_prefix: prefix
-        });
-    }
-
     
 
     // ============================================================
@@ -2812,50 +2753,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     });
 
-    // A. LOGIKA CHECKBOX "SISIPKAN (MANUAL)"
-    const insertCheck = document.getElementById('mode_insert_sequence');
-    const urutInput = document.getElementById('part_urut');
-
-    if (insertCheck && urutInput) {
-        insertCheck.addEventListener('change', function(e) {
-            if (e.target.checked) {
-                // MODE MANUAL: Buka Kunci
-                urutInput.readOnly = false;
-                urutInput.value = ''; // Kosongkan biar user isi
-                urutInput.placeholder = '000';
-                
-                // Ganti Style biar kelihatan aktif
-                urutInput.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
-                urutInput.classList.add('bg-white', 'text-indigo-700', 'border-indigo-500', 'ring-2', 'ring-indigo-200');
-                urutInput.focus();
-            } else {
-                // MODE AUTO: Kunci Kembali
-                urutInput.readOnly = true;
-                urutInput.placeholder = '...';
-                
-                // Kembalikan Style Readonly
-                urutInput.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
-                urutInput.classList.remove('bg-white', 'text-indigo-700', 'border-indigo-500', 'ring-2', 'ring-indigo-200');
-                
-                // Minta nomor otomatis lagi ke server
-                window.updateSequenceAndGenerate(); 
-            }
-        });
-
-        // B. LOGIKA KETIK MANUAL (Hanya Angka)
-        urutInput.addEventListener('input', function(e) {
-            // Cek apakah sedang mode manual?
-            if (insertCheck.checked) {
-                // Hapus karakter non-angka
-                let val = e.target.value.replace(/[^0-9]/g, '');
-                // Batasi max 3 digit
-                if (val.length > 3) val = val.slice(0, 3);
-                
-                e.target.value = val;
-                
-                // Update Preview Code String Realtime
-                window.generateFinalCode();
-            }
-        });
-    }
 });
