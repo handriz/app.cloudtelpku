@@ -1,19 +1,896 @@
 // resources/js/matrix-handler.js
 
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * ====================================================================
+ * 1. VARIABEL GLOBAL & STATE
+ * Ditaruh di paling atas (luar) agar tidak ter-reset saat tab berpindah,
+ * dan bisa diakses oleh fungsi manapun.
+ * ====================================================================
+ */
 
-    // ============================================================
-    // 1. GLOBAL STATE & VARIABEL
-    // ============================================================
-    const selectionState = {
+    // Pastikan selectionState ada di window agar bisa diakses global
+    window.selectionState = {
         unit: null,     
-        items: new Map() // Key: IDPEL, Value: {jenis: ...}
+        items: new Map() 
     };
 
-    // Variabel Peta Multi-Layer
+    // Variabel sementara untuk Modal Upload
+    window.tempUploadResults = [];
+
+    // Variabel Peta (Leaflet)
     let rbmMap = null;
-    const areaLayers = {}; // Simpan layer aktif: { 'area-RB': LayerGroup, 'route-A1': LayerGroup }
-    let sequenceController = null; // Untuk abort fetch sequence
+    const areaLayers = {}; 
+    let sequenceController = null;
+
+/**
+ * ====================================================================
+ * 2. FUNGSI UI GLOBAL (SINKRONISASI TAMPILAN)
+ * Fungsi ini memperbarui checkbox dan tombol grouping berdasarkan State.
+ * ====================================================================
+ */
+
+    window.syncSelectionUI = function() {
+        // 1. Cek Context Unit
+        const contextInput = document.getElementById('page-context-unit');
+        if (!contextInput) return;
+        
+        const currentUnit = contextInput.value;
+        if (window.selectionState.unit !== currentUnit) {
+            window.selectionState.unit = currentUnit;
+            window.selectionState.items.clear();
+        }
+
+        // 2. Centang Checkbox yang sesuai dengan State
+        const checkboxes = document.querySelectorAll('.row-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = window.selectionState.items.has(cb.value);
+        });
+
+        // 3. Update Checkbox "Select All"
+        const checkAll = document.getElementById('check-all-rows');
+        if (checkAll) {
+            checkAll.checked = (checkboxes.length > 0 && [...checkboxes].every(c => c.checked));
+        }
+
+        // 4. Update Tombol Grouping
+        window.toggleGroupButton();
+    };
+
+    window.toggleGroupButton = function() {
+        const count = window.selectionState.items.size;
+        const btn = document.getElementById('btn-group-kddk');
+        const countSpan = document.getElementById('count-selected');
+
+        if(btn) {
+            if(count > 0) { 
+                btn.classList.remove('hidden'); 
+                btn.innerHTML = `<i class="fas fa-layer-group mr-2"></i> Bentuk Group (${count})`; 
+            } else {
+                btn.classList.add('hidden');
+            }
+        }
+        if(countSpan) countSpan.textContent = count;
+    };
+
+/**
+ * ====================================================================
+ * 3. FUNGSI LOGIKA UPLOAD (MODAL & PROSES)
+ * ====================================================================
+ */
+
+    // A. Membuka Modal Upload
+    window.openUploadModal = function() {
+        const modal = document.getElementById('modal-upload-csv-preview');
+        const panel = document.getElementById('upload-modal-panel');
+        const dropZone = document.getElementById('upload-drop-zone');
+        const fileInput = document.getElementById('real-file-input');
+
+        if (!modal) {
+            console.error("Modal #modal-upload-csv-preview tidak ditemukan.");
+            return;
+        }
+
+        // Reset UI & State
+        window.tempUploadResults = [];
+        if(fileInput) fileInput.value = '';
+        
+        if(dropZone) dropZone.classList.remove('hidden');
+        document.getElementById('upload-loading').classList.add('hidden');
+        document.getElementById('upload-result-stats').classList.add('hidden');
+
+        const btnApply = document.getElementById('btn-apply-upload');
+        if(btnApply) {
+            btnApply.disabled = true;
+            btnApply.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        // Animasi Masuk
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            modal.classList.remove('opacity-0');
+            modal.classList.add('flex', 'opacity-100');
+            if(panel) {
+                panel.classList.remove('scale-95');
+                panel.classList.add('scale-100');
+                window.setupDragDropListeners();
+            }
+        }, 10);
+    };
+
+    // B. Menutup Modal Upload
+    window.closeUploadModal = function() {
+        const modal = document.getElementById('modal-upload-csv-preview');
+        const panel = document.getElementById('upload-modal-panel');
+
+        if (!modal) return;
+
+        if(panel) {
+            panel.classList.remove('scale-100');
+            panel.classList.add('scale-95');
+        }
+        modal.classList.remove('opacity-100');
+        modal.classList.add('opacity-0');
+
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }, 300);
+    };
+
+    // C. Proses File (Dipanggil oleh Input Change & Drop)
+    window.processUploadedFile = function(file) {
+    if (!file) return;
+    
+    // 1. Setup UI Loading
+    const dropZone = document.getElementById('upload-drop-zone');
+    const loading = document.getElementById('upload-loading');
+    const stats = document.getElementById('upload-result-stats');
+    const filenameLabel = document.getElementById('stat-filename');
+    const loadingText = loading.querySelector('p');
+
+    if (dropZone) dropZone.classList.add('hidden');
+    if (loading) loading.classList.remove('hidden');
+    if (stats) stats.classList.add('hidden');
+    if (filenameLabel) filenameLabel.textContent = file.name;
+    
+    // Reset Pesan Loading
+    if(loadingText) loadingText.textContent = "Membaca File...";
+
+    const reader = new FileReader();
+    
+    reader.onload = function(event) {
+        const text = event.target.result;
+        const allLines = text.split(/\r\n|\n/);
+        
+        // 2. Client Side Cleaning (Hanya Format)
+        const cleanIds = allLines
+            .map(l => l.trim().replace(/[^0-9]/g, ''))
+            .filter(l => l.length >= 10); // Minimal 10 digit
+
+        const uniqueIds = [...new Set(cleanIds)];
+        
+        if (uniqueIds.length === 0) {
+            alert("File kosong atau format salah (Tidak ada angka > 10 digit).");
+            if (dropZone) dropZone.classList.remove('hidden');
+            if (loading) loading.classList.add('hidden');
+            return;
+        }
+
+        // 3. SERVER SIDE VALIDATION (AJAX)
+        if(loadingText) loadingText.textContent = "Memvalidasi Database...";
+        
+        // Ambil Unit ID dari halaman
+        const unitContext = document.getElementById('page-context-unit').value;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        // URL Route yang baru kita buat (Hardcode path atau ambil dari meta jika ada)
+        const validateUrl = '/team/matrix-kddk/validate-upload'; 
+
+        fetch(validateUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                idpels: uniqueIds,
+                unitup: unitContext
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // 4. Proses Hasil dari Server (LOGIKA BARU)
+            // Kita hanya mengambil yang READY (belum punya KDDK) untuk diproses
+            window.tempUploadResults = data.ready_ids; 
+            
+            // Statistik
+            const totalFile = allLines.length; // Raw lines
+            const countReady = data.ready_count;
+            const countMapped = data.mapped_count;
+            
+            // Invalid = (Total File - (Ready + Mapped)) 
+            // Ini mencakup: Duplikat di file, Format Salah, dan Tidak Ada di DB
+            const countInvalid = totalFile - (countReady + countMapped);
+
+            // Update UI Statistik
+            const elTotal = document.getElementById('stat-total');
+            const elValid = document.getElementById('stat-valid');   // Ready
+            const elMapped = document.getElementById('stat-mapped'); // Sudah Ada (Baru)
+            const elInvalid = document.getElementById('stat-invalid');
+            
+            if (elTotal) elTotal.textContent = totalFile.toLocaleString();
+            if (elValid) elValid.textContent = countReady.toLocaleString();
+            if (elMapped) elMapped.textContent = countMapped.toLocaleString();
+            if (elInvalid) elInvalid.textContent = countInvalid.toLocaleString();
+
+            document.getElementById('upload-loading').classList.add('hidden');
+            document.getElementById('upload-result-stats').classList.remove('hidden');
+
+            const btnApply = document.getElementById('btn-apply-upload');
+            if (btnApply) {
+                if (countReady > 0) {
+                    btnApply.disabled = false;
+                    btnApply.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btnApply.innerHTML = `<span>Gunakan ${countReady} Data</span> <i class="fas fa-arrow-right ml-2"></i>`;
+                } else {
+                    btnApply.disabled = true;
+                    btnApply.classList.add('opacity-50', 'cursor-not-allowed');
+                    btnApply.innerHTML = `<span>Data Kosong</span>`;
+                    
+                    if (countMapped > 0) {
+                        // KASUS: Semua sudah ada KDDK -> TAMPILKAN MODAL WARNING
+                        window.showGenericWarning(`
+                            <strong>${countMapped} Data</strong> di file ini SUDAH memiliki Group KDDK.<br>
+                            <span class="text-xs mt-2 block text-yellow-600">Tidak ada data baru yang bisa diproses.</span>
+                        `);
+                    }else {
+                        // KASUS: Data tidak ditemukan di DB -> TAMPILKAN MODAL WARNING
+                        window.showGenericWarning(`
+                            <strong>Tidak ditemukan data valid.</strong><br>
+                            Pastikan IDPEL terdaftar di Unit ini dan formatnya benar.
+                        `);
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error Validation:', error);
+            alert("Gagal memvalidasi data ke server.");
+            if (dropZone) dropZone.classList.remove('hidden');
+            if (loading) loading.classList.add('hidden');
+        });
+    };
+
+    reader.readAsText(file);
+    };
+
+    // D. Handler Input File (Click)
+    window.handleFileFromInput = function(input) {
+        if (input.files && input.files[0]) {
+            window.processUploadedFile(input.files[0]);
+        }
+    };
+
+    // E. Setup Drag & Drop Listeners
+    window.setupDragDropListeners = function() {
+        const dropZone = document.getElementById('upload-drop-zone');
+        const visual = document.getElementById('drop-zone-visual');
+        if (!dropZone) return;
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+            dropZone.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(evt => {
+            dropZone.addEventListener(evt, () => visual?.classList.add('border-indigo-500', 'bg-indigo-50'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(evt => {
+            dropZone.addEventListener(evt, () => visual?.classList.remove('border-indigo-500', 'bg-indigo-50'), false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) window.processUploadedFile(files[0]);
+        }, false);
+    };
+
+    // F. APPLY DATA (TOMBOL "GUNAKAN DATA INI") - BAGIAN PENTING
+    window.applyUploadSelection = function() {
+        console.log("Tombol Apply Ditekan. Jumlah Data:", window.tempUploadResults.length);
+
+        if (window.tempUploadResults.length === 0) {
+            alert("Tidak ada data untuk diproses.");
+            return;
+        }
+
+        // 1. Bersihkan State Lama
+        window.selectionState.items.clear();
+
+        // 2. Masukkan Data Baru ke State Utama
+        window.tempUploadResults.forEach(idpel => {
+            window.selectionState.items.set(idpel, { 
+                jenis: 'UPLOAD_CSV', 
+                source_order: true 
+            });
+        });
+
+        console.log("State Updated. Total Item:", window.selectionState.items.size);
+
+        // 3. Update Tampilan Halaman
+        window.syncSelectionUI();
+
+        // 4. Tutup Modal Upload
+        window.closeUploadModal();
+
+        // 5. Buka Modal Grouping (Generator)
+        setTimeout(() => {
+            if (typeof window.openKddkModal === 'function') {
+                window.openKddkModal();
+            } else {
+                console.error("Fungsi openKddkModal tidak ditemukan.");
+                alert("Data tersimpan di memori (" + window.tempUploadResults.length + " item), tapi gagal membuka Generator otomatis. Silakan klik tombol 'Bentuk Group' manual.");
+            }
+        }, 400);
+    };
+
+    window.toggleManualSequence = function(checkbox) {
+    const urutInput = document.getElementById('part_urut');
+    if (!urutInput) return;
+
+    if (checkbox.checked) {
+        // MODE MANUAL: Buka Kunci
+        urutInput.readOnly = false;
+        urutInput.value = ''; // Kosongkan biar user isi
+        urutInput.placeholder = '000';
+        
+        // Ubah Tampilan jadi Putih (Aktif)
+        urutInput.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+        urutInput.classList.add('bg-white', 'text-indigo-700', 'border-indigo-500', 'ring-2', 'ring-indigo-200');
+        urutInput.focus();
+    } else {
+        // MODE AUTO: Kunci Kembali
+        urutInput.readOnly = true;
+        urutInput.placeholder = '...';
+        
+        // Ubah Tampilan jadi Abu-abu (Readonly)
+        urutInput.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+        urutInput.classList.remove('bg-white', 'text-indigo-700', 'border-indigo-500', 'ring-2', 'ring-indigo-200');
+        
+        // Panggil server lagi untuk minta nomor otomatis
+        window.updateSequenceAndGenerate();
+    }
+    };
+
+    window.handleManualSequenceInput = function(input) {
+        // Validasi: Hanya Angka
+        let val = input.value.replace(/[^0-9]/g, '');
+        
+        // Validasi: Maksimal 3 Digit
+        if (val.length > 3) val = val.slice(0, 3);
+        
+        input.value = val;
+
+        // Update Preview String Langsung
+        window.generateFinalCode();
+    };
+
+/**
+ * ====================================================================
+ * 4. FUNGSI GENERATOR & LAINNYA
+ * ====================================================================
+ */
+
+    window.openKddkModal = function() {
+    const selectedIds = Array.from(window.selectionState.items.keys());
+
+    if (selectedIds.length === 0) { 
+        alert("Pilih atau Upload minimal satu pelanggan."); 
+        return; 
+    }
+
+    // 1. Isi Input Hidden
+    const container = document.getElementById('hidden-inputs-container');
+    if(container) {
+        container.innerHTML = '';
+        selectedIds.forEach(id => {
+            const i = document.createElement('input'); 
+            i.type='hidden'; 
+            i.name='selected_idpels[]'; 
+            i.value=id; 
+            container.appendChild(i);
+        });
+    }
+
+    // 2. Tampilkan Modal dengan Animasi (FIXED)
+    const modal = document.getElementById('modal-create-kddk');
+    const panel = modal ? modal.querySelector('div') : null; // Ambil container dalam (kartu)
+
+    if(modal) { 
+        // Hapus hidden dulu agar elemen dirender
+        modal.classList.remove('hidden'); 
+        modal.classList.add('flex'); 
+        
+        // Delay sangat kecil agar transisi CSS opacity berjalan
+        setTimeout(() => {
+            modal.classList.remove('opacity-0');
+            modal.classList.add('opacity-100');
+            
+            if(panel) {
+                panel.classList.remove('scale-95');
+                panel.classList.add('scale-100');
+            }
+        }, 10);
+
+        // Update Label Jumlah
+        const countLabel = document.getElementById('count-selected');
+        const countDisplay = document.getElementById('count-display');
+        if(countLabel) countLabel.textContent = selectedIds.length;
+        if(countDisplay) countDisplay.textContent = selectedIds.length;
+
+        // Preview Urutan (3 Item Pertama)
+        const previewList = document.getElementById('sequence-preview-list');
+        if (previewList) {
+            previewList.innerHTML = '';
+            selectedIds.slice(0, 3).forEach((id, idx) => {
+                previewList.innerHTML += `
+                    <div class="flex justify-between text-[10px] text-gray-600 border-b border-gray-100 dark:border-gray-700 py-1 font-mono">
+                        <span>Urut #${(idx+1).toString().padStart(3,'0')}</span>
+                        <span class="font-bold text-gray-800 dark:text-gray-300">${id}</span>
+                    </div>`;
+            });
+            if (selectedIds.length > 3) {
+                previewList.innerHTML += `<div class="text-[10px] text-gray-400 text-center mt-1 font-italic">... dan ${selectedIds.length - 3} lainnya</div>`;
+            }
+        }
+    }
+    
+    // Trigger update sequence logic
+    if(typeof window.updateSequenceAndGenerate === 'function') {
+        window.updateSequenceAndGenerate(); 
+    }
+    };
+    
+    window.closeKddkModal = function() {
+    const modal = document.getElementById('modal-create-kddk');
+    const panel = modal ? modal.querySelector('div') : null;
+
+    if(modal) { 
+        // Animasi Keluar
+        modal.classList.remove('opacity-100');
+        modal.classList.add('opacity-0');
+        
+        if(panel) {
+            panel.classList.remove('scale-100');
+            panel.classList.add('scale-95');
+        }
+
+        // Tunggu animasi selesai (300ms) baru hide element
+        setTimeout(() => {
+            modal.classList.add('hidden'); 
+            modal.classList.remove('flex');
+        }, 300);
+    }
+};
+
+    window.executeAjax = function(url, bodyData) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    document.body.style.cursor = 'wait';
+
+    return fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+        body: JSON.stringify(bodyData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.body.style.cursor = 'default';
+        if (data.success) {
+            // Pastikan showGenericSuccess juga bisa diakses (lihat poin 2)
+            if(typeof window.showGenericSuccess === 'function') window.showGenericSuccess(data.message);
+            else alert(data.message);
+        } else {
+            alert('Gagal: ' + data.message);
+        }
+    })
+    .catch(error => {
+        document.body.style.cursor = 'default';
+        console.error('Error AJAX:', error);
+        alert('Terjadi kesalahan server.');
+    });
+    };
+    
+    window.performMoveIdpel = function(idpel, targetKddk) {
+    const urlInput = document.getElementById('move-route');
+    if (!urlInput) return;
+    window.executeAjax(urlInput.value, { idpel: idpel, target_kddk: targetKddk });
+    };
+
+    window.performRemoveIdpel = function(idpel) {
+    const urlInput = document.getElementById('remove-route');
+    if (!urlInput) return;
+    window.executeAjax(urlInput.value, { idpel: idpel });
+    };
+
+    window.refreshActiveTab = function(successMessage = null) {
+        if (typeof App === 'undefined' || !App.Utils || !App.Tabs) return;
+        
+        const activeTab = App.Utils.getActiveTabName();
+        const activeContent = document.getElementById(`${activeTab}-content`);
+        if (!activeContent) return;
+
+        // A. DETEKSI URL YANG BENAR
+        // Cek elemen unik untuk menentukan kita sedang di halaman mana
+        const rbmForm = activeContent.querySelector('#rbm-form'); // Penanda Halaman Manage RBM
+        const unitInput = activeContent.querySelector('input[name="unitup"]'); // Penanda Unit ID
+        
+        let refreshUrl = null;
+
+        if (rbmForm && unitInput) {
+            // KASUS 1: HALAMAN MANAGE RBM
+            // Paksa refresh ke URL RBM, bukan URL Tab (Dashboard)
+            refreshUrl = `/team/matrix-kddk/manage-rbm/${encodeURIComponent(unitInput.value)}`;
+        } 
+        else if (unitInput) {
+            // KASUS 2: HALAMAN DETAIL GENERATOR
+            const searchForm = activeContent.querySelector('form[action*="details"]');
+            if (searchForm) {
+                refreshUrl = searchForm.action;
+                if (window.location.search && !refreshUrl.includes('?')) {
+                    refreshUrl += window.location.search;
+                }
+            } else {
+                 refreshUrl = `/team/matrix-kddk/details/${encodeURIComponent(unitInput.value)}`;
+            }
+        }
+        else {
+             // KASUS 3: HALAMAN INDEX / LAINNYA
+             const tabBtn = document.querySelector(`.tab-button[data-tab-name="${activeTab}"]`);
+             refreshUrl = tabBtn ? tabBtn.dataset.url : window.location.href;
+        }
+
+        // B. SIMPAN STATE SEBELUM REFRESH
+        const state = {
+            scroll: 0,
+            openedIds: [],
+            isMapHidden: false
+        };
+
+        // 1. Simpan Posisi Scroll
+        const scrollContainer = activeContent.querySelector('.overflow-y-auto');
+        if (scrollContainer) state.scroll = scrollContainer.scrollTop;
+
+        // 2. Simpan Accordion Terbuka
+        const openElements = activeContent.querySelectorAll('div[id^="area-"]:not(.hidden), div[id^="d6-"]:not(.hidden), div[id^="route-"]:not(.hidden)');
+        openElements.forEach(el => state.openedIds.push(el.id));
+
+        // 3. Simpan Status Hide Map (Jika di Manage RBM)
+        const panelMap = activeContent.querySelector('#panel-map');
+        if (panelMap && !panelMap.classList.contains('md:block')) {
+            state.isMapHidden = true;
+        }
+
+        // C. EKSEKUSI REFRESH & RESTORE
+        if(refreshUrl) {
+            let bustUrl = new URL(refreshUrl, window.location.origin);
+            bustUrl.searchParams.set('_cb', new Date().getTime());
+            
+            App.Tabs.loadTabContent(activeTab, bustUrl.toString(), () => {
+                
+                // RESTORE STATE SETELAH LOAD
+                const newContent = document.getElementById(`${activeTab}-content`);
+                if (!newContent) return;
+
+                // 1. Buka Kembali Accordion
+                state.openedIds.forEach(id => {
+                    const el = newContent.querySelector(`#${id}`);
+                    if (el) {
+                        el.classList.remove('hidden');
+                        const toggleBtn = newContent.querySelector(`[data-target="${id}"]`);
+                        if (toggleBtn) {
+                            const icon = toggleBtn.querySelector('.icon-chevron, .icon-chevron-sub, .icon-chevron-d6');
+                            if (icon) icon.classList.add('rotate-180');
+                        }
+                    }
+                });
+
+                // 2. Restore Hide Map (Jika tadi disembunyikan)
+                if (state.isMapHidden) {
+                    const newPanelList = newContent.querySelector('#panel-list');
+                    const newPanelMap = newContent.querySelector('#panel-map');
+                    const newToggleBtn = newContent.querySelector('[data-action="toggle-map-layout"]');
+
+                    if (newPanelList && newPanelMap) {
+                        newPanelMap.classList.remove('md:block');
+                        newPanelMap.classList.add('hidden');
+                        
+                        newPanelList.classList.remove('md:w-[450px]');
+                        newPanelList.classList.add('w-full');
+                        
+                        // Aktifkan Grid Mode
+                        newContent.querySelectorAll('.routes-grid-container').forEach(el => {
+                           el.classList.remove('space-y-0');
+                           el.classList.add('grid', 'grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-3', 'gap-4', 'p-2');
+                        });
+
+                        if (newToggleBtn) {
+                            const txt = newToggleBtn.querySelector('.text-btn');
+                            const ico = newToggleBtn.querySelector('i');
+                            if(txt) txt.textContent = "Show Map";
+                            if(ico) ico.className = "fas fa-columns mr-1.5 icon-map";
+                        }
+                    }
+                }
+
+                // 3. Kembalikan Posisi Scroll (Terakhir)
+                const newScroll = newContent.querySelector('.overflow-y-auto');
+                if (newScroll) newScroll.scrollTop = state.scroll;
+
+                if (successMessage) {
+                    const notifContainer = newContent.querySelector('#kddk-notification-container');
+                    if (notifContainer) {
+                        notifContainer.innerHTML = `
+                            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4 flex items-center shadow-sm animate-fade-in-down" role="alert">
+                                <i class="fas fa-check-circle mr-2 text-xl"></i>
+                                <span class="block sm:inline font-bold">${successMessage}</span>
+                                <button onclick="this.parentElement.remove();" class="absolute top-0 bottom-0 right-0 px-4 py-3">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        `;
+                        // Auto hide dalam 5 detik
+                        setTimeout(() => { if(notifContainer.firstChild) notifContainer.firstChild.remove(); }, 5000);
+                    } else {
+                        // Fallback jika container hilang
+                        alert(successMessage);
+                    }
+                }
+            });
+        }
+    };
+
+/**
+ * ====================================================================
+ * 5. LOGIKA GENERATOR KDDK (SEQUENCE & PREFIX)
+ * Dibuat Global agar bisa dipanggil oleh openKddkModal dan Event Listener
+ * ====================================================================
+ */
+    
+    // A. Helper: Mengambil 7 Digit Prefix (UP3 + ULP + SUB + AREA + RUTE)
+    window.getPrefix7 = function() {
+        const ids = ['part_up3', 'part_ulp', 'part_sub', 'part_area', 'part_rute'];
+        const parts = ids.map(id => {
+            const el = document.getElementById(id);
+            if(!el) return '';
+            let val = el.value.toUpperCase();
+            if(id === 'part_area' && val.length !== 2) return '';
+            if(id === 'part_rute' && val.length !== 2) return '';
+            if(id === 'part_sub' && val.length !== 1) return '';
+            return val;
+        }).join('');
+        // Harus pas 7 karakter
+        return parts.length === 7 ? parts : null;
+    }
+
+    // B. Logic Utama: Cek Sequence ke Server & Update UI
+    window.updateSequenceAndGenerate = function() {
+        const isManual = document.getElementById('mode_insert_sequence')?.checked;
+        if (isManual) {
+            window.generateFinalCode();
+            return; 
+        }
+
+        window.generateFinalCode();
+       
+        const count = window.selectionState.items.size;
+        const countDisplay = document.getElementById('count-display');
+        if(countDisplay) countDisplay.textContent = count;
+        
+        const prefix7 = window.getPrefix7();
+        const urutInput = document.getElementById('part_urut');
+        const form = document.getElementById('kddk-generator-form');
+        
+        // 2. Jika Prefix Lengkap (7 digit), tanya server nomor urut berikutnya
+        if (prefix7 && urutInput && form) {
+            if (!form.dataset || !form.dataset.sequenceUrl) return;
+
+            // Batalkan request sebelumnya jika user mengetik cepat
+            if (window.sequenceController) window.sequenceController.abort();
+            window.sequenceController = new AbortController();
+
+            urutInput.value = '...';// Loading indicator text
+            
+            const url = `${form.dataset.sequenceUrl}/${prefix7}`;
+            
+            fetch(url, { signal: window.sequenceController.signal })
+                .then(r=>r.json())
+                .then(d=>{
+                if(d.sequence) {
+                    // Server mengembalikan sequence terakhir + 1 (misal: 001)
+                    urutInput.value = d.sequence;
+
+                    // Update Preview Range (Start - End)
+                    const startSeq = parseInt(d.sequence);
+                    const endSeq = startSeq + count - 1;
+                    const pStart = document.getElementById('preview-start');
+                    const pEnd = document.getElementById('preview-end');
+                    const sisipEl = document.getElementById('part_sisip');
+                    const sisip = (sisipEl ? sisipEl.value : '00').padStart(2,'0');
+
+                    if(pStart) pStart.textContent = `${prefix7}${d.sequence}${sisip}`;
+                    if(pEnd) pEnd.textContent = `${prefix7}${endSeq.toString().padStart(3,'0')}${sisip}`;
+                    window.generateFinalCode();
+                }
+            })
+            .catch(e=>{
+                if (e.name !== 'AbortError') console.error("Sequence Error:", e);
+            });
+        }
+    };
+    
+    // C. Logic Visual: Menggabungkan semua input menjadi string KDDK final
+    window.generateFinalCode = function() {
+        const elUp3 = document.getElementById('part_up3');
+        const elUlp = document.getElementById('part_ulp');
+        const elSub = document.getElementById('part_sub');
+        const elArea = document.getElementById('part_area');
+        const elRute = document.getElementById('part_rute');
+        const elUrut = document.getElementById('part_urut');
+        const elSisip = document.getElementById('part_sisip');
+
+        const preview = document.getElementById('final_kddk_preview');
+        const btn = document.getElementById('btn-save-kddk');
+        const err = document.getElementById('kddk_error_msg');
+
+        const hiddenPrefix = document.getElementById('hidden_prefix_code');
+        const hiddenSisip = document.getElementById('hidden_sisipan');
+        const hiddenFullCode = document.getElementById('hidden_full_code_prefix');
+
+        if(!preview || !btn) return;
+        const up3 = elUp3 ? (elUp3.value || '_') : '_';
+        const ulp = elUlp ? (elUlp.value || '_') : '_';
+        const sub = elSub ? (elSub.value || '_') : '_';
+        const area = elArea ? (elArea.value || '__') : '__';
+        const rute = elRute ? (elRute.value || '__') : '__';
+        const urut = elUrut ? (elUrut.value || '___') : '___';
+        const sisipVal = (elSisip && elSisip.value ? elSisip.value : '00');
+        const sisip = sisipVal.padStart(2,'0');
+
+        const prefix7 = `${up3}${ulp}${sub}${area}${rute}`;
+        const fullCode = `${prefix7}${urut}${sisip}`;
+
+        // Isi ke Input Hidden / Preview
+        preview.value = fullCode;
+        if (hiddenPrefix) hiddenPrefix.value = prefix7;
+        if (hiddenSisip) hiddenSisip.value = sisip;
+        if (hiddenFullCode) hiddenFullCode.value = fullCode;
+
+        // Validasi Akhir: Apakah kode valid (12 digit, tidak ada underscore)
+        if (!fullCode.includes('_') && fullCode.length === 12 && !fullCode.includes('...')) {
+
+            // Valid
+            if(err) {
+                err.textContent = "Format Valid ✅";
+                err.className = "text-xs text-center text-green-600 mt-1 h-4";
+            }
+
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            // Tidak Valid
+            if(err) { 
+                err.textContent = "Lengkapi data area & rute..."; 
+                err.className = "text-xs text-center text-red-500 mt-1 h-4"; 
+            }
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    };
+    
+    // D. Helper Dropdown Area/Rute (Agar Label muncul)
+    window.updateRouteOptions = function() {
+        const areaSelect = document.getElementById('part_area');
+        const routeSelect = document.getElementById('part_rute');
+        const areaLabelDisplay = document.getElementById('area-label-display');
+        const routeLabelDisplay = document.getElementById('rute-label-display');
+
+        if (!areaSelect || !routeSelect) return;
+
+        routeSelect.innerHTML = '<option value="">--</option>';
+        if (routeLabelDisplay) routeLabelDisplay.textContent = '';
+
+        const selectedOption = areaSelect.options[areaSelect.selectedIndex];
+
+        // Tampilkan Nama Area di bawah dropdown
+        if (areaLabelDisplay && selectedOption.value) {
+             const labelText = selectedOption.dataset.label || selectedOption.text;
+             areaLabelDisplay.textContent = labelText;
+        } else if (areaLabelDisplay) {
+        areaLabelDisplay.textContent = '';
+        }
+
+        // Isi Dropdown Rute sesuai Area yang dipilih
+        if (selectedOption && selectedOption.dataset.routes) {
+            try {
+                const routes = JSON.parse(selectedOption.dataset.routes);
+                routes.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.code;
+                    opt.textContent = `${r.code} (${r.label})`;
+                    opt.dataset.label = r.label;
+                    routeSelect.appendChild(opt);
+                });
+            } catch(e) {}
+        }
+    };
+
+    window.updateLabelDisplay = function() {
+        const routeSelect = document.getElementById('part_rute');
+        const routeLabelDisplay = document.getElementById('rute-label-display');
+        if (routeSelect && routeLabelDisplay) {
+            const selectedOption = routeSelect.options[routeSelect.selectedIndex];
+            if (selectedOption && selectedOption.value) routeLabelDisplay.textContent = selectedOption.dataset.label || '';
+            else routeLabelDisplay.textContent = '';
+        }
+        window.updateSequenceAndGenerate();
+    }
+
+    window.loadRouteTableData = function(targetId, area, route) {
+        const tbody = document.getElementById(`tbody-${targetId}`);
+        const apiUrl = document.getElementById('api-route-table').value;
+        const container = document.getElementById(targetId);
+
+        if (!tbody || !apiUrl) return;
+
+        // Tampilkan Spinner
+        tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-indigo-500"><i class="fas fa-spinner fa-spin mr-2"></i> Memuat data...</td></tr>';
+
+        // Fetch
+        fetch(`${apiUrl}?area=${area}&route=${route}`)
+            .then(res => res.text())
+            .then(html => {
+                tbody.innerHTML = html;
+                if(container) container.dataset.loaded = "true"; // Tandai sudah load agar tidak load ulang
+            })
+            .catch(err => {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-red-500 text-xs p-2">Gagal memuat data.</td></tr>`;
+                console.error(err);
+            });
+    };
+
+    window.showGenericSuccess = function(message) {
+        const modal = document.getElementById('modal-success-generic');
+        const msgEl = document.getElementById('generic-success-message');
+        if (modal && msgEl) {
+            msgEl.textContent = message;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            const okBtn = modal.querySelector('button');
+            if(okBtn) setTimeout(() => okBtn.focus(), 100);
+        } else {
+            alert(message); 
+            if(typeof refreshActiveTab === 'function') refreshActiveTab();
+        }
+    };
+
+    window.showGenericWarning = function(message) {
+    const modal = document.getElementById('modal-warning-generic');
+    const msgEl = document.getElementById('warning-modal-message');
+    
+    if (modal && msgEl) {
+        msgEl.innerHTML = message; // Gunakan innerHTML agar bisa bold
+        modal.classList.remove('hidden');
+        modal.classList.remove('opacity-0'); // Pastikan opacity reset
+        modal.classList.add('flex');
+        modal.classList.add('opacity-100');
+    } else {
+        // Fallback jika modal HTML belum ada
+        alert(message.replace(/<[^>]*>?/gm, '')); 
+    }
+    };
+
+document.addEventListener('DOMContentLoaded', () => {
 
     function updateBreadcrumb(displayCode) {
         const displayEl = document.getElementById('live-kddk-display');
@@ -25,21 +902,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayEl.style.opacity = 1;
             }, 200);
         }
-    }
-
-    function syncSelectionUI() {
-        const contextInput = document.getElementById('page-context-unit');
-        if (!contextInput) return;
-        const currentUnit = contextInput.value;
-        if (selectionState.unit !== currentUnit) {
-            selectionState.unit = currentUnit;
-            selectionState.items.clear();
-        }
-        const checkboxes = document.querySelectorAll('.row-checkbox');
-        checkboxes.forEach(cb => cb.checked = selectionState.items.has(cb.value));
-        const checkAll = document.getElementById('check-all-rows');
-        if (checkAll) checkAll.checked = (checkboxes.length > 0 && [...checkboxes].every(c => c.checked));
-        toggleGroupButton();
     }
 
     const observer = new MutationObserver((mutations) => {
@@ -63,7 +925,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        if (shouldSync) setTimeout(syncSelectionUI, 50);
+        if (shouldSync) setTimeout(window.syncSelectionUI, 50);
         
         // [TAMBAHAN] Trigger Chart jika Dashboard terdeteksi
         if (dashboardLoaded) {
@@ -424,13 +1286,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // 3. EVENT LISTENERS LAIN (INPUT, CHANGE, SUBMIT)
     // ============================================================
+    function handleKddkPartChange(e) {
+        if (e.target.classList.contains('kddk-part')) {
+            console.log("Input Changed:", e.target.id); // Debugging
+
+            // Jika AREA berubah, update RUTE
+            if (e.target.id === 'part_area') {
+                window.updateRouteOptions(); 
+            }
+            
+            // Selalu update sequence & preview string
+            window.updateSequenceAndGenerate();
+        }
+    }
+    
     document.addEventListener('input', function(e) {
-        if (e.target.classList.contains('kddk-part')) updateSequenceAndGenerate();
-        if (e.target.id === 'part_sisip') e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
+        handleKddkPartChange(e);
+
+        if (e.target.id === 'part_sisip') {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
+        }
+
         if (e.target.id === 'kddk-search-input') handleKddkSearch(e.target.value);
     });
 
     document.addEventListener('change', function(e) {
+        handleKddkPartChange(e);
+
         // A. Checkbox Baris
         if (e.target.classList.contains('row-checkbox')) {
             const idpel = e.target.value;
@@ -456,8 +1338,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // C. Generator Dropdown
         if (e.target.classList.contains('kddk-part')) {
-            if (e.target.id === 'part_area') updateRouteOptions();
-            updateSequenceAndGenerate();
+            if (e.target.id === 'part_area') window.updateRouteOptions();
+            window.updateSequenceAndGenerate();
         }
 
         // D. Select All Route (Di Manage RBM)
@@ -477,61 +1359,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (headerCb) headerCb.checked = (all.length === checked.length);
             updateBulkUI();
         }
-    });
 
-    document.addEventListener('change', function(e) {
-        if (e.target && e.target.id === 'csv-selection-detail') {
-            const fileInput = e.target;
-            const file = fileInput.files[0];
-            
-            if (!file) return;
-
-            const reader = new FileReader();
-            
-            reader.onload = function(event) {
-                const text = event.target.result;
-                const lines = text.split(/\r\n|\n/);
-                
-                let totalInCsv = 0;
-                let newAdded = 0;
-                
-                // 1. ITERASI DATA FILE (Bukan Data Tabel)
-                lines.forEach(line => {
-                    const cleanId = line.trim().replace(/[^0-9]/g, '');
-                    
-                    // Validasi panjang IDPEL (11-13 digit)
-                    if (cleanId.length >= 10) { 
-                        totalInCsv++;
-                        
-                        // 2. MASUKKAN KE MEMORI (STATE) LANGSUNG
-                        // Ini intinya! Data tersimpan di RAM browser, tidak peduli halaman berapa.
-                        if (!selectionState.items.has(cleanId)) {
-                            selectionState.items.set(cleanId, { jenis: 'UPLOAD_CSV' });
-                            newAdded++;
-                        }
-                    }
-                });
-
-                // 3. Update Visual Halaman INI Saja (Opsional, agar user tidak bingung)
-                // Hanya mencentang yang kebetulan sedang tampil. Sisanya biarkan di memori.
-                if (typeof syncSelectionUI === 'function') {
-                    syncSelectionUI();
-                }
-                
-                // 4. Update Tombol Grouping (Tampilkan Jumlah Total Memori)
-                if (typeof toggleGroupButton === 'function') {
-                    toggleGroupButton(); 
-                }
-
-                fileInput.value = ''; // Reset input
-                
-                // 5. Tampilkan Pesan Sukses
-                // Pesan ini menegaskan bahwa SEMUA data sudah masuk
-                showBeautifulUploadSuccess(totalInCsv, selectionState.items.size);
-            };
-
-            reader.readAsText(file);
+        if (e.target.id === 'part_rute') {
+            window.updateLabelDisplay();
         }
+
     });
 
     // --- FUNGSI PEMBUAT MODAL CANTIK (INJECT KE DOM) ---
@@ -880,22 +1712,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 5. HELPER AJAX & MODAL SUKSES (PREMIUM)
     // ============================================================
 
-    // 1. Tampilkan Modal
-    function showGenericSuccess(message) {
-        const modal = document.getElementById('modal-success-generic');
-        const msgEl = document.getElementById('generic-success-message');
-        if (modal && msgEl) {
-            msgEl.textContent = message;
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            const okBtn = modal.querySelector('button');
-            if(okBtn) setTimeout(() => okBtn.focus(), 100);
-        } else {
-            alert(message); 
-            refreshActiveTab();
-        }
-    }
-
     // 2. Tutup Modal & Refresh
     window.closeGenericSuccessModal = function() {
         const modal = document.getElementById('modal-success-generic');
@@ -905,184 +1721,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         refreshActiveTab();
     }
-
-    // 3. REFRESH LOGIC (DENGAN DETEKSI URL OTOMATIS & STATE RESTORE)
-    function refreshActiveTab(successMessage = null) {
-        if (typeof App === 'undefined' || !App.Utils || !App.Tabs) return;
-        
-        const activeTab = App.Utils.getActiveTabName();
-        const activeContent = document.getElementById(`${activeTab}-content`);
-        if (!activeContent) return;
-
-        // A. DETEKSI URL YANG BENAR
-        // Cek elemen unik untuk menentukan kita sedang di halaman mana
-        const rbmForm = activeContent.querySelector('#rbm-form'); // Penanda Halaman Manage RBM
-        const unitInput = activeContent.querySelector('input[name="unitup"]'); // Penanda Unit ID
-        
-        let refreshUrl = null;
-
-        if (rbmForm && unitInput) {
-            // KASUS 1: HALAMAN MANAGE RBM
-            // Paksa refresh ke URL RBM, bukan URL Tab (Dashboard)
-            refreshUrl = `/team/matrix-kddk/manage-rbm/${encodeURIComponent(unitInput.value)}`;
-        } 
-        else if (unitInput) {
-            // KASUS 2: HALAMAN DETAIL GENERATOR
-            const searchForm = activeContent.querySelector('form[action*="details"]');
-            if (searchForm) {
-                refreshUrl = searchForm.action;
-                if (window.location.search && !refreshUrl.includes('?')) {
-                    refreshUrl += window.location.search;
-                }
-            } else {
-                 refreshUrl = `/team/matrix-kddk/details/${encodeURIComponent(unitInput.value)}`;
-            }
-        }
-        else {
-             // KASUS 3: HALAMAN INDEX / LAINNYA
-             const tabBtn = document.querySelector(`.tab-button[data-tab-name="${activeTab}"]`);
-             refreshUrl = tabBtn ? tabBtn.dataset.url : window.location.href;
-        }
-
-        // B. SIMPAN STATE SEBELUM REFRESH
-        const state = {
-            scroll: 0,
-            openedIds: [],
-            isMapHidden: false
-        };
-
-        // 1. Simpan Posisi Scroll
-        const scrollContainer = activeContent.querySelector('.overflow-y-auto');
-        if (scrollContainer) state.scroll = scrollContainer.scrollTop;
-
-        // 2. Simpan Accordion Terbuka
-        const openElements = activeContent.querySelectorAll('div[id^="area-"]:not(.hidden), div[id^="d6-"]:not(.hidden), div[id^="route-"]:not(.hidden)');
-        openElements.forEach(el => state.openedIds.push(el.id));
-
-        // 3. Simpan Status Hide Map (Jika di Manage RBM)
-        const panelMap = activeContent.querySelector('#panel-map');
-        if (panelMap && !panelMap.classList.contains('md:block')) {
-            state.isMapHidden = true;
-        }
-
-        // C. EKSEKUSI REFRESH & RESTORE
-        if(refreshUrl) {
-            let bustUrl = new URL(refreshUrl, window.location.origin);
-            bustUrl.searchParams.set('_cb', new Date().getTime());
-            
-            App.Tabs.loadTabContent(activeTab, bustUrl.toString(), () => {
-                
-                // RESTORE STATE SETELAH LOAD
-                const newContent = document.getElementById(`${activeTab}-content`);
-                if (!newContent) return;
-
-                // 1. Buka Kembali Accordion
-                state.openedIds.forEach(id => {
-                    const el = newContent.querySelector(`#${id}`);
-                    if (el) {
-                        el.classList.remove('hidden');
-                        const toggleBtn = newContent.querySelector(`[data-target="${id}"]`);
-                        if (toggleBtn) {
-                            const icon = toggleBtn.querySelector('.icon-chevron, .icon-chevron-sub, .icon-chevron-d6');
-                            if (icon) icon.classList.add('rotate-180');
-                        }
-                    }
-                });
-
-                // 2. Restore Hide Map (Jika tadi disembunyikan)
-                if (state.isMapHidden) {
-                    const newPanelList = newContent.querySelector('#panel-list');
-                    const newPanelMap = newContent.querySelector('#panel-map');
-                    const newToggleBtn = newContent.querySelector('[data-action="toggle-map-layout"]');
-
-                    if (newPanelList && newPanelMap) {
-                        newPanelMap.classList.remove('md:block');
-                        newPanelMap.classList.add('hidden');
-                        
-                        newPanelList.classList.remove('md:w-[450px]');
-                        newPanelList.classList.add('w-full');
-                        
-                        // Aktifkan Grid Mode
-                        newContent.querySelectorAll('.routes-grid-container').forEach(el => {
-                           el.classList.remove('space-y-0');
-                           el.classList.add('grid', 'grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-3', 'gap-4', 'p-2');
-                        });
-
-                        if (newToggleBtn) {
-                            const txt = newToggleBtn.querySelector('.text-btn');
-                            const ico = newToggleBtn.querySelector('i');
-                            if(txt) txt.textContent = "Show Map";
-                            if(ico) ico.className = "fas fa-columns mr-1.5 icon-map";
-                        }
-                    }
-                }
-
-                // 3. Kembalikan Posisi Scroll (Terakhir)
-                const newScroll = newContent.querySelector('.overflow-y-auto');
-                if (newScroll) newScroll.scrollTop = state.scroll;
-
-                if (successMessage) {
-                    const notifContainer = newContent.querySelector('#kddk-notification-container');
-                    if (notifContainer) {
-                        notifContainer.innerHTML = `
-                            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4 flex items-center shadow-sm animate-fade-in-down" role="alert">
-                                <i class="fas fa-check-circle mr-2 text-xl"></i>
-                                <span class="block sm:inline font-bold">${successMessage}</span>
-                                <button onclick="this.parentElement.remove();" class="absolute top-0 bottom-0 right-0 px-4 py-3">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                        `;
-                        // Auto hide dalam 5 detik
-                        setTimeout(() => { if(notifContainer.firstChild) notifContainer.firstChild.remove(); }, 5000);
-                    } else {
-                        // Fallback jika container hilang
-                        alert(successMessage);
-                    }
-                }
-            });
-        }
-    }
-
-    // 4. Eksekutor AJAX
-    function executeAjax(url, bodyData) {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-        document.body.style.cursor = 'wait';
-
-        return fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
-            body: JSON.stringify(bodyData)
-        })
-        .then(response => response.json())
-        .then(data => {
-            document.body.style.cursor = 'default';
-            if (data.success) {
-                showGenericSuccess(data.message);
-            } else {
-                alert('Gagal: ' + data.message);
-            }
-        })
-        .catch(error => {
-            document.body.style.cursor = 'default';
-            console.error('Error AJAX:', error);
-            alert('Terjadi kesalahan server.');
-        });
-    }
     
-    // 5. Wrapper Actions
-    function performMoveIdpel(idpel, targetKddk) {
-        const urlInput = document.getElementById('move-route');
-        if (!urlInput) return;
-        executeAjax(urlInput.value, { idpel: idpel, target_kddk: targetKddk });
-    }
-
-    function performRemoveIdpel(idpel) {
-        const urlInput = document.getElementById('remove-route');
-        if (!urlInput) return;
-        executeAjax(urlInput.value, { idpel: idpel });
-    }
-
     // [FUNGSI BARU] MENANGANI SUBMIT FORM UTAMA (TOMBOL SIMPAN TOOLBAR)
     function handleMainFormSubmit(form) {
         // 1. Cari tombol submit di DALAM form
@@ -1137,9 +1776,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ============================================================
-    // 6. GENERATOR KDDK (CUSTOM SUBMIT)
-    // ============================================================
     function handleGeneratorSubmit(form) {
         const submitBtn = form.querySelector('button[type="submit"]');
         const originalText = submitBtn.innerHTML;
@@ -1463,55 +2099,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateBulkUI();
     }
     
-    window.toggleGroupButton = function() {
-        const count = selectionState.items.size;
-        const btn = document.getElementById('btn-group-kddk');
-        const countSpan = document.getElementById('count-selected');
-        if(btn) {
-            if(count>0) { btn.classList.remove('hidden'); btn.innerHTML=`<i class="fas fa-layer-group mr-2"></i> Bentuk Group (${count})`; }
-            else btn.classList.add('hidden');
-        }
-        if(countSpan) countSpan.textContent = count;
-    }
-
-    window.openKddkModal = function() {
-        const selectedIds = Array.from(selectionState.items.keys());
-
-        if (selectedIds.length === 0) { 
-            alert("Pilih atau Upload minimal satu pelanggan."); 
-            return; 
-        }
-
-        const container = document.getElementById('hidden-inputs-container');
-        if(container) {
-            container.innerHTML = '';
-
-            selectedIds.forEach(id => {
-                const i = document.createElement('input'); 
-                i.type='hidden'; 
-                i.name='selected_idpels[]'; // Ini yang dikirim ke Controller
-                i.value=id; 
-                container.appendChild(i);
-            });
-        }
-        const modal = document.getElementById('modal-create-kddk');
-        if(modal) { 
-            modal.classList.remove('hidden'); 
-            modal.classList.add('flex'); 
-            
-            // Update Label Jumlah di Modal
-            const countLabel = document.getElementById('count-selected');
-            if(countLabel) countLabel.textContent = selectedIds.length; // Tulis "200"
-
-            if(typeof updateSequenceAndGenerate === 'function') updateSequenceAndGenerate(); 
-        }
-    }
-    
-    window.closeKddkModal = function() {
-        const modal = document.getElementById('modal-create-kddk');
-        if(modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-    }
-    
     window.confirmGrouping = function() {
         const total = selectionState.items.size;
         if (total === 0) { alert("Pilih minimal satu pelanggan."); return; }
@@ -1607,33 +2194,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, true);
 
-    // Generator Internal Helper
-    function updateRouteOptions() {
-        const areaSelect = document.getElementById('part_area');
-        const routeSelect = document.getElementById('part_rute');
-        const areaLabelDisplay = document.getElementById('area-label-display');
-        const routeLabelDisplay = document.getElementById('rute-label-display');
-        if (!areaSelect || !routeSelect) return;
-        routeSelect.innerHTML = '<option value="">--</option>';
-        if (routeLabelDisplay) routeLabelDisplay.textContent = '';
-        const selectedOption = areaSelect.options[areaSelect.selectedIndex];
-        if (areaLabelDisplay && selectedOption.value) {
-             const labelText = selectedOption.dataset.label || selectedOption.text;
-             areaLabelDisplay.textContent = labelText;
-        } else if (areaLabelDisplay) areaLabelDisplay.textContent = '';
-        if (selectedOption && selectedOption.dataset.routes) {
-            try {
-                const routes = JSON.parse(selectedOption.dataset.routes);
-                routes.forEach(r => {
-                    const opt = document.createElement('option');
-                    opt.value = r.code;
-                    opt.textContent = `${r.code} (${r.label})`;
-                    opt.dataset.label = r.label;
-                    routeSelect.appendChild(opt);
-                });
-            } catch(e) {}
-        }
-    }
     
     window.updateMoveRouteOptions = function() {
         const areaSelect = document.getElementById('move-area');
@@ -1658,106 +2218,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    window.updateLabelDisplay = function() {
-        const routeSelect = document.getElementById('part_rute');
-        const routeLabelDisplay = document.getElementById('rute-label-display');
-        if (routeSelect && routeLabelDisplay) {
-            const selectedOption = routeSelect.options[routeSelect.selectedIndex];
-            if (selectedOption && selectedOption.value) routeLabelDisplay.textContent = selectedOption.dataset.label || '';
-            else routeLabelDisplay.textContent = '';
-        }
-        if (typeof updateSequenceAndGenerate === 'function') updateSequenceAndGenerate();
-    }
-
-    function getPrefix7() {
-        const ids = ['part_up3', 'part_ulp', 'part_sub', 'part_area', 'part_rute'];
-        const parts = ids.map(id => {
-            const el = document.getElementById(id);
-            if(!el) return '';
-            let val = el.value.toUpperCase();
-            if(id === 'part_area' && val.length !== 2) return '';
-            if(id === 'part_rute' && val.length !== 2) return '';
-            if(id === 'part_sub' && val.length !== 1) return '';
-            return val;
-        }).join('');
-        return parts.length === 7 ? parts : null;
-    }
-
-    function updateSequenceAndGenerate() { 
-        generateFinalCode();
-        const count = selectionState.items.size;
-        const countDisplay = document.getElementById('count-display');
-        if(countDisplay) countDisplay.textContent = count;
-        
-        const prefix7 = getPrefix7();
-        const urutInput = document.getElementById('part_urut');
-        const form = document.getElementById('kddk-generator-form');
-        
-        if (prefix7 && urutInput && form) {
-            if (!form.dataset || !form.dataset.sequenceUrl) return;
-            if (sequenceController) sequenceController.abort();
-            sequenceController = new AbortController();
-            urutInput.value = '...';
-            const url = `${form.dataset.sequenceUrl}/${prefix7}`;
-            
-            fetch(url, { signal: sequenceController.signal }).then(r=>r.json()).then(d=>{
-                if(d.sequence) {
-                    urutInput.value = d.sequence;
-                    const startSeq = parseInt(d.sequence);
-                    const endSeq = startSeq + count - 1;
-                    const pStart = document.getElementById('preview-start');
-                    const pEnd = document.getElementById('preview-end');
-                    const sisip = document.getElementById('part_sisip').value.padStart(2,'0');
-                    if(pStart) pStart.textContent = `${prefix7}${d.sequence}${sisip}`;
-                    if(pEnd) pEnd.textContent = `${prefix7}${endSeq.toString().padStart(3,'0')}${sisip}`;
-                    generateFinalCode();
-                }
-            }).catch(e=>{});
-        }
-    }
-    
-    function generateFinalCode() {
-        const elUp3 = document.getElementById('part_up3');
-        const elUlp = document.getElementById('part_ulp');
-        const elSub = document.getElementById('part_sub');
-        const elArea = document.getElementById('part_area');
-        const elRute = document.getElementById('part_rute');
-        const elUrut = document.getElementById('part_urut');
-        const elSisip = document.getElementById('part_sisip');
-        const preview = document.getElementById('final_kddk_preview');
-        const btn = document.getElementById('btn-save-kddk');
-        const err = document.getElementById('kddk_error_msg');
-        const hiddenPrefix = document.getElementById('hidden_prefix_code');
-        const hiddenSisip = document.getElementById('hidden_sisipan');
-        if(!preview || !btn) return;
-        const up3 = elUp3 ? (elUp3.value || '_') : '_';
-        const ulp = elUlp ? (elUlp.value || '_') : '_';
-        const sub = elSub ? (elSub.value || '_') : '_';
-        const area = elArea ? (elArea.value || '__') : '__';
-        const rute = elRute ? (elRute.value || '__') : '__';
-        const urut = elUrut ? (elUrut.value || '___') : '___';
-        const sisipVal = (elSisip && elSisip.value ? elSisip.value : '00');
-        const sisip = sisipVal.padStart(2,'0');
-        const prefix7 = `${up3}${ulp}${sub}${area}${rute}`;
-        const fullCode = `${prefix7}${urut}${sisip}`;
-        preview.value = fullCode;
-        if (hiddenPrefix) hiddenPrefix.value = prefix7;
-        if (hiddenSisip) hiddenSisip.value = sisip;
-        if (!fullCode.includes('_') && fullCode.length === 12 && !fullCode.includes('...')) {
-            preview.classList.replace('border-indigo-100', 'border-green-500');
-            preview.classList.replace('text-indigo-600', 'text-green-600');
-            if(err) { err.textContent = "Format Valid ✅"; err.className = "text-xs text-center text-green-600 mt-1 h-4"; }
-            btn.disabled = false;
-            btn.classList.remove('opacity-50', 'cursor-not-allowed');
-        } else {
-            preview.classList.replace('border-green-500', 'border-indigo-100');
-            preview.classList.replace('text-green-600', 'text-indigo-600');
-            if(err) { err.textContent = "Lengkapi data..."; err.className = "text-xs text-center text-red-500 mt-1 h-4"; }
-            btn.disabled = true;
-            btn.classList.add('opacity-50', 'cursor-not-allowed');
-        }
-    }
-    
     function handleKddkSearch(val) {
     const searchInput = document.getElementById('kddk-search-input');
     const searchResults = document.getElementById('search-results-dropdown');
@@ -1909,28 +2369,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function loadRouteTableData(targetId, area, route) {
-        const tbody = document.getElementById(`tbody-${targetId}`);
-        const apiUrl = document.getElementById('api-route-table').value;
-        const container = document.getElementById(targetId);
-
-        if (!tbody || !apiUrl) return;
-
-        // Tampilkan Spinner
-        tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-indigo-500"><i class="fas fa-spinner fa-spin mr-2"></i> Memuat data...</td></tr>';
-
-        // Fetch
-        fetch(`${apiUrl}?area=${area}&route=${route}`)
-            .then(res => res.text())
-            .then(html => {
-                tbody.innerHTML = html;
-                container.dataset.loaded = "true"; // Tandai sudah load agar tidak load ulang
-            })
-            .catch(err => {
-                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-red-500 text-xs p-2">Gagal memuat data.</td></tr>`;
-                console.error(err);
-            });
-    }
+    
 
     // ============================================================
     // 10. DASHBOARD CHARTS (APEXCHARTS HANDLER)
@@ -2372,4 +2811,51 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     });
+
+    // A. LOGIKA CHECKBOX "SISIPKAN (MANUAL)"
+    const insertCheck = document.getElementById('mode_insert_sequence');
+    const urutInput = document.getElementById('part_urut');
+
+    if (insertCheck && urutInput) {
+        insertCheck.addEventListener('change', function(e) {
+            if (e.target.checked) {
+                // MODE MANUAL: Buka Kunci
+                urutInput.readOnly = false;
+                urutInput.value = ''; // Kosongkan biar user isi
+                urutInput.placeholder = '000';
+                
+                // Ganti Style biar kelihatan aktif
+                urutInput.classList.remove('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+                urutInput.classList.add('bg-white', 'text-indigo-700', 'border-indigo-500', 'ring-2', 'ring-indigo-200');
+                urutInput.focus();
+            } else {
+                // MODE AUTO: Kunci Kembali
+                urutInput.readOnly = true;
+                urutInput.placeholder = '...';
+                
+                // Kembalikan Style Readonly
+                urutInput.classList.add('bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+                urutInput.classList.remove('bg-white', 'text-indigo-700', 'border-indigo-500', 'ring-2', 'ring-indigo-200');
+                
+                // Minta nomor otomatis lagi ke server
+                window.updateSequenceAndGenerate(); 
+            }
+        });
+
+        // B. LOGIKA KETIK MANUAL (Hanya Angka)
+        urutInput.addEventListener('input', function(e) {
+            // Cek apakah sedang mode manual?
+            if (insertCheck.checked) {
+                // Hapus karakter non-angka
+                let val = e.target.value.replace(/[^0-9]/g, '');
+                // Batasi max 3 digit
+                if (val.length > 3) val = val.slice(0, 3);
+                
+                e.target.value = val;
+                
+                // Update Preview Code String Realtime
+                window.generateFinalCode();
+            }
+        });
+    }
 });

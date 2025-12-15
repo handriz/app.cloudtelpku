@@ -217,7 +217,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/route-table/{unit}', [MatrixKddkController::class, 'getRouteTable'])->name('get_route_table');
             Route::get('/search-customer/{unit}', [MatrixKddkController::class, 'searchCustomer'])->name('search_customer');
             Route::post('/save-sequence', [MatrixKddkController::class, 'saveRouteSequence'])->name('save_sequence');
-
+            Route::post('/validate-upload', [MatrixKddkController::class, 'validateUploadIds'])->name('validate_upload');
+            
             // 8. Peta
             Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');
         });

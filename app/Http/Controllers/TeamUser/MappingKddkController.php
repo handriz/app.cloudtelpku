@@ -30,7 +30,7 @@ class MappingKddkController extends Controller
 
         // 2. Tentukan Tipe Pencarian (IDPEL Search vs Other/No Search)
         $isIdpelSearch = false;
-        if ($search && is_numeric($search) && strlen($search) == 10) {
+        if ($search && is_numeric($search) && strlen($search) == 12) {
             // Cek apakah IDPEL ini ada & boleh diakses user
             $existsQuery = MappingKddk::query()->where('mapping_kddk.idpel', $search)
                 ->when(!$user->hasRole('admin'), function ($query) use ($hierarchyFilter) {
@@ -118,26 +118,24 @@ class MappingKddkController extends Controller
 
         // 5. Terapkan paginasi
         $mappings = $query->paginate(10)->withQueryString();
-        $pageIdpels = $mappings->pluck('idpel')->unique()->toArray();
-        $activeIdpels = [];
-        if (!empty($pageIdpels)) {
+            $pageIdpels = $mappings->pluck('idpel')->unique();
             $activeIdpels = MappingKddk::whereIn('idpel', $pageIdpels)
-                                ->where('enabled', true) // Pastikan cek true/1
-                                ->pluck('idpel')
-                                ->toArray();
-        }
+                            ->where('enabled', true)
+                            ->pluck('idpel')
+                            ->toArray();
 
         // 6. Siapkan Data Header (Foto, Peta, Status)
         $searchedMapping = null;
         $mappingStatus = null;
-        $searchedIdpel = $search;
+        $searchedIdpel = null;
         
         if ($search) {
+            $searchedIdpel = $search;
             
             // 6a. Coba cari data yang 'enabled' DULU untuk IDPEL ini
             $focusedQuery = MappingKddk::query()
                 ->where('mapping_kddk.idpel', $searchedIdpel)
-                ->orderBy('mapping_kddk.enabled', 'desc') 
+                ->where('mapping_kddk.enabled', true) // Prioritas: Enabled = 1
                 ->latest() // Ambil yang terbaru jika ada beberapa yang enabled (jarang)
                 ->first();
             
@@ -891,6 +889,8 @@ class MappingKddkController extends Controller
             $updateData = [
                 'ket_validasi'     => 'recalled', // Status turun
                 'enabled'          => false,      // Hilang dari peta
+                'validation_notes' => $reason,    // Catatan alasan
+                'validation_data'  => null,       // Reset info validasi
                 'locked_by'        => null,
                 'locked_at'        => null
             ];
