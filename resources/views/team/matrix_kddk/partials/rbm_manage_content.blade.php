@@ -54,14 +54,6 @@
 
         {{-- BAGIAN KANAN: POSISI INDICATOR & TOMBOL --}}
         <div class="flex items-center gap-3 md:overflow-visible custom-scrollbar pb-1 md:pb-0 relative z-[999]">
-            
-            {{-- [BARU] INDIKATOR POSISI (Sejajar dengan Tombol) --}}
-            <div class="flex items-center h-9 px-3 bg-gray-800 text-white rounded-md shadow-sm border border-gray-700 whitespace-nowrap">
-                <span class="text-[10px] uppercase text-gray-400 font-bold mr-2 tracking-wider">POSISI:</span>
-                <span id="live-kddk-display" class="font-mono font-bold text-yellow-400 text-sm tracking-widest">
-                    {{ $basePrefix }}
-                </span>
-            </div>
 
             {{-- GROUP 1: TAMPILAN --}}
             <div class="flex items-center gap-1 bg-gray-50 dark:bg-gray-700/50 p-1 rounded-lg border border-gray-200 dark:border-gray-600 shrink-0">
@@ -140,15 +132,24 @@
         {{-- ID: panel-list DITAMBAHKAN UNTUK JS --}}
         <div id="panel-list" class="w-full md:w-[450px] flex flex-col bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 relative z-10 shadow-xl transition-all duration-300">
             
-            <div class="p-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 relative">
-                {{-- Input Hidden URL API --}}
-                <input type="hidden" id="api-search-customer" value="{{ route('team.matrix_kddk.search_customer', ['unit' => $unitCode]) }}">
+            <div class="p-3 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 relative flex gap-2 items-center">
                 
-                <div class="relative">
+                {{-- [BARU] Tombol Tutup Sidebar --}}
+                <button type="button" data-action="toggle-sidebar" 
+                        class="w-9 h-9 shrink-0 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-indigo-600 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 flex items-center justify-center transition" 
+                        title="Tutup Sidebar (Tampilan Peta Penuh)">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+
+                {{-- Wrapper Input Pencarian (Flex-1 agar mengisi sisa ruang) --}}
+                <div class="relative flex-1">
+                    {{-- Input Hidden URL API (JANGAN DIHAPUS) --}}
+                    <input type="hidden" id="api-search-customer" value="{{ route('team.matrix_kddk.search_customer', ['unit' => $unitCode]) }}">
+                    
                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400"><i class="fas fa-search"></i></span>
                     <input type="text" id="kddk-search-input" 
                            class="w-full py-2 pl-9 pr-8 text-sm bg-gray-100 dark:bg-gray-700 border-transparent focus:bg-white focus:border-indigo-500 rounded-md transition"
-                           placeholder="Cari IDPEL / Nama... (Min 3 Karakter)">
+                           placeholder="Cari idpelanggan / nomormeter... (Min 3 Karakter)">
                     
                     {{-- Tombol Clear (X) --}}
                     <button id="clear-search-btn" class="hidden absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 cursor-pointer">
@@ -370,13 +371,21 @@
         {{-- PANEL KANAN: PETA --}}
         {{-- ID: panel-map DITAMBAHKAN UNTUK JS --}}
         <div id="panel-map" class="flex-1 bg-gray-200 dark:bg-gray-800 relative h-full hidden md:block">
+            
+            {{-- Tombol Buka Menu (Awalnya Hidden) --}}
+            <button type="button" id="btn-open-sidebar" data-action="toggle-sidebar" 
+                    class="hidden absolute top-4 left-4 z-[5000] bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-300 px-4 py-2.5 rounded-lg shadow-xl border border-indigo-100 dark:border-gray-600 font-bold text-xs flex items-center animate-fade-in-left hover:scale-105 transition">
+                <i class="fas fa-list-ul mr-2"></i> Buka Menu Rute
+            </button>
+
             {{-- Map Controls --}}
-            <div class="absolute top-4 left-4 z-[400] bg-white/90 backdrop-blur-sm p-2 rounded-lg shadow-md border border-gray-200 flex items-center space-x-3">
+            <div id="map-info-controls" class="absolute top-4 left-4 z-[4000] bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm p-2 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex items-center space-x-3 transition-all duration-300 ease-in-out">
                 <span class="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded font-bold" id="map-count">0 Titik</span>
                 <div class="h-3 w-px bg-gray-300 mx-1"></div>
-                <span class="text-[10px] text-gray-700 font-bold truncate max-w-[200px]" id="map-context-title">Pilih Area/Rute di kiri</span>
+                <span class="text-[10px] text-gray-700 dark:text-gray-200 font-bold truncate max-w-[200px]" id="map-context-title">Pilih Area/Rute di kiri</span>
             </div>
-            <div id="anomaly-alert" class="hidden absolute top-16 left-4 z-[5000] bg-red-100/95 backdrop-blur-md border border-red-400 text-red-800 px-3 py-2 rounded-lg sshadow-2xl flex items-center space-x-3 animate-bounce-in-up">
+
+            <div id="anomaly-alert" class="hidden absolute top-16 left-4 z-[5000] bg-red-100/95 backdrop-blur-md border border-red-400 text-red-800 px-3 py-2 rounded-lg shadow-2xl flex items-center space-x-3 animate-bounce-in-up transition-all duration-300 ease-in-out">
                 <div class="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs">!</div>
                 <div class="text-xs">
                     <span class="font-bold block">Terdeteksi Anomali!</span>
@@ -384,6 +393,7 @@
                 </div>
                 <button onclick="document.getElementById('anomaly-alert').classList.add('hidden')" class="text-red-500 hover:text-red-700 ml-2"><i class="fas fa-times"></i></button>
             </div>
+
             {{-- TOOLBAR VISUAL REORDER (Overlay di Peta) --}}
             <div id="map-visual-controls" class="hidden absolute top-4 right-4 z-[5000] flex flex-col space-y-2">
                 
@@ -414,6 +424,7 @@
                         </button>
                     </div>
                 </div>
+
             </div>
 
             {{-- Input Hidden untuk menyimpan URL API --}}
