@@ -23,6 +23,8 @@
     const areaLayers = {}; // Aman, object kosong
     const areaRawData = {}; // [BARU] Menyimpan data JSON mentah per area
     let sequenceController = null;
+    let routeLineLayer = null;   // Garis biru
+    let arrowLayer = null;       // Panah arah
 
 /**
  * ====================================================================
@@ -143,7 +145,7 @@
     window.processUploadedFile = function(file) {
     if (!file) return;
     
-    // 1. Setup UI Loading
+    // Setup UI Loading
     const dropZone = document.getElementById('upload-drop-zone');
     const loading = document.getElementById('upload-loading');
     const stats = document.getElementById('upload-result-stats');
@@ -154,9 +156,7 @@
     if (loading) loading.classList.remove('hidden');
     if (stats) stats.classList.add('hidden');
     if (filenameLabel) filenameLabel.textContent = file.name;
-    
-    // Reset Pesan Loading
-    if(loadingText) loadingText.textContent = "Membaca File...";
+    if (loadingText) loadingText.textContent = "Membaca Format CSV (ID, Lat, Lng)...";
 
     const reader = new FileReader();
     
@@ -164,64 +164,94 @@
         const text = event.target.result;
         const allLines = text.split(/\r\n|\n/);
         
-        // 2. Client Side Cleaning (Hanya Format)
-        const cleanIds = allLines
-            .map(l => l.trim().replace(/[^0-9]/g, ''))
-            .filter(l => l.length >= 10); // Minimal 10 digit
+        // [BARU] Parsing Cerdas (IDPEL + KOORDINAT)
+        // Format diharapkan: IDPEL, LATITUDE, LONGITUDE
+        
+        const parsedData = []; // Menyimpan objek {idpel, lat, lng}
+        const onlyIds = [];    // Menyimpan string IDPEL saja (untuk validasi server)
 
-        const uniqueIds = [...new Set(cleanIds)];
+        allLines.forEach(line => {
+            if (!line.trim()) return; // Skip baris kosong
+
+            // Split berdasarkan Koma, Titik Koma, Pipe, atau Tab
+            const parts = line.split(/[,;| \t]+/);
+            
+            // Ambil IDPEL (Kolom 1 - Bersihkan karakter non-angka)
+            const rawId = parts[0].replace(/[^0-9]/g, '');
+
+            // Validasi: Minimal 10 digit agar dianggap IDPEL valid
+            if (rawId.length >= 10) {
+                let lat = null;
+                let lng = null;
+
+                // Cek apakah ada kolom Latitude (2) dan Longitude (3)
+                if (parts.length >= 3) {
+
+                    const latStr = parts[1].replace(',', '.'); 
+                    const lngStr = parts[2].replace(',', '.');
+
+                    const l1 = parseFloat(parts[1]); // Latitude
+                    const l2 = parseFloat(parts[2]); // Longitude
+                    
+                    // Validasi angka koordinat (Lat -90~90, Lng -180~180)
+                    if (!isNaN(l1) && !isNaN(l2) && Math.abs(l1) <= 90 && Math.abs(l2) <= 180) {
+                        lat = l1;
+                        lng = l2;
+                    }
+                }
+
+                parsedData.push({ idpel: rawId, lat: lat, lng: lng });
+                onlyIds.push(rawId);
+            }
+        });
+
+        const uniqueIds = [...new Set(onlyIds)];
         
         if (uniqueIds.length === 0) {
-            alert("File kosong atau format salah (Tidak ada angka > 10 digit).");
+            alert("File kosong atau format salah. Pastikan kolom pertama adalah IDPEL.");
             if (dropZone) dropZone.classList.remove('hidden');
             if (loading) loading.classList.add('hidden');
             return;
         }
 
-        // 3. SERVER SIDE VALIDATION (AJAX)
+        // [PENTING] Simpan data lengkap ke Variabel Global Sementara
+        // Data ini akan dipakai nanti saat tombol "Simpan" ditekan di Generator
+        window.tempUploadFullData = parsedData; 
+
+        // --- VALIDASI KE SERVER (Cuma kirim IDPEL untuk cek status Rute) ---
         if(loadingText) loadingText.textContent = "Memvalidasi Database...";
         
-        // Ambil Unit ID dari halaman
         const unitContext = document.getElementById('page-context-unit').value;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-        // URL Route yang baru kita buat (Hardcode path atau ambil dari meta jika ada)
         const validateUrl = '/team/matrix-kddk/validate-upload'; 
 
         fetch(validateUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({
-                idpels: uniqueIds,
-                unitup: unitContext
-            })
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+            body: JSON.stringify({ idpels: uniqueIds, unitup: unitContext })
         })
         .then(response => response.json())
         .then(data => {
-            // 4. Proses Hasil dari Server (LOGIKA BARU)
-            // Kita hanya mengambil yang READY (belum punya KDDK) untuk diproses
-            window.tempUploadResults = data.ready_ids; 
-            
-            // Statistik
-            const totalFile = allLines.length; // Raw lines
-            const countReady = data.ready_count;
-            const countMapped = data.mapped_count;
-            
-            // Invalid = (Total File - (Ready + Mapped)) 
-            // Ini mencakup: Duplikat di file, Format Salah, dan Tidak Ada di DB
-            const countInvalid = totalFile - (countReady + countMapped);
 
-            // Update UI Statistik
+            // Buat lookup table biar cepat
+            const serverReadySet = new Set(data.ready_ids);
+            // Hanya ambil ID yang dinyatakan 'Valid/Ready' oleh server
+            const orderedReadyIds = uniqueIds.filter(id => serverReadySet.has(id));
+            // Simpan hasil yang SUDAH URUT ke variabel global
+            window.tempUploadResults = orderedReadyIds; 
+            
+            // Hitung Statistik
+            const countReady = orderedReadyIds.length;
+            const countMapped = data.mapped_count;
+            const countInvalid = uniqueIds.length - (countReady + countMapped);
+
+            // Update Tampilan Statistik
             const elTotal = document.getElementById('stat-total');
-            const elValid = document.getElementById('stat-valid');   // Ready
-            const elMapped = document.getElementById('stat-mapped'); // Sudah Ada (Baru)
+            const elValid = document.getElementById('stat-valid');
+            const elMapped = document.getElementById('stat-mapped');
             const elInvalid = document.getElementById('stat-invalid');
             
-            if (elTotal) elTotal.textContent = totalFile.toLocaleString();
+            if (elTotal) elTotal.textContent = uniqueIds.length.toLocaleString();
             if (elValid) elValid.textContent = countReady.toLocaleString();
             if (elMapped) elMapped.textContent = countMapped.toLocaleString();
             if (elInvalid) elInvalid.textContent = countInvalid.toLocaleString();
@@ -234,24 +264,22 @@
                 if (countReady > 0) {
                     btnApply.disabled = false;
                     btnApply.classList.remove('opacity-50', 'cursor-not-allowed');
-                    btnApply.innerHTML = `<span>Gunakan ${countReady} Data</span> <i class="fas fa-arrow-right ml-2"></i>`;
+                    
+                    // Info tambahan: Berapa banyak yang ada koordinatnya?
+                    // Filter parsedData yang ID-nya ada di ready_ids DAN punya lat/lng
+                    const readyIdsSet = new Set(data.ready_ids);
+                    const hasCoordCount = parsedData.filter(d => readyIdsSet.has(d.idpel) && d.lat).length;
+                    
+                    const coordMsg = hasCoordCount > 0 ? `<br><span class="text-xs font-normal opacity-80">(Update ${hasCoordCount} Peta)</span>` : '';
+                    
+                    btnApply.innerHTML = `<span>Gunakan ${countReady} Data</span> ${coordMsg} <i class="fas fa-arrow-right ml-2"></i>`;
                 } else {
                     btnApply.disabled = true;
                     btnApply.classList.add('opacity-50', 'cursor-not-allowed');
-                    btnApply.innerHTML = `<span>Data Kosong</span>`;
+                    btnApply.innerHTML = `<span>Tidak ada data baru</span>`;
                     
                     if (countMapped > 0) {
-                        // KASUS: Semua sudah ada KDDK -> TAMPILKAN MODAL WARNING
-                        showGenericWarning(`
-                            <strong>${countMapped} Data</strong> di file ini SUDAH memiliki Group KDDK.<br>
-                            <span class="text-xs mt-2 block text-yellow-600">Tidak ada data baru yang bisa diproses.</span>
-                        `);
-                    }else {
-                        // KASUS: Data tidak ditemukan di DB -> TAMPILKAN MODAL WARNING
-                        showGenericWarning(`
-                            <strong>Tidak ditemukan data valid.</strong><br>
-                            Pastikan IDPEL terdaftar di Unit ini dan formatnya benar.
-                        `);
+                        showGenericWarning(`<strong>${countMapped} Data</strong> sudah memiliki Rute.<br>Upload ditolak untuk mencegah duplikasi.`);
                     }
                 }
             }
@@ -265,7 +293,7 @@
     };
 
     reader.readAsText(file);
-    };
+};
 
     // D. Handler Input File (Click)
     window.handleFileFromInput = function(input) {
@@ -482,7 +510,12 @@
 
     return fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json', 
+            'X-CSRF-TOKEN': csrfToken, 
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+         },
         body: JSON.stringify(bodyData)
     })
     .then(response => response.json())
@@ -510,9 +543,102 @@
     };
 
     window.performRemoveIdpel = function(idpel) {
-    const urlInput = document.getElementById('remove-route');
-    if (!urlInput) return;
-    window.executeAjax(urlInput.value, { idpel: idpel });
+        // 1. Ambil CSRF Token
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const token = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+        // 2. Visual Feedback (Baris jadi transparan)
+        const rowToDelete = document.querySelector(`.draggable-idpel[data-idpel="${idpel}"]`);
+        if (rowToDelete) {
+            rowToDelete.style.transition = 'opacity 0.3s';
+            rowToDelete.style.opacity = '0.3';
+            rowToDelete.style.pointerEvents = 'none';
+        }
+
+        let routeContent = null;
+        let routeHeaderBadge = null;
+        let areaCode = null;
+        let routeCode = null;
+        let contentId = null;
+
+        if (rowToDelete) {
+            routeContent = rowToDelete.closest('.route-content');
+            if (routeContent) {
+                // Ambil data penting untuk reload
+                areaCode = routeContent.dataset.areaCode; // Pastikan di HTML ada data-area-code
+                routeCode = routeContent.dataset.routeCode; // Pastikan di HTML ada data-route-code
+                contentId = routeContent.id; // ID Kontainer (misal: content-18111A1)
+
+                // Badge jumlah
+                const targetIdStr = contentId.replace('content-', '');
+                routeHeaderBadge = document.querySelector(`#heading-${targetIdStr} .badge-count`);
+            }
+        }
+
+        const validateUrl = '/team/matrix-kddk/remove-idpel'; 
+
+        // 3. Kirim Request ke Server
+        fetch(validateUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': token,
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ idpel: idpel })
+        })
+        .then(res => {
+            if (!res.ok) throw new Error("Server Error");
+            return res.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // 1. Hapus Baris Lama
+                if (rowToDelete) rowToDelete.remove();
+
+                // 2. Update Badge Jumlah (Visual Cepat)
+                if (routeHeaderBadge) {
+                    let c = parseInt(routeHeaderBadge.innerText.replace(/\D/g, '')) || 0;
+                    if (c > 0) routeHeaderBadge.innerText = (c - 1) + ' Plg';
+                }
+
+                // 3. [KUNCI] RELOAD TABEL UNTUK UPDATE NOMOR URUT
+                // Panggil fungsi loadRouteTableData yang sudah ada
+                if (contentId && areaCode && routeCode && typeof loadRouteTableData === 'function') {
+                    // Beri jeda 200ms agar PHP selesai transaksi resequence
+                    setTimeout(() => {
+                         loadRouteTableData(contentId, areaCode, routeCode);
+                    }, 200);
+                }
+
+                // 4. Update Peta (Titik Hilang)
+                if (typeof updateTotalPoints === 'function') setTimeout(() => updateTotalPoints(), 500);
+
+                // Toast
+                window.showGenericSuccess("Data berhasil dihapus dan diurutkan ulang.");
+
+            } else {
+                throw new Error(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error Remove:', error);
+            // Jika gagal, kembalikan tampilan baris seperti semula
+            if (rowToDelete) {
+                rowToDelete.style.opacity = '1';
+                rowToDelete.style.pointerEvents = 'auto';
+            }
+            
+            if(typeof App !== 'undefined' && App.Utils) {
+                showGenericWarning(`
+                    <strong>Gagal menghapus data</strong><br>
+                    <span class="text-xs text-gray-500">${error.message}</span>
+                `);
+            } else {
+                alert("Gagal: " + error.message);
+            }
+        });
     };
 
     window.refreshActiveTab = function(successMessage = null) {
@@ -522,69 +648,47 @@
         const activeContent = document.getElementById(`${activeTab}-content`);
         if (!activeContent) return;
 
-        // A. DETEKSI URL YANG BENAR
-        // Cek elemen unik untuk menentukan kita sedang di halaman mana
-        const rbmForm = activeContent.querySelector('#rbm-form'); // Penanda Halaman Manage RBM
-        const unitInput = activeContent.querySelector('input[name="unitup"]'); // Penanda Unit ID
-        
+        // A. DETEKSI URL
+        const rbmForm = activeContent.querySelector('#rbm-form');
+        const unitInput = activeContent.querySelector('input[name="unitup"]');
         let refreshUrl = null;
 
         if (rbmForm && unitInput) {
-            // KASUS 1: HALAMAN MANAGE RBM
-            // Paksa refresh ke URL RBM, bukan URL Tab (Dashboard)
             refreshUrl = `/team/matrix-kddk/manage-rbm/${encodeURIComponent(unitInput.value)}`;
-        } 
-        else if (unitInput) {
-            // KASUS 2: HALAMAN DETAIL GENERATOR
-            const searchForm = activeContent.querySelector('form[action*="details"]');
-            if (searchForm) {
-                refreshUrl = searchForm.action;
-                if (window.location.search && !refreshUrl.includes('?')) {
-                    refreshUrl += window.location.search;
-                }
-            } else {
+        } else if (unitInput) {
+             const searchForm = activeContent.querySelector('form[action*="details"]');
+             if (searchForm) {
+                 refreshUrl = searchForm.action;
+                 if (window.location.search && !refreshUrl.includes('?')) refreshUrl += window.location.search;
+             } else {
                  refreshUrl = `/team/matrix-kddk/details/${encodeURIComponent(unitInput.value)}`;
-            }
-        }
-        else {
-             // KASUS 3: HALAMAN INDEX / LAINNYA
+             }
+        } else {
              const tabBtn = document.querySelector(`.tab-button[data-tab-name="${activeTab}"]`);
              refreshUrl = tabBtn ? tabBtn.dataset.url : window.location.href;
         }
 
-        // B. SIMPAN STATE SEBELUM REFRESH
-        const state = {
-            scroll: 0,
-            openedIds: [],
-            isMapHidden: false
-        };
-
-        // 1. Simpan Posisi Scroll
+        // B. SIMPAN STATE
+        const state = { scroll: 0, openedIds: [], isMapHidden: false };
         const scrollContainer = activeContent.querySelector('.overflow-y-auto');
         if (scrollContainer) state.scroll = scrollContainer.scrollTop;
 
-        // 2. Simpan Accordion Terbuka
         const openElements = activeContent.querySelectorAll('div[id^="area-"]:not(.hidden), div[id^="d6-"]:not(.hidden), div[id^="route-"]:not(.hidden)');
         openElements.forEach(el => state.openedIds.push(el.id));
 
-        // 3. Simpan Status Hide Map (Jika di Manage RBM)
         const panelMap = activeContent.querySelector('#panel-map');
-        if (panelMap && !panelMap.classList.contains('md:block')) {
-            state.isMapHidden = true;
-        }
+        if (panelMap && !panelMap.classList.contains('md:block')) state.isMapHidden = true;
 
-        // C. EKSEKUSI REFRESH & RESTORE
+        // C. EKSEKUSI REFRESH
         if(refreshUrl) {
             let bustUrl = new URL(refreshUrl, window.location.origin);
             bustUrl.searchParams.set('_cb', new Date().getTime());
             
             App.Tabs.loadTabContent(activeTab, bustUrl.toString(), () => {
-                
-                // RESTORE STATE SETELAH LOAD
                 const newContent = document.getElementById(`${activeTab}-content`);
                 if (!newContent) return;
 
-                // 1. Buka Kembali Accordion
+                // 1. RESTORE ACCORDION
                 state.openedIds.forEach(id => {
                     const el = newContent.querySelector(`#${id}`);
                     if (el) {
@@ -597,54 +701,93 @@
                     }
                 });
 
-                // 2. Restore Hide Map (Jika tadi disembunyikan)
+                // 2. AUTO LOAD TABEL RUTE
+                newContent.querySelectorAll('.route-content').forEach(el => {
+                    if (!el.classList.contains('hidden') && el.dataset.loaded === "false") {
+                        const areaCode = el.dataset.areaCode;
+                        const routeCode = el.dataset.routeCode;
+                        if (areaCode && routeCode) loadRouteTableData(el.id, areaCode, routeCode);
+                    }
+                });
+
+                // 3. [PERBAIKAN PETA & DATA]
+                setTimeout(() => {
+                    console.log("[MAP REFRESH] Memulai reset peta...");
+                    // A. HANCURKAN PETA LAMA SECARA PAKSA
+                    // Karena HTML sudah diganti baru, rbmMap yang lama pasti invalid.
+                    if (rbmMap) {
+                        try { rbmMap.remove(); } catch(e) {}
+                        rbmMap = null;
+                    }
+
+                    // B. HAPUS CACHE DATA MENTAH (Wajib!)
+                    // Agar peta mengambil data baru (tanpa pelanggan yang dihapus) dari server
+                    if (typeof areaRawData !== 'undefined') {
+                        for (let key in areaRawData) delete areaRawData[key];
+                    }
+                    if (typeof areaLayers !== 'undefined') {
+                        for (let key in areaLayers) delete areaLayers[key];
+                    }
+
+                    // C. INIT ULANG PETA
+                    const activeAreaHeader = newContent.querySelector('.area-header .icon-chevron.rotate-180');
+                    if (activeAreaHeader) {
+                        const areaCode = activeAreaHeader.closest('.area-header').dataset.areaCode;
+                        console.log("[MAP REFRESH] Memuat ulang area:", areaCode);
+                        
+                        if (typeof loadAreaMap === 'function') {
+                            loadAreaMap(areaCode, () => {
+                                // Callback: Dijalankan SETELAH peta selesai digambar
+                                // Kita lakukan invalidateSize berulang untuk memastikan peta tidak blank
+                                if (rbmMap) rbmMap.invalidateSize();
+                                setTimeout(() => { if(rbmMap) rbmMap.invalidateSize(); }, 200);
+                                setTimeout(() => { if(rbmMap) rbmMap.invalidateSize(); }, 500);
+
+                                // Update Judul & Titik
+                                if (typeof updateMapTitleWrapper === 'function') updateMapTitleWrapper();
+                                if (typeof updateTotalPoints === 'function') updateTotalPoints();
+                            });
+                        }
+                    } else {
+                        // Jika tidak ada area terbuka, tetap inisialisasi peta kosong agar tidak blank
+                        if (typeof loadAreaMap === 'function') {
+                            const mapDiv = document.getElementById('rbm-map');
+                            if (mapDiv) {
+                                mapDiv.innerHTML = '';
+                                rbmMap = L.map('rbm-map', { zoomControl: false }).setView([0.5071, 101.4478], 13);
+                                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri' }).addTo(rbmMap);
+                            }
+                        }
+                    }
+                }, 1000);// Delay agar HTML stabil
+
+                // 4. RESTORE UI LAINNYA
                 if (state.isMapHidden) {
                     const newPanelList = newContent.querySelector('#panel-list');
                     const newPanelMap = newContent.querySelector('#panel-map');
                     const newToggleBtn = newContent.querySelector('[data-action="toggle-map-layout"]');
-
                     if (newPanelList && newPanelMap) {
-                        newPanelMap.classList.remove('md:block');
-                        newPanelMap.classList.add('hidden');
-                        
-                        newPanelList.classList.remove('md:w-[450px]');
-                        newPanelList.classList.add('w-full');
-                        
-                        // Aktifkan Grid Mode
+                        newPanelMap.classList.remove('md:block'); newPanelMap.classList.add('hidden');
+                        newPanelList.classList.remove('md:w-[450px]'); newPanelList.classList.add('w-full');
                         newContent.querySelectorAll('.routes-grid-container').forEach(el => {
-                           el.classList.remove('space-y-0');
-                           el.classList.add('grid', 'grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-3', 'gap-4', 'p-2');
+                           el.classList.remove('space-y-0'); el.classList.add('grid', 'grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-3', 'gap-4', 'p-2');
                         });
-
                         if (newToggleBtn) {
                             const txt = newToggleBtn.querySelector('.text-btn');
-                            const ico = newToggleBtn.querySelector('i');
                             if(txt) txt.textContent = "Show Map";
-                            if(ico) ico.className = "fas fa-columns mr-1.5 icon-map";
                         }
                     }
                 }
 
-                // 3. Kembalikan Posisi Scroll (Terakhir)
                 const newScroll = newContent.querySelector('.overflow-y-auto');
                 if (newScroll) newScroll.scrollTop = state.scroll;
 
                 if (successMessage) {
-                    const notifContainer = newContent.querySelector('#kddk-notification-container');
-                    if (notifContainer) {
-                        notifContainer.innerHTML = `
-                            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4 flex items-center shadow-sm animate-fade-in-down" role="alert">
-                                <i class="fas fa-check-circle mr-2 text-xl"></i>
-                                <span class="block sm:inline font-bold">${successMessage}</span>
-                                <button onclick="this.parentElement.remove();" class="absolute top-0 bottom-0 right-0 px-4 py-3">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                        `;
-                        // Auto hide dalam 5 detik
-                        setTimeout(() => { if(notifContainer.firstChild) notifContainer.firstChild.remove(); }, 5000);
+                    const notif = newContent.querySelector('#kddk-notification-container');
+                    if (notif) {
+                        notif.innerHTML = `<div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4 animate-fade-in-down"><i class="fas fa-check-circle mr-2"></i><b>${successMessage}</b></div>`;
+                        setTimeout(() => { if(notif.firstChild) notif.firstChild.remove(); }, 5000);
                     } else {
-                        // Fallback jika container hilang
                         alert(successMessage);
                     }
                 }
@@ -662,6 +805,40 @@
             target_idpel: targetIdpel,
             route_prefix: prefix
         });
+    }
+
+    function refreshMapAfterReorder(areaCode) {
+    console.log('[MAP] Force reload after reorder:', areaCode);
+
+    // 1. Hapus cache data mentah
+    if (areaRawData[areaCode]) {
+        delete areaRawData[areaCode];
+    }
+
+    // 2. Hapus layer lama
+    if (areaLayers[areaCode]) {
+        if (rbmMap && rbmMap.hasLayer(areaLayers[areaCode])) {
+            rbmMap.removeLayer(areaLayers[areaCode]);
+        }
+        delete areaLayers[areaCode];
+    }
+
+    // 3. Hapus garis & panah
+    if (routeLineLayer) {
+        rbmMap.removeLayer(routeLineLayer);
+        routeLineLayer = null;
+    }
+
+    if (arrowLayer) {
+        rbmMap.removeLayer(arrowLayer);
+        arrowLayer = null;
+    }
+
+    // 4. Load ulang data map (FETCH BARU)
+    loadAreaMap(areaCode, () => {
+        updateTotalPoints();
+        updateMapTitleWrapper();
+    });
     }
 
 /**
@@ -1291,15 +1468,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 1. Tampilkan
                 dropdown.classList.remove('hidden');
                 
-                // 2. PINDAHKAN KE BODY (Agar Z-Index Menang Mutlak dari Peta)
-                document.body.appendChild(dropdown);
+                // 2. PINDAHKAN KE WORKSPACE (BUKAN BODY)
+                // Agar saat Fullscreen (Z-Index Max), dropdown tetap terlihat karena berada dalam container yang sama
+               const workspace = document.getElementById('rbm-workspace');
+                if (workspace) {
+                    workspace.appendChild(dropdown);
+                } else {
+                    document.body.appendChild(dropdown);
+                }
                 
                 // 3. Hitung Posisi Tombol
                 const rect = btn.getBoundingClientRect();
                 
                 // 4. Set Posisi Fixed (Menempel pada layar, bukan container)
                 dropdown.style.position = 'fixed';
-                dropdown.style.zIndex = '99999'; // Paling Atas
+                dropdown.style.zIndex = '2147483647'; // Paling Atas
                 dropdown.style.top = (rect.bottom + 5) + 'px'; // Di bawah tombol
                 dropdown.style.left = (rect.right - dropdown.offsetWidth) + 'px'; // Rata kanan tombol
             } else {
@@ -1460,7 +1643,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // FUNGSI LOAD MAP (FILTER VISUAL + ANOMALI + CACHE RAW)
     // ============================================================
-    function loadAreaMap(areaCode, callback = null) {
+    window.loadAreaMap = function(areaCode, callback = null) {
         const mapContainer = document.getElementById('rbm-map');
         const urlInput = document.getElementById('map-data-url');
         
@@ -1492,22 +1675,32 @@ document.addEventListener('DOMContentLoaded', () => {
         // ---------------------------------------------------------
         // FUNGSI RENDER INTERNAL (Dipanggil oleh Fetch atau Cache)
         // ---------------------------------------------------------
-        const renderPointsToMap = (points) => {
+        window.renderPointsToMap = function(points) {
             // A. Cek Filter Rute (Accordion Terbuka)
-            const openRouteIcon = document.querySelector('.route-header .icon-chevron-sub.rotate-180');
-            let targetRouteCode = null;
-            if (openRouteIcon) {
-                const header = openRouteIcon.closest('.route-header');
-                if(header && header.dataset.routeCode) targetRouteCode = String(header.dataset.routeCode).trim();
-            }
+            let targetRouteCode = window.currentOpenRouteCode || null;
 
-            console.log(`[RENDER MAP] Area: ${areaCode} | Filter Active: ${targetRouteCode || 'NONE (Show All)'}`);
+            if (!targetRouteCode) {
+                const openRouteIcon = document.querySelector('.route-header .icon-chevron-sub.rotate-180');
+                if (openRouteIcon) {
+                    const header = openRouteIcon.closest('.route-header');
+                    if (header?.dataset?.routeCode) {
+                        targetRouteCode = header.dataset.routeCode.trim();
+                    }
+                }
+            }
 
             // B. Bersihkan Layer Lama (Visual)
             if (areaLayers[areaCode]) {
                 if (rbmMap.hasLayer(areaLayers[areaCode])) rbmMap.removeLayer(areaLayers[areaCode]);
             }
-
+            if (routeLineLayer) {
+                rbmMap.removeLayer(routeLineLayer);
+                routeLineLayer = null;
+            }
+            if (arrowLayer) {
+                rbmMap.removeLayer(arrowLayer);
+                arrowLayer = null;
+            }
             // C. Setup Cluster Baru
             const newLayer = L.markerClusterGroup({
                 disableClusteringAtZoom: 19, spiderfyOnMaxZoom: true, showCoverageOnHover: false, chunkedLoading: true, maxClusterRadius: 60
@@ -1546,16 +1739,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const colorMap = { 'A':'text-green-800 border-green-600', 'B':'text-blue-800 border-blue-600', 'C':'text-red-800 border-red-600', 'D':'text-yellow-800 border-yellow-600', 'E':'text-purple-800 border-purple-600', 'F':'text-pink-800 border-pink-600', 'G':'text-indigo-800 border-indigo-600' };
             const ANOMALY_THRESHOLD = 1000; // 1 KM
             const searchableData = []; // Data ringan untuk hitungan cepat
-
             let anomalyDebug = 0;
 
-            points.forEach(pt => {
+            // Urutkan points berdasarkan Sequence (seq) agar garisnya nyambung urut 001->002->003
+            // Kita copy array dulu biar aman
+            const sortedPoints = [...points].sort((a, b) => {
+                return (parseInt(a.seq) || 0) - (parseInt(b.seq) || 0);
+            });
+
+            let lineCoordinates = [];
+
+            sortedPoints.forEach(pt => {
                 const routeCodeStr = pt.kddk ? String(pt.kddk).substring(5, 7).trim() : '??';
 
                 // [FILTER VISUAL] Skip jika tidak sesuai filter rute
                 if (targetRouteCode && targetRouteCode !== routeCodeStr) {
                     return; // Lewati iterasi ini
                 }
+
+                // if (pt.lat && pt.lng) {
+                //     lineCoordinates.push([pt.lat, pt.lng]);
+                // }
 
                 const dayChar = pt.seq ? pt.seq.charAt(0) : 'A'; 
                 let cls = colorMap[dayChar] || 'text-gray-800 border-gray-600';
@@ -1586,17 +1790,71 @@ document.addEventListener('DOMContentLoaded', () => {
                 marker.bindPopup(pt.info);
                 marker.on('click', () => { if(window.isReorderMode){ marker.closePopup(); handleMarkerClickReorder(marker); } });
                 newLayer.addLayer(marker);
-            });
 
-            console.log(`[ANOMALI] Ditemukan ${anomalyDebug} titik anomali di tampilan ini.`);
+                if (targetRouteCode && pt.lat && pt.lng) {
+                    lineCoordinates.push([pt.lat, pt.lng]);
+                }
+
+            });
 
             // F. Simpan & Tampilkan Layer
             newLayer._searchableData = searchableData; // Simpan data ringan ke layer
             areaLayers[areaCode] = newLayer;
             rbmMap.addLayer(newLayer);
 
-            if (callback) callback();
-            else fitBoundsToLayer(newLayer);
+            if (targetRouteCode && lineCoordinates.length > 1) {
+                
+                // 1. Gambar Garis Kuning SOLID (Lebih Rapi untuk Jarak Dekat)
+                routeLineLayer = L.polyline(lineCoordinates, {
+                    color: '#FFD700',
+                    weight: 4,          // LEBIH TEBAL → tidak putus saat dekat
+                    opacity: 1,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    smoothFactor: 1.5
+                }).addTo(rbmMap);
+
+                // 2. Gambar Panah Arah
+                if (typeof L.polylineDecorator === 'function' && routeLineLayer) {
+                    try {
+                        arrowLayer = L.polylineDecorator(routeLineLayer, {
+                            patterns: [
+                                {
+                                    // Mulai dari 0 (titik pertama)
+                                    offset: 0,
+                                    
+                                    // Jarak antar panah dilonggarkan sedikit (50px - 70px)
+                                    // Agar saat di-zoom out tidak terlihat menumpuk semrawut
+                                    repeat: '70px', 
+                                    
+                                    symbol: L.Symbol.arrowHead({
+                                        pixelSize: 12,    // Ukuran panah proporsional
+                                        polygon: true,
+                                        pathOptions: { 
+                                            stroke: true, 
+                                            color: '#FF0000', // Merah
+                                            fillColor: '#FF0000', 
+                                            fillOpacity: 1,
+                                            weight: 1 
+                                        }
+                                    })
+                                }
+                            ]
+                        }).addTo(rbmMap);
+                        
+                        console.log("✅ Panah berhasil digambar untuk rute:", targetRouteCode);
+                    } catch (e) {
+                        console.error("❌ Error Gambar Panah:", e);
+                    }
+                } else {
+                    console.warn("⚠️ Plugin Panah (L.polylineDecorator) atau L.Symbol belum dimuat.");
+                }
+            }
+
+            if (!window.isReorderMode) {
+                if (callback) callback();
+                else fitBoundsToLayer(newLayer);
+            }
 
             // Update UI Info
             updateMapTitleWrapper();
@@ -1636,10 +1894,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function removeAreaMap(areaCode) {
         if (areaLayers[areaCode] && rbmMap) {
-            rbmMap.removeLayer(areaLayers[areaCode]); // Hapus visual
-            updateTotalPoints();
-            updateMapTitleWrapper();
+            rbmMap.removeLayer(areaLayers[areaCode]); 
         }
+        // [BARU] Hapus Garis & Panah
+        if (routeLineLayer && rbmMap) {
+            rbmMap.removeLayer(routeLineLayer);
+            routeLineLayer = null;
+        }
+        if (arrowLayer && rbmMap) {
+            rbmMap.removeLayer(arrowLayer);
+            arrowLayer = null;
+        }
+
+        updateTotalPoints();
+        updateMapTitleWrapper();
     }
 
     function fitBoundsToLayer(layer) {
@@ -1648,7 +1916,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateTotalPoints() {
+    window.updateTotalPoints = function() {
         const countSpan = document.getElementById('map-count');
         const alertBox = document.getElementById('anomaly-alert');
         const alertCount = document.getElementById('anomaly-count');
@@ -1727,7 +1995,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function updateMapTitleWrapper() {
+    window. updateMapTitleWrapper = function() {
         const titleEl = document.getElementById('map-context-title');
         if (!titleEl) return;
 
@@ -1771,11 +2039,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Tutup Modal & Refresh
     window.closeGenericSuccessModal = function() {
         const modal = document.getElementById('modal-success-generic');
+        if (!modal) return;
         if (modal) {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
         }
-        refreshActiveTab();
+        if (typeof refreshActiveTab === 'function') {
+            refreshActiveTab();
+        }
     }
     
     // [FUNGSI BARU] MENANGANI SUBMIT FORM UTAMA (TOMBOL SIMPAN TOOLBAR)
@@ -1838,6 +2109,41 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Menyimpan...';
 
+        // Buat FormData standar
+        const formData = new FormData(form);
+        
+        // [BARU] Cek apakah ada data koordinat 'titipan' dari proses upload tadi?
+        if (window.tempUploadFullData && window.tempUploadFullData.length > 0) {
+            
+            // Ambil IDPEL yang sedang dipilih user saat ini
+            const selectedIds = Array.from(window.selectionState.items.keys());
+            
+            // Mapping cepat IDPEL -> Koordinat
+            const coordMap = {};
+            window.tempUploadFullData.forEach(item => {
+                if (item.lat && item.lng) {
+                    coordMap[item.idpel] = { lat: item.lat, lng: item.lng };
+                }
+            });
+
+            // Filter: Hanya kirim koordinat milik IDPEL yang sedang diproses
+            const coordsToSend = {};
+            let coordCount = 0;
+            
+            selectedIds.forEach(id => {
+                if (coordMap[id]) {
+                    coordsToSend[id] = coordMap[id];
+                    coordCount++;
+                }
+            });
+            
+            // Tempelkan ke FormData sebagai JSON String
+            if (coordCount > 0) {
+                console.log(`Menyisipkan ${coordCount} koordinat ke payload.`);
+                formData.append('coord_updates', JSON.stringify(coordsToSend));
+            }
+        }
+
         fetch(form.action, {
             method: 'POST',
             headers: { 
@@ -1845,7 +2151,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 'Accept': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest'
             },
-            body: new FormData(form)
+            body: formData
         })
         .then(res => res.json())
         .then(data => {
@@ -1855,14 +2161,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 const processedCount = selectionState.items.size;
                 window.closeKddkModal();
-                // Reset State
+                
+                // Bersihkan State
                 selectionState.items.clear();
                 toggleGroupButton();
                 document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = false);
                 const checkAll = document.getElementById('check-all-rows');
                 if(checkAll) checkAll.checked = false;
                 
-                showSuccessModal(data,processedCount); 
+                // Bersihkan memori temp upload
+                window.tempUploadFullData = [];
+                
+                showSuccessModal(data, processedCount); 
             } else {
                 alert('Gagal: ' + data.message);
             }
@@ -1870,8 +2180,9 @@ document.addEventListener('DOMContentLoaded', () => {
         .catch(err => {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
-            if (err.errors) alert('Validasi Gagal.'); 
-            else alert('Terjadi kesalahan sistem.');
+            if (err.status === 422) alert('Validasi Gagal. Cek kembali isian form.');
+            else alert('Terjadi kesalahan sistem: ' + err);
+            console.error(err);
         });
     }
 
@@ -1911,11 +2222,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('dragstart', function(e) {
         const row = e.target.closest('.draggable-idpel');
         if (row) {
-            draggedIdpel = row.dataset.idpel;
+
+            const id = row.dataset.idpel;
+
+            draggedIdpel = id;
             originKddk = row.dataset.originPrefix; 
+
             row.classList.add('opacity-50', 'bg-yellow-100'); 
             e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', draggedIdpel);
+
+            e.dataTransfer.setData('text/plain', id);
 
             const removeZone = document.getElementById('remove-drop-zone');
             if(removeZone) {
@@ -1946,6 +2262,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.addEventListener('dragover', function(e) {
         e.preventDefault(); 
+        if (!(e.target instanceof Element)) return;
+
         const trashTarget = e.target.closest('.kddk-remove-zone');
         if (trashTarget) {
             e.dataTransfer.dropEffect = 'move';
@@ -1975,6 +2293,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.addEventListener('dragleave', function(e) {
+        if (!(e.target instanceof Element)) return;
         const trashTarget = e.target.closest('.kddk-remove-zone');
         if (trashTarget) trashTarget.classList.remove('scale-105', 'bg-red-200');
 
@@ -1991,36 +2310,86 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.addEventListener('drop', function(e) {
-        e.preventDefault();
+    e.preventDefault();
+    if (!(e.target instanceof Element)) return;
 
-        // Reset Visuals
-        document.querySelectorAll('.draggable-idpel').forEach(r => r.style.borderTop = "");
+    // Reset Visual Garis Biru
+    document.querySelectorAll('.draggable-idpel').forEach(r => r.style.borderTop = "");
 
-        // 1. Drop di Trash
-        const trash = e.target.closest('.kddk-remove-zone');
-        if (trash && draggedIdpel) { 
-             const onConfirm = () => performRemoveIdpel(draggedIdpel);
-             if(typeof App!=='undefined'&&App.Utils) App.Utils.showCustomConfirm('Hapus?', `Keluarkan pelanggan ${draggedIdpel}?`, onConfirm);
-             else if(confirm(`Hapus ${draggedIdpel}?`)) onConfirm();
-             return; 
-        }
+    // 1. AMBIL IDPEL YANG SEDANG DITARIK (HANDLE UTAMA)
+    const transferId = e.dataTransfer.getData('text/plain');
+    const finalIdpel = draggedIdpel || transferId; // ID item yang dipegang mouse
 
-        const dropZone = e.target.closest('.kddk-drop-zone');
-        const targetRow = e.target.closest('.draggable-idpel');
+    // 2. IDENTIFIKASI DROP ZONE (TRASH)
+    const trash = e.target.closest('.kddk-remove-zone');
 
-        if (dropZone && draggedIdpel) {
-            const targetPrefix = dropZone.dataset.routePrefix;
+    // === LOGIKA HAPUS (DROP DI TRASH) ===
+    if (trash && finalIdpel) { 
+        
+        // A. CEK APAKAH INI BULK ACTION?
+        // Syarat Bulk: 
+        // 1. Ada item yang dicentang (.select-item-row:checked)
+        // 2. Item yang sedang ditarik (finalIdpel) ADALAH SALAH SATU yang dicentang
+        
+        const allChecked = document.querySelectorAll('.select-item-row:checked');
+        const bulkIds = Array.from(allChecked).map(cb => cb.value);
+        
+        // Cek apakah item yang ditarik ada di dalam daftar yang dicentang
+        const isDragItemChecked = bulkIds.includes(finalIdpel);
+
+        // --- SKENARIO 1: HAPUS BANYAK (BULK) ---
+        if (bulkIds.length > 1 && isDragItemChecked) {
+            const count = bulkIds.length;
+            const url = document.getElementById('bulk-remove-route').value;
             
-            // KASUS A: PINDAH RUTE
-            if (targetPrefix !== originKddk) {
-                performMoveIdpel(draggedIdpel, targetPrefix);
-            } 
-            // KASUS B: REORDER (Urutkan Ulang dalam Rute Sama)
-            else if (targetRow && targetRow.dataset.idpel !== draggedIdpel) {
-                const targetIdpel = targetRow.dataset.idpel;
-                performReorderIdpel(draggedIdpel, targetIdpel, targetPrefix);
+            const onConfirmBulk = () => {
+                // Panggil API Bulk Remove
+                executeAjax(url, { idpels: bulkIds });
+                window.clearBulkSelection(); // Bersihkan centang setelah aksi
+            };
+
+            if(typeof App !== 'undefined' && App.Utils) {
+                App.Utils.showCustomConfirm(
+                    'Hapus Massal?', 
+                    `Keluarkan <strong>${count}</strong> pelanggan terpilih dari grup?`, 
+                    onConfirmBulk
+                );
+            } else if(confirm(`Hapus ${count} pelanggan terpilih?`)) {
+                onConfirmBulk();
             }
+            return; // Selesai, jangan lanjut ke single remove
         }
+
+        // --- SKENARIO 2: HAPUS SATU (SINGLE) ---
+        // Jalan jika tidak ada centang, ATAU yang ditarik bukan item yang dicentang
+        const onConfirmSingle = () => performRemoveIdpel(finalIdpel);
+        
+        if(typeof App !== 'undefined' && App.Utils) {
+            App.Utils.showCustomConfirm('Hapus?', `Keluarkan pelanggan ${finalIdpel}?`, onConfirmSingle);
+        } else if(confirm(`Hapus ${finalIdpel}?`)) {
+            onConfirmSingle();
+        }
+        return; 
+    }
+
+    // === LOGIKA PINDAH / REORDER (DROP DI TABEL LAIN) ===
+    const dropZone = e.target.closest('.kddk-drop-zone');
+    const targetRow = e.target.closest('.draggable-idpel');
+
+    if (dropZone && finalIdpel) {
+        const targetPrefix = dropZone.dataset.routePrefix;
+        
+        // KASUS A: PINDAH RUTE
+        if (targetPrefix !== originKddk) {
+            // Note: Jika ingin support Bulk Move via Drag, logika serupa bisa dipasang di sini
+            performMoveIdpel(finalIdpel, targetPrefix);
+        } 
+        // KASUS B: REORDER (Urutkan Ulang dalam Rute Sama)
+        else if (targetRow && targetRow.dataset.idpel !== finalIdpel) {
+            const targetIdpel = targetRow.dataset.idpel;
+            performReorderIdpel(finalIdpel, targetIdpel, targetPrefix);
+        }
+    }
     });
 
     // ============================================================
@@ -2221,25 +2590,57 @@ document.addEventListener('DOMContentLoaded', () => {
     window.executeMoveRoute = function() {
         const moveModal = document.getElementById('modal-move-route');
         const idpelEl = document.getElementById('move-modal-idpel');
+
+        // Cek apakah mode Bulk (Banyak) atau Single (Satu)
         const isBulk = idpelEl.dataset.mode === 'bulk';
+
         const area = document.getElementById('move-area').value;
         const route = document.getElementById('move-route-select').value;
+
+        // Ambil Prefix Unit dari input hidden yang baru kita tambahkan
         const unitPrefixInput = document.getElementById('ctx-unit-prefix'); 
         const unitPrefix = unitPrefixInput ? unitPrefixInput.value : ''; 
-        if (!area || !route) { alert("Harap pilih Area dan Rute tujuan."); return; }
-        const sub = 'A'; 
-        const targetPrefix = `${unitPrefix}${sub}${area}${route}`;
+
+        // Validasi
+        if (!area || !route) { 
+            alert("Harap pilih Area dan Rute tujuan."); 
+            return; 
+        }
+
+        // Susun Kode Tujuan
+        // Pastikan Sub Unit default 'A' selalu ada
+        const targetPrefix = `${unitPrefix}${area}${route}`;
+
+        // Validasi Panjang Kode (Harus 7 Karakter: 3 Prefix + 1 Sub + 2 Area + 1 Rute/Hari)
+        // Note: Sesuaikan validasi ini dengan format KDDK Unit Anda
+        if (targetPrefix.length < 5) {
+            alert("Gagal menyusun kode rute. Silakan refresh halaman.");
+            return;
+        }
 
         if (isBulk) {
+            // === LOGIKA PINDAH BANYAK (BULK) ===
             const checked = document.querySelectorAll('.select-item-row:checked');
             const ids = Array.from(checked).map(cb => cb.value);
+
+            if (ids.length === 0) {
+                alert("Tidak ada pelanggan yang dicentang.");
+                return;
+            }
+
             const url = document.getElementById('bulk-move-route').value;
+
+            // Eksekusi AJAX
             executeAjax(url, { idpels: ids, target_kddk: targetPrefix });
+
+            // Bersihkan centang setelah sukses
             window.clearBulkSelection();
         } else {
+            // === LOGIKA PINDAH SATU (SINGLE) ===
             const idpel = document.getElementById('ctx-selected-idpel').value;
             performMoveIdpel(idpel, targetPrefix);
         }
+        // Tutup Modal
         moveModal.classList.add('hidden');
         moveModal.classList.remove('flex');
         idpelEl.dataset.mode = '';
@@ -2782,6 +3183,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // Load ulang
                         loadRouteTableData(targetId, areaCode, routeCode);
+                        window.currentOpenRouteCode = routeCode;
+                        setTimeout(() => {
+                            refreshMapAfterReorder(areaCode);
+                        }, 300);
                     }
                 }
                 

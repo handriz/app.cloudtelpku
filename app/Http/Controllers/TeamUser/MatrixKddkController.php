@@ -353,23 +353,23 @@ class MatrixKddkController extends Controller
         $area = $request->area; // Filter Area
         $route = $request->route; // Filter Rute
 
-        if (!$area) return response()->json([]);
+        if (!$area) return response()->json([]);// Validasi: Kalau tidak ada Area, stop.
 
-        $query = DB::table('mapping_kddk')
-            ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+        $query = DB::table('mapping_kddk as mk')
+            ->join('master_data_pelanggan as mdp', 'mk.idpel', '=', 'mdp.idpel')
             ->select(
-                'mapping_kddk.kddk', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex', 
-                'mapping_kddk.idpel', 'master_data_pelanggan.nomor_meter_kwh'
+                'mk.kddk', 'mk.latitudey', 'mk.longitudex', 
+                'mk.idpel', 'mdp.nomor_meter_kwh'
             )
-            ->where('master_data_pelanggan.unitup', $unitCode)
-            ->where('mapping_kddk.enabled', 1)
-            ->whereNotNull('mapping_kddk.latitudey')
-            ->whereNotNull('mapping_kddk.longitudex');
+            ->where('mdp.unitup', $unitCode)
+            ->where('mk.enabled', 1)
+            ->whereNotNull('mk.latitudey')
+            ->whereNotNull('mk.longitudex');
 
-        if ($area) $query->where('mapping_kddk.kddk', 'like', '___' . $area . '%');
-        if ($route) $query->where('mapping_kddk.kddk', 'like', '_____' . $route . '%');
+        if ($area) $query->where('mk.kddk', 'like', '___' . $area . '%');
+        if ($route) $query->where('mk.kddk', 'like', '_____' . $route . '%');
         
-        $data = $query->limit(2000)->get()->map(function($item) {
+        $data = $query->limit(10000)->get()->map(function($item) {
             $mapsUrl = "https://www.google.com/maps?q={$item->latitudey},{$item->longitudex}";
             return [
                 'lat' => $item->latitudey,
@@ -567,46 +567,39 @@ class MatrixKddkController extends Controller
      */
     public function storeKddkGroup(Request $request)
     {
-        // 1. Validasi Input (Hanya perlu Prefix 7 Digit dan Sisipan)
         $request->validate([
-            'prefix_code' => ['required', 'string', 'size:7', 'regex:/^[A-Z]{7}$/'], // 7 Huruf
-            'sisipan' => ['required', 'string', 'size:2', 'regex:/^\d{2}$/'], // 2 Angka
+            'prefix_code' => ['required', 'string', 'size:7', 'regex:/^[A-Z]{7}$/'],
+            'sisipan' => ['required', 'string', 'size:2', 'regex:/^\d{2}$/'],
             'selected_idpels' => 'required|array|min:1',
             'unitup' => 'required|string',
             'kddk_code' => 'required|string'
         ]);
 
-        $inputOrderedIdpels = $request->selected_idpels; // Array urutan user (CSV/Klik)
-        $prefix = strtoupper($request->prefix_code); // Contoh: A1BRBAA
-        $sisipan = $request->sisipan; // Contoh: 00
+        $inputOrderedIdpels = $request->selected_idpels; 
+        $prefix = strtoupper($request->prefix_code);
+        $sisipan = $request->sisipan;
         $unitup = $request->unitup;
         $countData = count($inputOrderedIdpels);
-
-        // 2. Tentukan Sequence Awal (Start Sequence)
-        // Kita ambil 3 digit sequence dari kode KDDK yang dikirim form (Digit ke-8 s/d 10)
-        // Ini menangkap baik sequence otomatis maupun manual ketikan user
-        // Contoh KDDK: 18111A100400 -> Start Seq: 004
         $startSeqStr = substr($request->kddk_code, 7, 3); 
         $startSeq = (int) $startSeqStr;
 
-        // 3. Proses Simpan (Transaksi)
-        DB::transaction(function() use ($inputOrderedIdpels, $prefix, $sisipan, $startSeq, $countData, $unitup) {    
-            // ========================================================
-            // A. BULK SHIFTING (GESER DATA LAMA - 1 QUERY)
-            // ========================================================
-            // Daripada loop satu-satu, kita gunakan SQL Update dengan Math logic
-            // Logic: Update sequence = sequence + jumlah data baru
-            // HANYA untuk data dengan Prefix sama DAN Sequence >= Start
+        // Decode Koordinat (Pastikan array)
+        $coordUpdates = [];
+        if ($request->has('coord_updates')) {
+            $coordUpdates = json_decode($request->coord_updates, true);
+            if (!is_array($coordUpdates)) $coordUpdates = [];
+        }
+
+        DB::transaction(function() use ($inputOrderedIdpels, $prefix, $sisipan, $startSeq, $countData, $unitup, $coordUpdates) {    
             
-            // Cek dulu apakah ada data yang perlu digeser (biar gak jalanin query berat kalau kosong)
+            // 1. BULK SHIFTING (GESER DATA LAMA)
             $needsShifting = DB::table('mapping_kddk')
                 ->where('kddk', 'like', $prefix . '%')
                 ->whereRaw('CAST(SUBSTRING(kddk, 8, 3) AS UNSIGNED) >= ?', [$startSeq])
+                ->lockForUpdate()
                 ->exists();
 
             if ($needsShifting) {
-                // UPDATE MASSAL MENGGUNAKAN RAW SQL
-                // Rumus: Prefix(7) + LPAD(SequenceLama + CountData, 3, '0') + SisipanLama(2)
                 DB::statement("
                     UPDATE mapping_kddk 
                     SET kddk = CONCAT(
@@ -618,81 +611,96 @@ class MatrixKddkController extends Controller
                     AND CAST(SUBSTRING(kddk, 8, 3) AS UNSIGNED) >= ?
                     ORDER BY kddk DESC
                 ", [$countData, $prefix . '%', $startSeq]);
-
-                // Update juga Master KDDK (Opsional tapi disarankan agar sync)
-                // Note: Update master massal agak tricky kalau sequence tumpang tindih, 
-                // jadi untuk performa tinggi, kita bisa skip update master (biarkan master mencatat history insert saja)
-                // atau gunakan InsertOrIgnore nanti.
             }
 
-            // ========================================================
-            // B. PREPARE DATA BARU (IN MEMORY)
-            // ========================================================
-            
-            // 1. Ambil data existing IDPEL untuk mempertahankan Object ID lama (jika ada)
+            // 2. PREPARE DATA BARU (AMBIL OBJECT ID LAMA)
             $existingMap = DB::table('mapping_kddk')
                 ->whereIn('idpel', $inputOrderedIdpels)
-                ->pluck('objectid', 'idpel') // Key: idpel, Value: objectid
+                ->pluck('objectid', 'idpel')
                 ->toArray();
 
-            $batchMapping = [];
+            $batchWithCoords = [];    
+            $batchWithoutCoords = []; 
             $batchMaster = [];
-            $now = now();
             
+            $now = now(); // Waktu sekarang untuk created_at & updated_at
             $currentSeq = $startSeq;
 
             foreach ($inputOrderedIdpels as $idpel) {
                 $seqStr = str_pad($currentSeq, 3, '0', STR_PAD_LEFT);
                 $fullKddk = $prefix . $seqStr . $sisipan;
-
-                // Tentukan ObjectID: Pakai lama atau Bikin baru
+                
+                // Gunakan objectid lama atau buat baru
                 $objId = $existingMap[$idpel] ?? ('groupkddk-' . Str::random(12));
 
-                // Siapkan Array untuk Bulk Upsert Mapping
-                $batchMapping[] = [
-                    'objectid' => $objId,
-                    'idpel'    => $idpel,
-                    'kddk'     => $fullKddk,
-                    'enabled'  => 1,
-                    'created_at' => $now, // Akan diabaikan jika update
-                    'updated_at' => $now
+                // DEFINISI ROW YANG SANGAT KETAT (JANGAN DIUBAH URUTANNYA)
+                // Kita definisikan created_at manual agar Eloquent tidak bingung
+                $row = [
+                    'idpel'      => (string) $idpel,
+                    'objectid'   => $objId,
+                    'kddk'       => $fullKddk,
+                    'enabled'    => 1,
+                    'updated_at' => $now,
+                    // Tambahkan created_at jika perlu (upsert akan menggunakannya untuk insert baru)
+                    // 'created_at' => $now 
                 ];
 
-                // Siapkan Array untuk Bulk Insert Master
+                // CEK KOORDINAT
+                // Pastikan key coordUpdates[$idpel] ada dan isinya valid
+                if (isset($coordUpdates[$idpel]) && isset($coordUpdates[$idpel]['lat']) && isset($coordUpdates[$idpel]['lng'])) {
+                    
+                    // Tambahkan key Lat/Long ke array $row
+                    $row['latitudey'] = (double) $coordUpdates[$idpel]['lat'];
+                    $row['longitudex'] = (double) $coordUpdates[$idpel]['lng'];
+                    
+                    // Masukkan ke keranjang Batch A (Update Peta)
+                    $batchWithCoords[] = $row;
+                } else {
+                    // Masukkan ke keranjang Batch B (Update KDDK Saja)
+                    $batchWithoutCoords[] = $row;
+                }
+
+                // DATA MASTER KDDK
                 $batchMaster[] = [
                     'kode_kddk'  => $fullKddk,
                     'unitup'     => $unitup,
                     'is_active'  => 1,
-                    'keterangan' => 'Generated Bulk',
-                    // 'created_at' => $now // Jika tabel master ada timestamp
+                    'keterangan' => isset($coordUpdates[$idpel]) ? 'Generated w/ Coords' : 'Generated Bulk'
                 ];
 
                 $currentSeq++;
             }
 
-            // ========================================================
-            // C. EKSEKUSI BATCH (HANYA 2 QUERY)
-            // ========================================================
-
-            // 1. UPSERT ke MAPPING_KDDK (Update jika ada, Insert jika baru)
-            // Syarat: Kolom 'idpel' harus UNIQUE atau Primary Key
-            \App\Models\MappingKddk::upsert(
-                $batchMapping, 
-                ['idpel'], // Kolom unique key untuk pengecekan
-                ['kddk', 'enabled', 'updated_at', 'objectid'] // Kolom yang diupdate jika duplicate
-            );
-
-            // 2. INSERT IGNORE ke MASTER_KDDK (Abaikan jika duplikat)
-            \App\Models\MasterKddk::insertOrIgnore($batchMaster);
+            // 3. EKSEKUSI BATCH (TERPISAH)
             
+            // A. Batch dengan Koordinat (Update KDDK + Lat + Long)
+            if (!empty($batchWithCoords)) {
+                // Upsert Array harus memiliki key yang seragam di setiap barisnya
+                \App\Models\MappingKddk::upsert(
+                    $batchWithCoords, 
+                    ['idpel'], 
+                    ['kddk', 'enabled', 'updated_at', 'objectid', 'latitudey', 'longitudex']
+                );
+            }
+
+            // B. Batch TANPA Koordinat (Update KDDK saja)
+            if (!empty($batchWithoutCoords)) {
+                \App\Models\MappingKddk::upsert(
+                    $batchWithoutCoords, 
+                    ['idpel'], 
+                    ['kddk', 'enabled', 'updated_at', 'objectid']
+                );
+            }
+
+            // Simpan Master
+            \App\Models\MasterKddk::insertOrIgnore($batchMaster);
         });
 
-        $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
-        Cache::forget($cacheKey);
+        Cache::forget('matrix_index_' . Auth::id() . '_' . date('Y-m'));
 
         return response()->json([
             'success' => true, 
-            'message' => "Berhasil memproses $countData data baru. (Mulai Sequence: $startSeq)"
+            'message' => "Berhasil memproses $countData data. Koordinat diperbarui (jika ada)."
         ]);
     }
 
@@ -741,7 +749,7 @@ class MatrixKddkController extends Controller
     }
 
     /**
-     * Menghapus IDPEL dari Grup KDDK (Set KDDK to NULL)
+     * Menghapus (Unmap) satu pelanggan dari rute (Drag ke Sampah)
      */
     public function removeIdpelKddk(Request $request)
     {
@@ -749,43 +757,54 @@ class MatrixKddkController extends Controller
             'idpel' => 'required|exists:mapping_kddk,idpel',
         ]);
 
+        DB::beginTransaction();
         try {
+            $idpel = $request->idpel;
 
-            // 1. Ambil Kode Lama
-            $oldKddk = DB::table('mapping_kddk')->where('idpel', $request->idpel)->value('kddk');
-            $sourcePrefix = substr($oldKddk, 0, 7);
+            // 1. Ambil Data Lama (Untuk mengetahui rute mana yang harus dirapikan)
+            $oldData = DB::table('mapping_kddk')->where('idpel', $idpel)->first();
+            $oldKddk = $oldData->kddk ?? null;
 
-            // Update kolom kddk menjadi NULL
+            // Ambil Prefix (7 Karakter Awal) untuk resequence
+            $sourcePrefix = ($oldKddk && strlen($oldKddk) >= 7) ? substr($oldKddk, 0, 7) : null;
+
+            // 2. Eksekusi Hapus (Set NULL)
             DB::table('mapping_kddk')
-                ->where('idpel', $request->idpel)
+                ->where('idpel', $idpel)
                 ->update([
-                    'kddk' => null, // Kosongkan KDDK
-                    'updated_at' => now()
-                ]);
+                    'kddk' => null, 
+                    'updated_at' => now()]
+                );
 
+            // 3. Catat Log Aktivitas
             $this->recordActivity(
-                'MOVE_SINGLE', 
-                "Memindahkan pelanggan {$idpel} ke Rute {$finalKddk}", 
+                'REMOVE_SINGLE', 
+                "Mengeluarkan pelanggan {$idpel} dari grup (Asal: {$oldKddk})", 
                 $idpel
             );
 
-            // 3. RAPIAKAN RUTE ASAL
+            // 4. Rapikan Urutan Rute Lama (Resequence)
             if ($sourcePrefix) {
-                $this->resequenceRoute($sourcePrefix);
+               $this->resequenceRoute($sourcePrefix);
+            } 
+
+            DB::commit();
+
+            // 5. Hapus Cache
+            if (Auth::check()) {
+                $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
+                Cache::forget($cacheKey);
             }
-
-            
-
-            $cacheKey = 'matrix_index_' . Auth::id() . '_' . date('Y-m');
-            Cache::forget($cacheKey);
 
             return response()->json([
                 'success' => true,
-                'message' => "IDPEL {$request->idpel} berhasil dikeluarkan dari grup."
+                'message' => "Idpel {$idpel} berhasil dikeluarkan."
             ]);
+
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
-                'success' => false,
+                'success' => false, 
                 'message' => 'Gagal menghapus data: ' . $e->getMessage()
             ], 500);
         }
@@ -873,6 +892,15 @@ class MatrixKddkController extends Controller
 
         $idpels = $request->idpels;
         $target = $request->target_kddk;
+
+        // Pastikan panjang target sesuai format (Biasanya 7 digit: Prefix + Area + Rute)
+        // Jika frontend mengirim kode yang salah (misal cuma 5 digit), proses ini akan skip.
+        if (strlen($target) !== 7) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Format Rute Tujuan Salah (Panjang kode tidak sesuai: ' . strlen($target) . ' digit). Refresh halaman.'
+            ], 400);
+        }
 
         try {
             DB::transaction(function() use ($idpels, $target) {
@@ -1013,30 +1041,47 @@ class MatrixKddkController extends Controller
      */
     private function resequenceRoute($routePrefix)
     {
-        // Ambil semua pelanggan di rute tersebut, urutkan berdasarkan kddk yang sekarang (berantakan)
+        // 1. Ambil semua pelanggan di rute ini
+        // Urutkan berdasarkan kddk lama (ASC) agar urutan relatifnya tetap terjaga
         $customers = DB::table('mapping_kddk')
             ->where('kddk', 'like', $routePrefix . '%')
-            ->orderBy('kddk')
+            ->whereNotNull('kddk')
+            ->orderBy('kddk', 'asc')
+            ->lockForUpdate()
             ->get();
 
+        $totalFound = count($customers);
+        $updatedCount = 0;
         $seq = 1;
-        foreach ($customers as $c) {
-            // Bentuk KDDK Baru: Prefix (7) + Urut Baru (3) + Sisipan Lama (2)
-            $oldSisip = substr($c->kddk, 10, 2); 
-            $newSeqStr = str_pad($seq, 3, '0', STR_PAD_LEFT);
-            $newKddk = $routePrefix . $newSeqStr . $oldSisip;
 
-            // Update hanya jika berubah (untuk optimasi)
+        foreach ($customers as $c) {
+            // Buat nomor urut baru (001, 002, dst)
+            $newSeqStr = str_pad($seq, 3, '0', STR_PAD_LEFT);
+            $currentSuffix = (strlen($c->kddk) >= 12) ? substr($c->kddk, -2) : '00';
+            
+            if (!ctype_digit($currentSuffix)) {
+                $currentSuffix = '00';
+            }
+
+            // KDDK Baru
+            $newKddk = $routePrefix . $newSeqStr . $currentSuffix;
+
+            // Update hanya jika kode berubah
             if ($c->kddk !== $newKddk) {
-                DB::table('mapping_kddk')
-                    ->where('id', $c->id)
-                    ->update([
-                        'kddk' => $newKddk,
-                        'updated_at' => now()
-                    ]);
+                DB::table('mapping_kddk')->where('id', $c->id)->update([
+                    'kddk' => $newKddk,
+                    'updated_at' => now()
+                ]);
+                $updatedCount++;
             }
             $seq++;
         }
+
+        return [
+            'prefix_used' => $routePrefix,
+            'total_items_found' => $totalFound,
+            'total_updated' => $updatedCount
+        ];
     }
 
     /**

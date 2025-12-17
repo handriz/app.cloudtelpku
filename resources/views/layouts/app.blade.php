@@ -1,55 +1,111 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="csrf-token" content="{{ csrf_token() }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ config('app.name', 'Laravel') }}</title>
+    <title>{{ config('app.name', 'Laravel') }}</title>
 
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" integrity="sha512-..." crossorigin="anonymous" referrerpolicy="no-referrer" />
-        <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet">
 
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+          crossorigin="anonymous"
+          referrerpolicy="no-referrer">
 
-        <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
-<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <!-- Favicon -->
+    <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
 
-<style>
-    .marker-cluster-small { background-color: rgba(181, 226, 140, 0.6); }
-    .marker-cluster-small div { background-color: rgba(110, 204, 57, 0.6); }
-    .marker-cluster-medium { background-color: rgba(241, 211, 87, 0.6); }
-    .marker-cluster-medium div { background-color: rgba(240, 194, 12, 0.6); }
-    .marker-cluster-large { background-color: rgba(253, 156, 115, 0.6); }
-    .marker-cluster-large div { background-color: rgba(241, 128, 23, 0.6); }
-    .marker-cluster div {
-        width: 30px; height: 30px; margin-left: 5px; margin-top: 5px;
-        text-align: center; border-radius: 15px; font: 12px "Helvetica Neue", Arial, Helvetica, sans-serif;
-        display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.2);
-    }
-</style>
+    <!-- ======================================================
+         LEAFLET CORE (WAJIB TANPA defer)
+    ======================================================= -->
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
-<script>
-    window.googleMapsApiKey = "{{ env('VITE_GOOGLE_MAPS_API_KEY') }}";
-</script>
+    <!-- ======================================================
+         LEAFLET MARKER CLUSTER
+    ======================================================= -->
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css">
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css">
 
-<script>
-    // Fungsi initMap tetap dibutuhkan, biarkan kosong
-    function initMap() {
-    // Biarkan kosong
-    }
-</script>
+    <!-- ======================================================
+         APEXCHARTS
+    ======================================================= -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <!-- ======================================================
+         CUSTOM CLUSTER STYLE
+    ======================================================= -->
     <style>
-        .sidebar-collapsed { width: 70px !important; }
-        .sidebar-collapsed .menu-text { display: none; }
+        .marker-cluster-small {
+            background-color: rgba(181, 226, 140, 0.6);
+        }
+        .marker-cluster-small div {
+            background-color: rgba(110, 204, 57, 0.6);
+        }
+        .marker-cluster-medium {
+            background-color: rgba(241, 211, 87, 0.6);
+        }
+        .marker-cluster-medium div {
+            background-color: rgba(240, 194, 12, 0.6);
+        }
+        .marker-cluster-large {
+            background-color: rgba(253, 156, 115, 0.6);
+        }
+        .marker-cluster-large div {
+            background-color: rgba(241, 128, 23, 0.6);
+        }
+        .marker-cluster div {
+            width: 30px;
+            height: 30px;
+            margin-left: 5px;
+            margin-top: 5px;
+            text-align: center;
+            border-radius: 15px;
+            font: 12px "Helvetica Neue", Arial, Helvetica, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+        }
     </style>
-    </head>
+
+    <!-- ======================================================
+         VITE (APP.JS HARUS PALING TERAKHIR)
+    ======================================================= -->
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+
+    <!-- ======================================================
+         GLOBAL CONFIG
+    ======================================================= -->
+    <script>
+        window.googleMapsApiKey = "{{ env('VITE_GOOGLE_MAPS_API_KEY') }}";
+
+        // Dummy initMap (dibutuhkan Google Maps API)
+        function initMap() {}
+    </script>
+
+    <!-- ======================================================
+         SIDEBAR STYLE
+    ======================================================= -->
+    <style>
+        .sidebar-collapsed {
+            width: 70px !important;
+        }
+        .sidebar-collapsed .menu-text {
+            display: none;
+        }
+    </style>
+</head>
+
     <body class="font-sans antialiased bg-slate-100 dark:bg-gray-900" 
           @php
               $dashboardRoute = 'dashboard';

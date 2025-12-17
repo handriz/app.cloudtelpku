@@ -10,9 +10,9 @@
 
         // Tentukan Class CSS Baris
         $rowClass = $hasCoord 
-            ? 'hover:bg-yellow-50 dark:hover:bg-gray-700' 
-            : 'bg-red-100 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/60 cursor-not-allowed';
-            
+            ? 'hover:bg-yellow-50 dark:hover:bg-gray-700 cursor-move' 
+            : 'bg-red-100 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/60 cursor-move';
+               
         // Warna Teks Sequence
         $textClass = $hasCoord ? 'text-indigo-600' : 'text-red-700 font-extrabold';
 
