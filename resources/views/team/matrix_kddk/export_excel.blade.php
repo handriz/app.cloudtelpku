@@ -1,110 +1,108 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
+    <meta charset="UTF-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <style>
-        /* STYLE KHUSUS UNTUK EXCEL */
-        body {
-            font-family: Arial, sans-serif;
-            font-size: 12px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        /* Header Tabel: Biru Gelap, Teks Putih, Tengah */
-        th {
-            background-color: #4f46e5; /* Indigo */
-            color: #ffffff;
-            border: 1px solid #000000;
-            padding: 10px 5px;
-            text-align: center;
-            vertical-align: middle;
-            font-weight: bold;
-            height: 30px;
-        }
-
-        /* Isi Tabel: Border Hitam Tipis */
-        td {
-            border: 1px solid #000000;
-            padding: 5px;
-            vertical-align: middle;
-        }
-
-        /* Utility Classes */
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .text-bold { font-weight: bold; }
-        
-        /* Warna Baris Selang-seling (Opsional, kadang Excel mengabaikan ini tapi worth trying) */
-        tr:nth-child(even) { background-color: #f3f4f6; }
-
-        /* FORMAT KHUSUS EXCEL (PENTING!) */
-        .str { mso-number-format:'\@'; } /* Paksa jadi Text (0 di depan aman) */
-        .num { mso-number-format:'0'; }  /* Angka bulat */
-    </style>
 </head>
 <body>
-
-    {{-- JUDUL LAPORAN (Merged Cells) --}}
     <table>
+        {{-- JUDUL UTAMA --}}
         <tr>
-            {{-- Gabungkan 9 kolom agar judul di tengah --}}
-            <td colspan="9" style="font-size: 16px; font-weight: bold; text-align: center; height: 40px; border: none;">
-                DATA REKAP RBM - UNIT {{ $unitCode }}
+            <td colspan="11" style="font-size: 18px; font-weight: bold; text-align: center; height: 35px; vertical-align: middle;">
+                LAPORAN DATA RBM & KOORDINAT PELANGGAN
             </td>
         </tr>
+
+        {{-- NAMA UNIT --}}
         <tr>
-            <td colspan="9" style="text-align: center; font-style: italic; border: none;">
-                Tanggal Export: {{ date('d F Y, H:i') }} | Total Data: {{ count($data) }} Pelanggan
+            <td colspan="11" style="font-size: 14px; font-weight: bold; text-align: center; height: 25px; vertical-align: middle;">
+                UNIT LAYANAN: {{ strtoupper($unitCode) }}
             </td>
         </tr>
-        <tr><td colspan="9" style="border: none;"></td></tr> {{-- Spasi Kosong --}}
-    </table>
 
-    {{-- TABEL DATA --}}
-    <table>
+        {{-- DETAIL AREA / RUTE (DINAMIS) --}}
+        <tr>
+            <td colspan="11" style="font-size: 12px; font-weight: bold; text-align: center; height: 25px; vertical-align: middle; color: #0000FF;">
+                {{ $titleDetails ?? 'SEMUA DATA' }}
+            </td>
+        </tr>
+
+        {{-- TANGGAL CETAK --}}
+        <tr>
+            <td colspan="11" style="font-size: 11px; font-style: italic; text-align: center; color: #555555;">
+                Dicetak pada: {{ now()->format('d F Y, H:i:s') }}
+            </td>
+        </tr>
+
+        {{-- SPASI KOSONG --}}
+        <tr>
+            <td colspan="11" style="height: 15px;"></td>
+        </tr>
+
+        {{-- HEADER TABEL (LENGKAP) --}}
         <thead>
             <tr>
-                {{-- Width di sini membantu Excel menentukan lebar awal kolom --}}
-                <th width="5" style="background-color: #4f46e5; color: #ffffff;">NO</th>
-                <th width="15" style="background-color: #4f46e5; color: #ffffff;">KDDK (RUTE)</th>
-                <th width="15" style="background-color: #4f46e5; color: #ffffff;">IDPEL</th>
-                <th width="35" style="background-color: #4f46e5; color: #ffffff;">LATITUDE</th>
-                <th width="40" style="background-color: #4f46e5; color: #ffffff;">LOGITUDE</th>
-                <th width="8" style="background-color: #4f46e5; color: #ffffff;">TARIF</th>
-                <th width="10" style="background-color: #4f46e5; color: #ffffff;">DAYA</th>
-                <th width="20" style="background-color: #4f46e5; color: #ffffff;">NO. METER</th>
-                <th width="10" style="background-color: #4f46e5; color: #ffffff;">URUT</th>
+                <th style="background-color: #312e81; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 150px; text-align: center; vertical-align: middle;">IDPEL</th>
+                
+                <th style="background-color: #312e81; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 250px; text-align: left; vertical-align: middle;">NAMA PELANGGAN</th>
+                
+                <th style="background-color: #312e81; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 80px; text-align: center; vertical-align: middle;">TARIF</th>
+                
+                <th style="background-color: #312e81; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 80px; text-align: center; vertical-align: middle;">DAYA</th>
+                
+                <th style="background-color: #312e81; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 150px; text-align: left; vertical-align: middle;">NO METER</th>
+                
+                <th style="background-color: #059669; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 180px; text-align: center; vertical-align: middle;">KODE KDDK FULL</th>
+                
+                <th style="background-color: #10b981; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 100px; text-align: center; vertical-align: middle;">PREFIX</th>
+                
+                <th style="background-color: #10b981; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 60px; text-align: center; vertical-align: middle;">URUT</th>
+                
+                <th style="background-color: #10b981; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 60px; text-align: center; vertical-align: middle;">SISIP</th>
+
+                <th style="background-color: #d97706; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 120px; text-align: center; vertical-align: middle;">LATITUDE</th>
+                
+                <th style="background-color: #d97706; color: #ffffff; font-weight: bold; border: 1px solid #000000; width: 120px; text-align: center; vertical-align: middle;">LONGITUDE</th>
             </tr>
         </thead>
+
+        {{-- ISI DATA --}}
         <tbody>
-            @foreach($data as $index => $row)
+            @foreach($data as $row)
+                @php
+                    $kddk = $row->kddk ?? '';
+                    $len = strlen($kddk);
+                    $prefix = ''; $urut = '-'; $sisip = '-';
+
+                    if ($len >= 10) {
+                        $prefix = substr($kddk, 0, 7);
+                        $urut   = substr($kddk, 7, 3);
+                        $sisip  = ($len >= 12) ? substr($kddk, 10, 2) : '00';
+                    } elseif ($len > 0) {
+                        $prefix = $kddk;
+                    }
+                @endphp
                 <tr>
-                    <td class="text-center">{{ $index + 1 }}</td>
+                    <td style="border: 1px solid #000000; mso-number-format:'\@'; text-align: left;">{{ $row->idpel }}</td>
                     
-                    {{-- Class 'str' mencegah Excel membuang angka 0 di depan --}}
-                    <td class="str text-center">{{ $row->kddk }}</td>
-                    <td class="str text-center">{{ $row->idpel }}</td>
+                    <td style="border: 1px solid #000000;">{{ $row->nama ?? '-' }}</td>
                     
-                    <td>{{ $row->latitudey }}</td>
-                    <td>{{ $row->longitudex }}</td>
+                    <td style="border: 1px solid #000000; text-align: center;">{{ $row->tarif }}</td>
+                    <td style="border: 1px solid #000000; text-align: center;">{{ $row->daya }}</td>
                     
-                    <td class="text-center">{{ $row->tarif }}</td>
-                    <td class="text-center num">{{ $row->daya }}</td>
+                    <td style="border: 1px solid #000000; mso-number-format:'\@';">{{ $row->nomor_meter_kwh }}</td>
                     
-                    <td class="str text-center">{{ $row->nomor_meter_kwh }}</td>
-                    
-                    {{-- Highlight Kuning untuk Sequence --}}
-                    <td class="text-center str" style="background-color: #fef3c7; font-weight: bold;">
-                        {{ substr($row->kddk, -3) }}
-                    </td>
+                    <td style="border: 1px solid #000000; mso-number-format:'\@'; font-weight:bold; text-align: center; background-color: #f0fdf4;">{{ $kddk }}</td>
+
+                    <td style="border: 1px solid #000000; mso-number-format:'\@'; text-align: center;">{{ $prefix }}</td>
+                    <td style="border: 1px solid #000000; mso-number-format:'\@'; text-align: center;">{{ $urut }}</td>
+                    <td style="border: 1px solid #000000; mso-number-format:'\@'; text-align: center;">{{ $sisip }}</td>
+
+                    <td style="border: 1px solid #000000; text-align: right;">{{ $row->latitudey }}</td>
+                    <td style="border: 1px solid #000000; text-align: right;">{{ $row->longitudex }}</td>
                 </tr>
             @endforeach
         </tbody>
     </table>
-
 </body>
 </html>

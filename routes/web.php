@@ -221,6 +221,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             
             // 8. Peta
             Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');
+            Route::post('update-coordinate', [MatrixKddkController::class, 'updateCoordinate'])->name('team.matrix_kddk.update_coord');
         });
 
     });

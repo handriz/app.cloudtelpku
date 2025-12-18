@@ -102,7 +102,7 @@
                     {{-- Isi Dropdown (Awalnya Hidden) --}}
                     <div id="export-dropdown-menu"
                         class="hidden absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-2xl overflow-hidden ring-1 ring-black ring-opacity-5 z-[2147483647]">
-                        
+
                         {{-- Pilihan Excel --}}
                         <button type="button" onclick="window.exportRbmCheck('excel')"
                             class="export-item block w-full text-left px-4 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-green-50 hover:text-green-700 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 dropdown-item">
@@ -112,7 +112,7 @@
                         {{-- Pilihan CSV --}}
                         <button type="button" onclick="window.exportRbmCheck('csv')"
                             class="export-item block w-full text-left px-4 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-blue-50 hover:text-blue-700 dark:hover:bg-gray-700 dropdown-item">
-                            <i class="fas fa-file-csv mr-2 text-blue-600"></i> CSV (Pipa |)
+                            <i class="fas fa-file-csv mr-2 text-blue-600"></i> CSV ( separator | )
                         </button>
                     </div>
                 </div>
@@ -423,12 +423,29 @@
 
             {{-- Map Controls --}}
             <div id="map-info-controls"
-                class="absolute top-4 left-4 z-[4000] bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm p-2 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex items-center space-x-3 transition-all duration-300 ease-in-out">
-                <span class="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded font-bold" id="map-count">0
-                    Titik</span>
-                <div class="h-3 w-px bg-gray-300 mx-1"></div>
-                <span class="text-[10px] text-gray-700 dark:text-gray-200 font-bold truncate max-w-[200px]"
-                    id="map-context-title">Pilih Area/Rute di kiri</span>
+                class="absolute top-4 left-4 z-[4000] bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm p-2 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex items-start space-x-3 transition-all duration-300 ease-in-out">
+                
+                {{-- Hitungan Titik (Tetap di kiri atas) --}}
+                <div class="mt-1">
+                    <span class="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded font-bold whitespace-nowrap" id="map-count">
+                        0 Titik
+                    </span>
+                </div>
+                
+                <div class="h-8 w-px bg-gray-300 mx-1 self-center"></div>
+                
+                {{-- Judul & Subjudul (Struktur Baru) --}}
+                <div class="flex flex-col justify-center leading-tight">
+                    {{-- Ganti SPAN jadi DIV agar bisa multiline --}}
+                    <div id="map-title-text" class="text-[11px] font-bold text-gray-800 dark:text-gray-200 leading-snug">
+                        Peta Wilayah
+                    </div>
+                    
+                    {{-- Subtitle opsional --}}
+                    <span id="map-subtitle-text" class="text-[9px] text-gray-500 hidden sm:inline mt-0.5">
+                        Pilih Area/Rute di kiri
+                    </span>
+                </div>
             </div>
 
             <div id="anomaly-alert"
@@ -487,7 +504,7 @@
             <div id="rbm-map-data" data-points="{{ json_encode($mapData ?? []) }}" class="hidden"></div>
             <input type="hidden" id="map-data-url"
                 value="{{ route('team.matrix_kddk.map_data', ['unit' => $unitCode]) }}">
-            <div id="rbm-map" class="w-full h-full"></div>
+            <div id="rbm-map" class="w-full h-[500px] min-h-[400px] bg-gray-100 rounded-lg shadow-inner z-0 relative"></div>
         </div>
 
     </div>
@@ -616,6 +633,9 @@
     {{-- Hidden Route untuk JS --}}
     <input type="hidden" id="history-route" value="{{ route('team.matrix_kddk.history', ['unit' => $unitCode]) }}">
 
+    <div id="toast-container" class="fixed top-24 right-5 z-[10000] flex flex-col space-y-3 pointer-events-none">
+        {{-- Toast akan muncul disini via JS --}}
+    </div>
 </div>
 
 <style>

@@ -3,7 +3,7 @@
     <div class="flex justify-between items-center mb-6">
         <div>
             <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center">
-                <i class="fas fa-sitemap mr-2 text-indigo-600"></i> Matrix Progress Pemetaan KDDK
+                <i class="fas fa-sitemap mr-2 text-indigo-600"></i> Progress Pemetaan KDDK
             </h3>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 Rekapitulasi penyelesaian berdasarkan update data pelanggan aktif.

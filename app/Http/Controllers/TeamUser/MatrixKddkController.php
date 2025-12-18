@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use App\Models\HierarchyLevel;
 use App\Models\MasterKddk;
-use App\Models\AppSetting; 
+use App\Models\AppSetting;
 use App\Models\User;
 use App\Models\AuditLog;
 
@@ -22,8 +22,8 @@ class MatrixKddkController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        
-        $activePeriod = class_exists(\App\Models\AppSetting::class) 
+
+        $activePeriod = class_exists(\App\Models\AppSetting::class)
             ? \App\Models\AppSetting::findValue('kddk_active_period', $user->hierarchy_level_code, date('Y-m'))
             : date('Y-m');
 
@@ -36,17 +36,17 @@ class MatrixKddkController extends Controller
                 ->join('hierarchy_levels as h_ulp', 'master_data_pelanggan.unitup', '=', 'h_ulp.code')
                 ->leftJoin('hierarchy_levels as h_up3', 'h_ulp.parent_code', '=', 'h_up3.code')
                 ->leftJoin('mapping_kddk', 'master_data_pelanggan.idpel', '=', 'mapping_kddk.idpel')
-                ->leftJoin('temporary_mappings', function($join) use ($activePeriod) {
+                ->leftJoin('temporary_mappings', function ($join) use ($activePeriod) {
                     $join->on('master_data_pelanggan.idpel', '=', 'temporary_mappings.idpel')
                         ->whereRaw("DATE_FORMAT(temporary_mappings.created_at, '%Y-%m') = ?", [$activePeriod]);
-                })         
+                })
                 ->select(
-                    'h_ulp.name as unit_layanan', 
+                    'h_ulp.name as unit_layanan',
                     'master_data_pelanggan.unitup as unit_code',
                     'h_ulp.kddk_code as kode_ulp',
                     'h_up3.name as unit_induk_name',
                     'h_up3.kddk_code as kode_up3',
-                    'h_up3.order as order_up3', 
+                    'h_up3.order as order_up3',
                     'h_ulp.order as order_ulp',
 
                     // TARGET (Total DIL)
@@ -59,39 +59,37 @@ class MatrixKddkController extends Controller
                     DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.ket_validasi LIKE "rejected_%" THEN temporary_mappings.id END) as ditolak')
                 );
 
-            
-                if (!$user->hasRole('admin') && $hierarchyFilter) {
+
+            if (!$user->hasRole('admin') && $hierarchyFilter) {
                 $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
             }
 
             $rawMatrix = $query->groupBy(
                 'h_ulp.name',           // Group by Nama (Kota Barat)
                 'master_data_pelanggan.unitup', // Group by Kode (18111)
-                'h_ulp.kddk_code', 
-                'h_up3.name', 
+                'h_ulp.kddk_code',
                 'h_up3.kddk_code',
-                'h_up3.order', 
+                'h_up3.order',
                 'h_ulp.order'
             )
-            ->orderBy('h_up3.order', 'asc')
-            ->orderBy('h_ulp.order', 'asc')
-            ->get();
+                ->orderBy('h_up3.order', 'asc')
+                ->orderBy('h_ulp.order', 'asc')
+                ->get();
 
             // Logika Grouping (ULP vs Admin)
             $isUserULP = false;
             if (!$user->hasRole('admin') && $user->hierarchy_level_code) {
                 $userType = \App\Models\HierarchyLevel::where('code', $user->hierarchy_level_code)
-                            ->value('unit_type');
+                    ->value('unit_type');
                 if ($userType === 'ULP') {
                     $isUserULP = true;
                 }
             }
 
-            return $rawMatrix->groupBy(function($item) use ($isUserULP) {
-                if ($isUserULP) return $item->unit_layanan; 
+            return $rawMatrix->groupBy(function ($item) use ($isUserULP) {
+                if ($isUserULP) return $item->unit_layanan;
                 return $item->unit_induk_name ?? 'LAINNYA';
             });
-
         });
 
         $viewData = compact('matrixData', 'activePeriod');
@@ -110,8 +108,8 @@ class MatrixKddkController extends Controller
     {
         $unitCode = urldecode($unit); // Kode Unit (misal: 18111)
         $user = Auth::user();
-        
-        $activePeriod = class_exists(\App\Models\AppSetting::class) 
+
+        $activePeriod = class_exists(\App\Models\AppSetting::class)
             ? \App\Models\AppSetting::findValue('kddk_active_period', $user->hierarchy_level_code, date('Y-m'))
             : date('Y-m');
 
@@ -120,16 +118,16 @@ class MatrixKddkController extends Controller
 
         // 2. LOGIKA HIRARKI OTOMATIS (Dgt 1-3)
         $currentUnit = \App\Models\HierarchyLevel::where('code', $unitCode)->first();
-        
+
         $autoCodes = ['up3' => '_', 'ulp' => '_', 'sub' => 'A']; // Default Sub 'A'
-        $subUnits = collect(); 
+        $subUnits = collect();
 
         if ($currentUnit) {
-             if ($currentUnit->unit_type === 'ULP') {
+            if ($currentUnit->unit_type === 'ULP') {
                 $autoCodes['ulp'] = $currentUnit->kddk_code;
                 if ($currentUnit->parent) $autoCodes['up3'] = $currentUnit->parent->kddk_code;
                 $subUnits = $currentUnit->children()->where('unit_type', 'SUB_ULP')->orderBy('kddk_code')->get();
-                if ($subUnits->isNotEmpty()) $autoCodes['sub'] = ''; 
+                if ($subUnits->isNotEmpty()) $autoCodes['sub'] = '';
             } elseif ($currentUnit->unit_type === 'SUB_ULP') {
                 $autoCodes['sub'] = $currentUnit->kddk_code;
                 if ($currentUnit->parent) {
@@ -143,11 +141,11 @@ class MatrixKddkController extends Controller
         $query = DB::table('master_data_pelanggan as mdp')
             // 1. Join untuk Status Validasi (Tidak mempengaruhi filtering utama)
             ->leftJoin('temporary_mappings as tm', 'mdp.idpel', '=', 'tm.idpel')
-            
+
             // 2. Join ke Mapping KDDK Khusus yang ENABLED = 1 (Data Aktif)
-            ->leftJoin('mapping_kddk as mk', function($join) {
+            ->leftJoin('mapping_kddk as mk', function ($join) {
                 $join->on('mdp.idpel', '=', 'mk.idpel')
-                     ->where('mk.enabled', 1);
+                    ->where('mk.enabled', 1);
             })
 
             ->select([
@@ -174,25 +172,25 @@ class MatrixKddkController extends Controller
 
             ->where('mdp.unitup', $unitCode)
 
-            ->where(function($q) {
+            ->where(function ($q) {
                 $q->whereNull('mk.kddk')
-                  ->orWhere('mk.kddk', '');
+                    ->orWhere('mk.kddk', '');
             });
-            
+
         // Filter Pencarian (Opsional)
         if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
 
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('mdp.idpel', 'like', $searchTerm)
-                ->orWhere('mdp.nomor_meter_kwh', 'like', $searchTerm);
+                    ->orWhere('mdp.nomor_meter_kwh', 'like', $searchTerm);
             });
         }
 
         $customers = $query
-        ->orderBy('mdp.idpel')
-        ->cursorPaginate(50)
-        ->withPath(route('team.matrix_kddk.details', ['unit' => $unitCode]));
+            ->orderBy('mdp.idpel')
+            ->cursorPaginate(50)
+            ->withPath(route('team.matrix_kddk.details', ['unit' => $unitCode]));
 
         $viewData = compact('customers', 'unit', 'activePeriod', 'autoCodes', 'subUnits', 'kddkConfig');
 
@@ -248,10 +246,10 @@ class MatrixKddkController extends Controller
         return response()->json([
             'ready_ids' => $readyIds,        // Ini yang akan kita seleksi
             'ready_count' => count($readyIds),
-            
+
             'mapped_ids' => $mappedIds,      // Info saja
             'mapped_count' => count($mappedIds),
-            
+
             'invalid_count' => $invalidCount,
             'total_received' => $totalSent
         ]);
@@ -266,7 +264,7 @@ class MatrixKddkController extends Controller
 
         // 1. Data Hirarki (Header)
         $hierarchy = \App\Models\HierarchyLevel::where('code', $unitCode)->first();
-        
+
         // 2. Ambil Data Pelanggan
         $rawCustomers = DB::table('mapping_kddk')
             ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
@@ -308,7 +306,7 @@ class MatrixKddkController extends Controller
         $basePrefix = ($hierarchy->parent->kddk_code ?? '?') . ($hierarchy->kddk_code ?? '?') . 'A';
 
         $viewData = compact('unitCode', 'hierarchy', 'groupedData', 'officers', 'areaLabels', 'kddkConfig', 'basePrefix');
-        
+
 
         if ($request->has('is_ajax')) {
             return view('team.matrix_kddk.partials.rbm_manage_content', $viewData);
@@ -350,16 +348,19 @@ class MatrixKddkController extends Controller
     public function getMapData(Request $request, $unit)
     {
         $unitCode = urldecode($unit);
-        $area = $request->area; // Filter Area
-        $route = $request->route; // Filter Rute
+        $area = $request->area;
+        $route = $request->route;
 
-        if (!$area) return response()->json([]);// Validasi: Kalau tidak ada Area, stop.
+        if (!$area) return response()->json([]); // Validasi: Kalau tidak ada Area, stop.
 
         $query = DB::table('mapping_kddk as mk')
             ->join('master_data_pelanggan as mdp', 'mk.idpel', '=', 'mdp.idpel')
             ->select(
-                'mk.kddk', 'mk.latitudey', 'mk.longitudex', 
-                'mk.idpel', 'mdp.nomor_meter_kwh'
+                'mk.kddk',
+                'mk.latitudey',
+                'mk.longitudex',
+                'mk.idpel',
+                'mdp.nomor_meter_kwh'
             )
             ->where('mdp.unitup', $unitCode)
             ->where('mk.enabled', 1)
@@ -368,15 +369,35 @@ class MatrixKddkController extends Controller
 
         if ($area) $query->where('mk.kddk', 'like', '___' . $area . '%');
         if ($route) $query->where('mk.kddk', 'like', '_____' . $route . '%');
-        
-        $data = $query->limit(10000)->get()->map(function($item) {
+
+        $data = $query->limit(10000)->get();
+
+        $coordCounts = [];
+        foreach ($data as $item) {
+            $key = (string)$item->latitudey . '_' . (string)$item->longitudex;
+            if (!isset($coordCounts[$key])) $coordCounts[$key] = 0;
+            $coordCounts[$key]++;
+        }
+
+        $mappedData = $data->map(function ($item) use ($coordCounts) {
+
+            // Cek Duplikat
+            $key = (string)$item->latitudey . '_' . (string)$item->longitudex;
+            $isDuplicate = ($coordCounts[$key] > 1);
+
             $mapsUrl = "https://www.google.com/maps?q={$item->latitudey},{$item->longitudex}";
+
+            $warningHtml = $isDuplicate
+                ? "<div class='mb-2 text-orange-600 font-bold bg-orange-100 px-2 py-1 rounded border border-orange-200 text-[10px]'><i class='fas fa-exclamation-triangle mr-1'></i> Koordinat Ganda</div>"
+                : "";
+
             return [
                 'lat' => $item->latitudey,
                 'lng' => $item->longitudex,
                 'seq' => substr($item->kddk, 7, 3),
                 'kddk' => $item->kddk,
                 'idpel' => $item->idpel,
+                'is_duplicate' => $isDuplicate,
                 'info' => "
                     <div class='text-xs font-sans'>
                         <div class='border-b border-gray-100 pb-1 mb-1'>
@@ -384,6 +405,8 @@ class MatrixKddkController extends Controller
                             <span class='text-gray-500 text-[10px]'>Urut: " . substr($item->kddk, 7, 3) . "</span>
                         </div>
                         
+                        {$warningHtml} 
+
                         <div class='mb-2 text-gray-600'>
                             <div>Lat: <span class='font-mono'>{$item->latitudey}</span></div>
                             <div>Lon: <span class='font-mono'>{$item->longitudex}</span></div>
@@ -399,21 +422,30 @@ class MatrixKddkController extends Controller
             ];
         });
 
-        return response()->json($data);
+        return response()->json($mappedData);
     }
-    
+
     /**
-     * Export Data RBM ke CSV/Excel
+     * Export Data RBM ke CSV (Pipa |) atau Excel
+     * PERBAIKAN: 
+     * 1. Menghapus kolom 'nama' dari query (karena tidak ada di DB).
+     * 2. Menghapus kolom 'NAMA PELANGGAN' dari output CSV.
+     * 3. Tetap menggunakan Separator Pipa (|) dan Streaming agar cepat.
      */
     public function exportRbm(Request $request, $unit)
     {
+        // 1. Persiapan & Set Time Limit Unlimited
+        set_time_limit(0);
         $unitCode = urldecode($unit);
-        $format = $request->query('format', 'excel'); // Default Excel
-        $area = $request->area;
-        $route = $request->route;
+        $format = $request->query('format', 'excel');
+
+        $multis = $request->multis;
+        $areas = $request->areas;
+
         $timestamp = now()->format('Ymd_His');
-        
-        // 1. Query Data
+        $titleDetails = "SEMUA DATA";
+
+        // 2. Query Builder (TANPA KOLOM NAMA)
         $query = DB::table('mapping_kddk')
             ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
             ->select(
@@ -425,58 +457,98 @@ class MatrixKddkController extends Controller
                 'master_data_pelanggan.daya',
                 'master_data_pelanggan.nomor_meter_kwh',
                 'master_data_pelanggan.unitup'
+                // HAPUS: 'master_data_pelanggan.nama' <-- SUDAH DIHAPUS
             )
             ->where('master_data_pelanggan.unitup', $unitCode)
             ->where('mapping_kddk.enabled', 1)
             ->orderBy('mapping_kddk.kddk', 'asc');
 
-        if ($area) {
+        // 3. Filter Logic (Multi Rute / Area) - Tidak Berubah
+        if ($multis) {
+            $selectionList = explode(',', $multis);
+            $displayList = [];
+            $query->where(function ($q) use ($selectionList, &$displayList) {
+                foreach ($selectionList as $sel) {
+                    $parts = explode('-', $sel);
+                    if (count($parts) >= 2) {
+                        $area = $parts[0];
+                        $route = $parts[1];
+                        $q->orWhere('mapping_kddk.kddk', 'like', '___' . $area . $route . '%');
+                        $displayList[] = "{$area}-{$route}";
+                    }
+                }
+            });
+            $timestamp = "MULTI_" . $timestamp;
+            $titleDetails = "RUTE TERPILIH: " . implode(', ', $displayList);
+        } elseif ($areas) {
+            $areaList = explode(',', $areas);
+            $query->where(function ($q) use ($areaList) {
+                foreach ($areaList as $area) $q->orWhere('mapping_kddk.kddk', 'like', '___' . $area . '%');
+            });
+            $timestamp = "AREA_" . $timestamp;
+            $titleDetails = "AREA TERPILIH: " . $areas;
+        } elseif ($request->area) {
+            $area = $request->area;
+            $route = $request->route;
             $query->where('mapping_kddk.kddk', 'like', '___' . $area . '%');
-            // Tambahkan info ke nama file agar jelas
-            $timestamp = $area . ($route ? "_{$route}_" : "_") . $timestamp;
+            $titleDetails = "AREA: $area";
+            if ($route) {
+                $query->where('mapping_kddk.kddk', 'like', '_____' . $route . '%');
+                $titleDetails .= " - RUTE: $route";
+            }
         }
-        
-        if ($route) {
-            $query->where('mapping_kddk.kddk', 'like', '_____' . $route . '%');
+
+        // ============================================================
+        // FIX: EXPORT CSV (PIPA |) TANPA NAMA & STREAMING
+        // ============================================================
+        if ($format === 'csv') {
+            $filename = "RBM_{$unitCode}_{$timestamp}.csv";
+
+            $headers = [
+                'Content-Type'        => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Pragma'              => 'no-cache',
+                'Cache-Control'       => 'must-revalidate, post-check=0, pre-check=0',
+                'Expires'             => '0'
+            ];
+
+            return response()->stream(function () use ($query) {
+                // Bersihkan buffer output agar file bersih
+                if (ob_get_level()) ob_end_clean();
+
+                $handle = fopen('php://output', 'w');
+
+                // HEADER KOLOM: HANYA 4 KOLOM SESUAI PERMINTAAN
+                fputcsv($handle, ['IDPEL', 'KDDK', 'LATITUDE', 'LONGITUDE'], '|');
+
+                // Gunakan cursor() untuk streaming hemat memori
+                foreach ($query->cursor() as $row) {
+                    $lat = $row->latitudey ?? '0';
+                    $long = $row->longitudex ?? '0';
+
+                    fputcsv($handle, [
+                        $row->idpel,
+                        $row->kddk,
+                        $lat,
+                        $long
+                    ], '|'); // Separator Pipa
+                }
+
+                fclose($handle);
+            }, 200, $headers);
         }
-        
+
+        // ============================================================
+        // EXPORT EXCEL (Rich Data / View Blade)
+        // ============================================================
         $data = $query->get();
 
         if ($data->isEmpty()) {
             return back()->with('error', 'Tidak ada data untuk diexport.');
         }
 
-        // ==========================================
-        // OPSI 1: EXPORT CSV (Pipa Delimiter)
-        // ==========================================
-        if ($format === 'csv') {
-            $filename = "RBM_{$unitCode}_{$timestamp}.csv";
-            
-            // Header CSV (Sesuai request)
-            $csvContent = "IDPEL|KDDK|LATITUDE|LONGITUDE\n";
-
-            foreach ($data as $row) {
-                // Pastikan KDDK 12 digit, Lat/Long tidak null
-                $kddk = $row->kddk;
-                $lat = $row->latitudey ?? '0';
-                $long = $row->longitudex ?? '0';
-                
-                // Susun baris dengan pemisah pipa
-                $csvContent .= "{$row->idpel}|{$kddk}|{$lat}|{$long}\n";
-            }
-
-            // Return text response sebagai file download
-            return response($csvContent, 200, [
-                'Content-Type' => 'text/csv',
-                'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-            ]);
-        }
-
-        // ==========================================
-        // OPSI 2: EXPORT EXCEL (Default HTML)
-        // ==========================================
         $filename = "RBM_{$unitCode}_{$timestamp}.xls";
-        return response(view('team.matrix_kddk.export_excel', compact('data', 'unitCode')), 200, [
+        return response(view('team.matrix_kddk.export_excel', compact('data', 'unitCode', 'titleDetails')), 200, [
             'Content-Type' => 'application/vnd.ms-excel',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ]);
@@ -496,12 +568,12 @@ class MatrixKddkController extends Controller
         $target = $request->target_kddk;
 
         try {
-            DB::transaction(function() use ($idpel, $target) {
+            DB::transaction(function () use ($idpel, $target) {
 
                 // 1. Ambil Kode Lama (Source Route) sebelum diupdate
                 $oldKddk = DB::table('mapping_kddk')->where('idpel', $idpel)->value('kddk');
                 $sourcePrefix = substr($oldKddk, 0, 7);
-                
+
                 // 2. Proses Pindah ke Target (Logika Lama)
                 $finalKddk = $target;
 
@@ -510,21 +582,21 @@ class MatrixKddkController extends Controller
                     $maxSeq = DB::table('mapping_kddk')
                         ->where('kddk', 'like', $target . '%')
                         ->max(DB::raw('CAST(SUBSTRING(kddk, 8, 3) AS UNSIGNED)'));
-                    
+
                     $nextSeq = $maxSeq ? ($maxSeq + 1) : 1;
                     $seqStr = str_pad($nextSeq, 3, '0', STR_PAD_LEFT);
-                    
+
                     // Ambil sisipan lama atau reset ke 00? Idealnya reset ke 00 jika pindah rute
                     $finalKddk = $target . $seqStr . '00';
                     $unitup = DB::table('master_data_pelanggan')
-                                ->where('idpel', $idpel)
-                                ->value('unitup');
+                        ->where('idpel', $idpel)
+                        ->value('unitup');
 
                     // Simpan ke MasterKddk juga sebagai wadah baru jika belum ada
                     \App\Models\MasterKddk::firstOrCreate(
                         ['kode_kddk' => $finalKddk],
                         [
-                            'unitup' => $unitup ?? 'UNKNOWN', 
+                            'unitup' => $unitup ?? 'UNKNOWN',
                             'is_active' => true,
                             'keterangan' => 'Generated via Move'
                         ]
@@ -545,8 +617,8 @@ class MatrixKddkController extends Controller
                 }
 
                 $this->recordActivity(
-                    'MOVE_SINGLE', 
-                    "Memindahkan pelanggan {$idpel} ke Rute {$finalKddk}", 
+                    'MOVE_SINGLE',
+                    "Memindahkan pelanggan {$idpel} ke Rute {$finalKddk}",
                     $idpel
                 );
             });
@@ -555,7 +627,6 @@ class MatrixKddkController extends Controller
             Cache::forget($cacheKey);
 
             return response()->json(['success' => true, 'message' => "Berhasil dipindahkan."]);
-
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
         }
@@ -575,12 +646,12 @@ class MatrixKddkController extends Controller
             'kddk_code' => 'required|string'
         ]);
 
-        $inputOrderedIdpels = $request->selected_idpels; 
+        $inputOrderedIdpels = $request->selected_idpels;
         $prefix = strtoupper($request->prefix_code);
         $sisipan = $request->sisipan;
         $unitup = $request->unitup;
         $countData = count($inputOrderedIdpels);
-        $startSeqStr = substr($request->kddk_code, 7, 3); 
+        $startSeqStr = substr($request->kddk_code, 7, 3);
         $startSeq = (int) $startSeqStr;
 
         // Decode Koordinat (Pastikan array)
@@ -590,8 +661,8 @@ class MatrixKddkController extends Controller
             if (!is_array($coordUpdates)) $coordUpdates = [];
         }
 
-        DB::transaction(function() use ($inputOrderedIdpels, $prefix, $sisipan, $startSeq, $countData, $unitup, $coordUpdates) {    
-            
+        DB::transaction(function () use ($inputOrderedIdpels, $prefix, $sisipan, $startSeq, $countData, $unitup, $coordUpdates) {
+
             // 1. BULK SHIFTING (GESER DATA LAMA)
             $needsShifting = DB::table('mapping_kddk')
                 ->where('kddk', 'like', $prefix . '%')
@@ -619,17 +690,17 @@ class MatrixKddkController extends Controller
                 ->pluck('objectid', 'idpel')
                 ->toArray();
 
-            $batchWithCoords = [];    
-            $batchWithoutCoords = []; 
+            $batchWithCoords = [];
+            $batchWithoutCoords = [];
             $batchMaster = [];
-            
+
             $now = now(); // Waktu sekarang untuk created_at & updated_at
             $currentSeq = $startSeq;
 
             foreach ($inputOrderedIdpels as $idpel) {
                 $seqStr = str_pad($currentSeq, 3, '0', STR_PAD_LEFT);
                 $fullKddk = $prefix . $seqStr . $sisipan;
-                
+
                 // Gunakan objectid lama atau buat baru
                 $objId = $existingMap[$idpel] ?? ('groupkddk-' . Str::random(12));
 
@@ -648,11 +719,11 @@ class MatrixKddkController extends Controller
                 // CEK KOORDINAT
                 // Pastikan key coordUpdates[$idpel] ada dan isinya valid
                 if (isset($coordUpdates[$idpel]) && isset($coordUpdates[$idpel]['lat']) && isset($coordUpdates[$idpel]['lng'])) {
-                    
+
                     // Tambahkan key Lat/Long ke array $row
-                    $row['latitudey'] = (double) $coordUpdates[$idpel]['lat'];
-                    $row['longitudex'] = (double) $coordUpdates[$idpel]['lng'];
-                    
+                    $row['latitudey'] = (float) $coordUpdates[$idpel]['lat'];
+                    $row['longitudex'] = (float) $coordUpdates[$idpel]['lng'];
+
                     // Masukkan ke keranjang Batch A (Update Peta)
                     $batchWithCoords[] = $row;
                 } else {
@@ -672,13 +743,13 @@ class MatrixKddkController extends Controller
             }
 
             // 3. EKSEKUSI BATCH (TERPISAH)
-            
+
             // A. Batch dengan Koordinat (Update KDDK + Lat + Long)
             if (!empty($batchWithCoords)) {
                 // Upsert Array harus memiliki key yang seragam di setiap barisnya
                 \App\Models\MappingKddk::upsert(
-                    $batchWithCoords, 
-                    ['idpel'], 
+                    $batchWithCoords,
+                    ['idpel'],
                     ['kddk', 'enabled', 'updated_at', 'objectid', 'latitudey', 'longitudex']
                 );
             }
@@ -686,8 +757,8 @@ class MatrixKddkController extends Controller
             // B. Batch TANPA Koordinat (Update KDDK saja)
             if (!empty($batchWithoutCoords)) {
                 \App\Models\MappingKddk::upsert(
-                    $batchWithoutCoords, 
-                    ['idpel'], 
+                    $batchWithoutCoords,
+                    ['idpel'],
                     ['kddk', 'enabled', 'updated_at', 'objectid']
                 );
             }
@@ -699,7 +770,7 @@ class MatrixKddkController extends Controller
         Cache::forget('matrix_index_' . Auth::id() . '_' . date('Y-m'));
 
         return response()->json([
-            'success' => true, 
+            'success' => true,
             'message' => "Berhasil memproses $countData data. Koordinat diperbarui (jika ada)."
         ]);
     }
@@ -730,7 +801,7 @@ class MatrixKddkController extends Controller
                 return response()->json(['sequence' => '999', 'message' => 'Sequence penuh', 'is_max' => true], 400);
             }
         }
-        
+
         // Format jadi 3 digit (001, 010, 100)
         $formattedSequence = str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
 
@@ -744,7 +815,7 @@ class MatrixKddkController extends Controller
     {
         // Validasi dan Simpan data assignment RBM di sini
         // Contoh: Simpan ke tabel 'rbm_assignments' atau update master data
-        
+
         return response()->json(['success' => true, 'message' => 'Penugasan RBM berhasil disimpan!']);
     }
 
@@ -771,22 +842,24 @@ class MatrixKddkController extends Controller
             // 2. Eksekusi Hapus (Set NULL)
             DB::table('mapping_kddk')
                 ->where('idpel', $idpel)
-                ->update([
-                    'kddk' => null, 
-                    'updated_at' => now()]
+                ->update(
+                    [
+                        'kddk' => null,
+                        'updated_at' => now()
+                    ]
                 );
 
             // 3. Catat Log Aktivitas
             $this->recordActivity(
-                'REMOVE_SINGLE', 
-                "Mengeluarkan pelanggan {$idpel} dari grup (Asal: {$oldKddk})", 
+                'REMOVE_SINGLE',
+                "Mengeluarkan pelanggan {$idpel} dari grup (Asal: {$oldKddk})",
                 $idpel
             );
 
             // 4. Rapikan Urutan Rute Lama (Resequence)
             if ($sourcePrefix) {
-               $this->resequenceRoute($sourcePrefix);
-            } 
+                $this->resequenceRoute($sourcePrefix);
+            }
 
             DB::commit();
 
@@ -800,11 +873,10 @@ class MatrixKddkController extends Controller
                 'success' => true,
                 'message' => "Idpel {$idpel} berhasil dikeluarkan."
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'success' => false, 
+                'success' => false,
                 'message' => 'Gagal menghapus data: ' . $e->getMessage()
             ], 500);
         }
@@ -825,7 +897,7 @@ class MatrixKddkController extends Controller
         $targetIdpel = $request->target_idpel;
         $prefix = $request->route_prefix;
 
-        DB::transaction(function() use ($prefix, $movedIdpel, $targetIdpel) {
+        DB::transaction(function () use ($prefix, $movedIdpel, $targetIdpel) {
             // 1. Ambil semua pelanggan di rute ini, urutkan berdasarkan posisi saat ini (kddk)
             $items = DB::table('mapping_kddk')
                 ->where('kddk', 'like', $prefix . '%')
@@ -833,7 +905,7 @@ class MatrixKddkController extends Controller
                 ->get(['id', 'idpel', 'kddk']); // Ambil ID, IDPEL, KDDK lama
 
             // Konversi ke Collection untuk manipulasi array
-            $collection = $items->map(function($item) {
+            $collection = $items->map(function ($item) {
                 return $item->idpel;
             });
 
@@ -855,9 +927,9 @@ class MatrixKddkController extends Controller
                 // Cari data asli di array $items untuk mendapatkan info sisipan lama (opsional)
                 // Di sini kita asumsikan sisipan tetap '00' atau direset jadi '00' agar rapi
                 $originalItem = $items->firstWhere('idpel', $idpel);
-                
+
                 // Ambil sisipan lama (2 digit terakhir) atau default '00'
-                $sisipan = substr($originalItem->kddk, -2); 
+                $sisipan = substr($originalItem->kddk, -2);
 
                 // Bentuk KDDK Baru: [Prefix 7] + [Urut Baru 3] + [Sisipan 2]
                 $newSeqStr = str_pad($seq, 3, '0', STR_PAD_LEFT);
@@ -897,13 +969,13 @@ class MatrixKddkController extends Controller
         // Jika frontend mengirim kode yang salah (misal cuma 5 digit), proses ini akan skip.
         if (strlen($target) !== 7) {
             return response()->json([
-                'success' => false, 
+                'success' => false,
                 'message' => 'Format Rute Tujuan Salah (Panjang kode tidak sesuai: ' . strlen($target) . ' digit). Refresh halaman.'
             ], 400);
         }
 
         try {
-            DB::transaction(function() use ($idpels, $target) {
+            DB::transaction(function () use ($idpels, $target) {
 
                 // 1. Kumpulkan semua Prefix Asal yang terlibat (Bisa jadi idpel dari rute yg beda-beda)
                 $sourcePrefixes = DB::table('mapping_kddk')
@@ -912,11 +984,11 @@ class MatrixKddkController extends Controller
                     ->distinct()
                     ->pluck('prefix')
                     ->toArray();
-                
+
                 // Cek apakah target adalah Rute (7 Digit) atau KDDK Spesifik (12 Digit)
                 // Biasanya Bulk Move diarahkan ke Rute (7 Digit) agar sequence dibuatkan otomatis
                 if (strlen($target) === 7) {
-                    
+
                     // 1. Cari Max Sequence saat ini di rute target
                     $maxSeq = DB::table('mapping_kddk')
                         ->where('kddk', 'like', $target . '%')
@@ -935,7 +1007,7 @@ class MatrixKddkController extends Controller
                                 'kddk' => $finalKddk,
                                 'updated_at' => now()
                             ]);
-                        
+
                         // Increment sequence untuk pelanggan berikutnya
                         $currentSeq++;
                     }
@@ -947,11 +1019,11 @@ class MatrixKddkController extends Controller
                         $this->resequenceRoute($prefix);
                     }
                 }
-                
+
                 $count = count($idpels);
                 $this->recordActivity(
-                    'BULK_MOVE', 
-                    "Memindahkan massal {$count} pelanggan ke Rute {$target}", 
+                    'BULK_MOVE',
+                    "Memindahkan massal {$count} pelanggan ke Rute {$target}",
                     "{$count} Pcs"
                 );
             });
@@ -960,7 +1032,6 @@ class MatrixKddkController extends Controller
             Cache::forget($cacheKey);
 
             return response()->json(['success' => true, 'message' => count($idpels) . " Pelanggan berhasil dipindahkan."]);
-
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
         }
@@ -993,11 +1064,11 @@ class MatrixKddkController extends Controller
                     'kddk' => null,
                     'updated_at' => now()
                 ]);
-            
+
             $count = count($request->idpels);
             $this->recordActivity(
-                'BULK_REMOVE', 
-                "Mengeluarkan massal {$count} pelanggan dari grup", 
+                'BULK_REMOVE',
+                "Mengeluarkan massal {$count} pelanggan dari grup",
                 "{$count} Pcs"
             );
 
@@ -1012,7 +1083,6 @@ class MatrixKddkController extends Controller
             Cache::forget($cacheKey);
 
             return response()->json(['success' => true, 'message' => count($request->idpels) . " Pelanggan berhasil dikeluarkan."]);
-
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
         }
@@ -1026,15 +1096,15 @@ class MatrixKddkController extends Controller
         // Ambil 50 log terakhir (Global atau bisa difilter per Unit jika struktur DB mendukung)
         // Untuk saat ini kita ambil global latest karena tabel audit_log belum ada kolom 'unit_code'
         // Jika ingin spesifik unit, kita perlu join, tapi untuk monitoring umum latest sudah cukup.
-        
+
         $logs = \App\Models\AuditLog::with('user')
-                    ->latest()
-                    ->limit(50)
-                    ->get();
+            ->latest()
+            ->limit(50)
+            ->get();
 
         return view('team.matrix_kddk.partials.audit_log_list', compact('logs'));
     }
-    
+
     /**
      * Helper: Merapikan urutan nomor (sequence) dalam satu rute
      * Contoh: 001, 003, 005 -> menjadi -> 001, 002, 003
@@ -1058,7 +1128,7 @@ class MatrixKddkController extends Controller
             // Buat nomor urut baru (001, 002, dst)
             $newSeqStr = str_pad($seq, 3, '0', STR_PAD_LEFT);
             $currentSuffix = (strlen($c->kddk) >= 12) ? substr($c->kddk, -2) : '00';
-            
+
             if (!ctype_digit($currentSuffix)) {
                 $currentSuffix = '00';
             }
@@ -1104,87 +1174,140 @@ class MatrixKddkController extends Controller
     }
 
     /**
-     * Cetak Lembar Kerja Lapangan (Print View)
+     * Cetak Lembar Kerja Lapangan (Print View) - SUPPORT MULTI PAGE
      */
     public function printWorksheet(Request $request, $unit)
     {
         $unitCode = urldecode($unit);
-        $area = $request->area;
-        $route = $request->route; // Opsional (bisa cetak per Area atau per Rute spesifik)
+        $multis = $request->multis;
+        $areas = $request->areas;
+        $routeParam = $request->route; // Fallback single route
 
-        if (!$area) {
-            return back()->with('error', 'Pilih Area terlebih dahulu untuk mencetak.');
-        }
-
-        // 1. Ambil Data Pelanggan (Urut Sesuai Sequence)
+        // 1. Query Data Mentah
         $query = DB::table('mapping_kddk')
             ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
             ->select(
-                'mapping_kddk.kddk', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex',
-                'master_data_pelanggan.idpel', 'master_data_pelanggan.nomor_meter_kwh',
-                'master_data_pelanggan.tarif', 'master_data_pelanggan.daya'
+                'mapping_kddk.kddk',
+                'mapping_kddk.latitudey',
+                'mapping_kddk.longitudex',
+                'master_data_pelanggan.idpel',
+                'master_data_pelanggan.nomor_meter_kwh',
+                'master_data_pelanggan.tarif',
+                'master_data_pelanggan.daya'
             )
             ->where('master_data_pelanggan.unitup', $unitCode)
             ->where('mapping_kddk.enabled', 1);
 
-        if ($area) $query->where('mapping_kddk.kddk', 'like', '___' . $area . '%');
-        if ($route) $query->where('mapping_kddk.kddk', 'like', '_____' . $route . '%');
+        // Filter Logic (Sama seperti sebelumnya)
+        if ($multis) {
+            $selectionList = explode(',', $multis);
+            $query->where(function ($q) use ($selectionList) {
+                foreach ($selectionList as $sel) {
+                    $parts = explode('-', $sel);
+                    if (count($parts) >= 2) $q->orWhere('mapping_kddk.kddk', 'like', '___' . $parts[0] . $parts[1] . '%');
+                }
+            });
+        } elseif ($areas) {
+            $areaList = explode(',', $areas);
+            $query->where(function ($q) use ($areaList) {
+                foreach ($areaList as $area) $q->orWhere('mapping_kddk.kddk', 'like', '___' . $area . '%');
+            });
+        } elseif ($request->area) {
+            $query->where('mapping_kddk.kddk', 'like', '___' . $request->area . '%');
+            if ($routeParam) $query->where('mapping_kddk.kddk', 'like', '_____' . $routeParam . '%');
+        }
 
-        // Urutkan berdasarkan Kode Rute Lengkap (Sequence otomatis terurut)
-        $data = $query->orderBy('mapping_kddk.kddk', 'asc')->get();
+        $rawData = $query->orderBy('mapping_kddk.kddk', 'asc')->get();
 
-        if ($data->isEmpty()) {
+        if ($rawData->isEmpty()) {
             return back()->with('error', 'Tidak ada data pelanggan untuk dicetak.');
         }
 
-        // 2. Generate Link Navigasi (Titik Awal)
-        // Kita ambil koordinat pelanggan pertama yang valid sebagai titik start navigasi
-        $firstValid = $data->whereNotNull('latitudey')->first();
-        $qrUrl = "";
-        if ($firstValid) {
-            // Link Google Maps Directions
-            $qrUrl = "https://www.google.com/maps/dir/?api=1&destination={$firstValid->latitudey},{$firstValid->longitudex}";
+        // 2. GROUPING DATA BERDASARKAN RUTE (Digit 6 & 7 KDDK)
+        // Struktur: [ 'A1' => [items: [], info: {}, map: []], 'A2' => ... ]
+        $groupedPages = [];
+
+        foreach ($rawData as $row) {
+            // Ambil Kode Area (Digit 4-5) dan Rute (Digit 6-7)
+            // Contoh KDDK: 18111A100100 -> Area: 11, Rute: A1
+            $areaCode = substr($row->kddk, 3, 2);
+            $routeCode = substr($row->kddk, 5, 2);
+
+            // Key Unik untuk Grouping Halaman
+            $groupKey = $areaCode . '-' . $routeCode;
+
+            if (!isset($groupedPages[$groupKey])) {
+                $groupedPages[$groupKey] = [
+                    'area' => $areaCode,
+                    'route' => $routeCode,
+                    'items' => [],
+                    'map_points' => []
+                ];
+            }
+
+            // Masukkan Item
+            $groupedPages[$groupKey]['items'][] = $row;
+
+            // Masukkan Peta (jika ada koordinat)
+            if ($row->latitudey && $row->longitudex) {
+                $groupedPages[$groupKey]['map_points'][] = [
+                    'lat' => $row->latitudey,
+                    'lng' => $row->longitudex,
+                    'seq' => substr($row->kddk, 7, 3)
+                ];
+            }
         }
 
-        // 3. Info Header
-        $info = [
-            'unit' => $unitCode,
-            'area' => $area,
-            'route' => $route ?? 'SEMUA',
-            'total' => $data->count(),
-            'date' => now()->format('d-m-Y H:i')
-        ];
+        // 3. SIAPKAN INFO HEADER PER HALAMAN
+        foreach ($groupedPages as $key => &$page) {
+            $firstCoord = !empty($page['map_points']) ? $page['map_points'][0] : null;
 
-        return view('team.matrix_kddk.print_worksheet', compact('data', 'qrUrl', 'info'));
+            $page['qr_url'] = $firstCoord
+                ? "https://www.google.com/maps/dir/?api=1&destination={$firstCoord['lat']},{$firstCoord['lng']}"
+                : null;
+
+            $page['info'] = [
+                'unit' => $unitCode,
+                'area' => $page['area'],
+                'route' => $page['route'],
+                'total' => count($page['items']),
+                'date' => now()->format('d-m-Y H:i')
+            ];
+        }
+
+        return view('team.matrix_kddk.print_worksheet', compact('groupedPages'));
     }
-    
+
     /**
      * API Pencarian Global (Untuk Lazy Load)
      * Mengembalikan lokasi rute pelanggan agar bisa dibuka otomatis
      */
     public function searchCustomer(Request $request, $unit)
     {
-        $term = $request->keyword;
+
+        $term = trim($request->keyword);
         $unitCode = urldecode($unit);
 
         if (strlen($term) < 3) return response()->json([]); // Minimal 3 karakter
 
-        $results = DB::table('mapping_kddk')
-            ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+        $results = DB::table('mapping_kddk as mk')
+            ->join('master_data_pelanggan as mdp', 'mk.idpel', '=', 'mdp.idpel')
             ->select(
-                'mapping_kddk.idpel',
-                'mapping_kddk.kddk',
-                'master_data_pelanggan.nomor_meter_kwh'
+                'mk.idpel',
+                'mk.kddk',
+                'mdp.nomor_meter_kwh',
+                'mk.latitudey',
+                'mk.longitudex'
             )
-            ->where('master_data_pelanggan.unitup', $unitCode)
-            ->where('mapping_kddk.enabled', 1)
-            ->where(function($q) use ($term) {
-                $q->where('mapping_kddk.idpel', 'like', "%{$term}%")
-                  ->orWhere('master_data_pelanggan.nomor_meter_kwh', 'like', "%{$term}%");
+            ->where('mdp.unitup', $unitCode)
+            ->where('mk.enabled', 1)
+            ->where(function ($q) use ($term) {
+                $q->where('mk.idpel', 'like', "%{$term}%")
+                    ->orWhere('mdp.nomor_meter_kwh', 'like', "%{$term}%");
             })
             ->limit(20) // Batasi hasil agar ringan
             ->get()
-            ->map(function($item) {
+            ->map(function ($item) {
                 // Parse Lokasi Rute dari KDDK (A1BRBAA...)
                 // Area: Digit 4-5 (RB)
                 // Digit 6: Kelompok (A)
@@ -1193,7 +1316,7 @@ class MatrixKddkController extends Controller
                 $area = substr($item->kddk, 3, 2);
                 $digit6 = substr($item->kddk, 5, 1);
                 $digit7 = substr($item->kddk, 6, 1);
-                
+
                 return [
                     'idpel' => $item->idpel,
                     'text' => "{$item->idpel} - {$item->nomor_meter_kwh}",
@@ -1201,7 +1324,9 @@ class MatrixKddkController extends Controller
                     'target_area_id' => "area-{$area}", // ID accordion area
                     'target_d6_id' => "d6-{$area}-{$digit6}", // ID accordion digit 6
                     'area_code' => $area,
-                    'route_code' => $digit6 . $digit7
+                    'route_code' => $digit6 . $digit7,
+                    'lat' => $item->latitudey,
+                    'lng' => $item->longitudex
                 ];
             });
 
@@ -1210,62 +1335,123 @@ class MatrixKddkController extends Controller
 
     /**
      * SIMPAN URUTAN RUTE BARU (HASIL VISUAL REORDER)
+     * PERBAIKAN: Re-indexing Total (Gabungkan yang diklik + sisanya)
      */
     public function saveRouteSequence(Request $request)
     {
         $request->validate([
-            'route_prefix' => 'required|string|size:7', // Misal: A1BRBAA
-            'ordered_idpels' => 'required|array|min:1'  // Array IDPEL urut [id1, id2, id3...]
+            'route_prefix' => 'required|string|size:7', // Misal: 18111A1
+            'ordered_idpels' => 'required|array|min:1'  // Array IDPEL yang diklik user
         ]);
 
         $prefix = $request->route_prefix;
-        $idpels = $request->ordered_idpels;
+        $priorityIdpels = $request->ordered_idpels; // Daftar "VIP" yang harus ditaruh di atas
 
         DB::beginTransaction();
         try {
-            // 1. Ambil data existing untuk menjaga sisipan (opsional) atau reset sisipan
-            // Disini kita reset sisipan ke '00' agar urutan bersih.
-            
+            // 1. AMBIL SEMUA PELANGGAN EXISTING DI RUTE INI
+            // Urutkan berdasarkan KDDK lama agar urutan relatif pelanggan yang TIDAK dipindah tetap terjaga
+            $allExistingIdpels = DB::table('mapping_kddk')
+                ->where('kddk', 'like', $prefix . '%')
+                ->where('enabled', 1)
+                ->orderBy('kddk', 'asc')
+                ->pluck('idpel')
+                ->toArray();
+
+            // 2. PISAHKAN DATA
+            // Ambil pelanggan yang TIDAK ada di daftar priority (sisa pelanggan)
+            // array_diff = Semua Existing DIKURANGI Priority
+            $remainingIdpels = array_diff($allExistingIdpels, $priorityIdpels);
+
+            // 3. GABUNGKAN (MERGE)
+            // [Daftar Pilihan User] ditaruh di ATAS + [Sisa Pelanggan] ditaruh di BAWAH
+            // array_values digunakan untuk mereset key array agar urut 0,1,2...
+            $finalList = array_merge($priorityIdpels, array_values($remainingIdpels));
+
+            // 4. SIMPAN ULANG SEMUANYA (RE-INDEXING 1 - TAMAT)
             $seq = 1;
-            foreach ($idpels as $idpel) {
-                // Format KDDK Baru: Prefix(7) + Urut(3) + Sisipan(00)
+            foreach ($finalList as $idpel) {
+                // Format: Prefix(7) + Urut(3) + Sisipan(00)
                 $seqStr = str_pad($seq, 3, '0', STR_PAD_LEFT);
+
+                // Kita reset sisipan ke '00' agar urutan menjadi bersih dan rapat
                 $newKddk = $prefix . $seqStr . '00';
 
+                // Lakukan Update
+                // Tips: Kita bisa cek dulu, kalau KDDK-nya sudah sama, tidak perlu update biar hemat query
                 DB::table('mapping_kddk')
                     ->where('idpel', $idpel)
                     ->update([
                         'kddk' => $newKddk,
                         'updated_at' => now()
                     ]);
-                
+
                 $seq++;
             }
 
             // Catat Log
-            $count = count($idpels);
-            $this->recordActivity('VISUAL_REORDER', "Mengurutkan ulang visual {$count} pelanggan pada rute {$prefix}", $prefix);
+            $count = count($priorityIdpels);
+            $total = count($finalList);
+            $this->recordActivity('VISUAL_REORDER', "Visual Reorder: Menggeser {$count} pelanggan, total urut ulang {$total} data di {$prefix}", $prefix);
 
             DB::commit();
-            
+
             // Hapus Cache
-            Cache::forget('matrix_index_' . Auth::id() . '_' . date('Y-m'));
+            if (Auth::check()) {
+                Cache::forget('matrix_index_' . Auth::id() . '_' . date('Y-m'));
+            }
 
-            return response()->json(['success' => true, 'message' => "Urutan rute berhasil diperbarui!"]);
-
+            return response()->json([
+                'success' => true,
+                'message' => "Berhasil mengurutkan ulang total {$total} pelanggan."
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal: ' . $e->getMessage()
+            ], 500);
         }
     }
 
+    /**
+     * Update Single Koordinat (Drag Marker)
+     */
+    public function updateCoordinate(Request $request)
+    {
+        $request->validate([
+            'idpel' => 'required',
+            'lat' => 'required',
+            'lng' => 'required'
+        ]);
+
+        try {
+            DB::table('mapping_kddk')
+                ->where('idpel', $request->idpel)
+                ->update([
+                    'latitudey' => $request->lat,
+                    'longitudex' => $request->lng,
+                    'updated_at' => now()
+                ]);
+
+            // Hapus Cache agar user lain melihat perubahannya
+            if (Auth::check()) {
+                 Cache::forget('matrix_index_' . Auth::id() . '_' . date('Y-m'));
+            }
+
+            return response()->json(['success' => true, 'message' => 'Lokasi berhasil diperbarui.']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+    
     // --- Helper Hirarki (Copy dari kode lama Anda) ---
     private function getHierarchyFilterForJoin($user): ?array
     {
         if ($user->hasRole('admin')) return null;
         $userHierarchyCode = $user->hierarchy_level_code;
         if (!$userHierarchyCode) return ['column' => 'master_data_pelanggan.id', 'code' => -1];
-        
+
         $level = HierarchyLevel::where('code', $userHierarchyCode)->with('parent.parent')->first();
         if (!$level) return ['column' => 'master_data_pelanggan.id', 'code' => -1];
 
@@ -1276,5 +1462,4 @@ class MatrixKddkController extends Controller
         }
         return ['column' => 'master_data_pelanggan.unitup', 'code' => $userHierarchyCode];
     }
-    
 }
