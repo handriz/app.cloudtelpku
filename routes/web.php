@@ -19,6 +19,7 @@ use App\Http\Controllers\TeamUser\MappingKddkController;
 use App\Http\Controllers\TeamUser\MappingValidationController;
 use App\Http\Controllers\TeamUser\ValidationRecapController;
 use App\Http\Controllers\TeamUser\MatrixKddkController;
+use App\Http\Controllers\TeamUser\MonitoringController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Executive\DashboardRbmController;
 
@@ -222,6 +223,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             // 8. Peta
             Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');
             Route::post('update-coordinate', [MatrixKddkController::class, 'updateCoordinate'])->name('team.matrix_kddk.update_coord');
+            Route::post('/bulk-update-coords', [MatrixKddkController::class, 'bulkUpdateCoordinates'])->name('bulk_update_coords');
         });
 
     });

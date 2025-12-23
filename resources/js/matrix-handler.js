@@ -367,26 +367,58 @@ window.processUploadedFile = function (file) {
                 document.getElementById('upload-result-stats').classList.remove('hidden');
 
                 const btnApply = document.getElementById('btn-apply-upload');
+                const oldUpdateBtn = document.getElementById('btn-update-coords');
+                if (oldUpdateBtn) oldUpdateBtn.remove();
+
                 if (btnApply) {
+                    //1. LOGIKA DATA BARU (READY)
                     if (countReady > 0) {
                         btnApply.disabled = false;
                         btnApply.classList.remove('opacity-50', 'cursor-not-allowed');
 
-                        // Info tambahan: Berapa banyak yang ada koordinatnya?
-                        // Filter parsedData yang ID-nya ada di ready_ids DAN punya lat/lng
+                        // Cek berapa yg ada koordinatnya
                         const readyIdsSet = new Set(data.ready_ids);
                         const hasCoordCount = parsedData.filter(d => readyIdsSet.has(d.idpel) && d.lat).length;
 
-                        const coordMsg = hasCoordCount > 0 ? `<br><span class="text-xs font-normal opacity-80">(Update ${hasCoordCount} Peta)</span>` : '';
+                        const coordMsg = hasCoordCount > 0
+                            ? `<span class="text-xs font-normal opacity-80 ml-1">
+                                (Update ${hasCoordCount} Peta)
+                            </span>`
+                            : '';
 
-                        btnApply.innerHTML = `<span>Gunakan ${countReady} Data</span> ${coordMsg} <i class="fas fa-arrow-right ml-2"></i>`;
+                        btnApply.innerHTML = `
+                            <span>Gunakan ${countReady} Data</span>
+                            ${coordMsg}
+                            <i class="fas fa-arrow-right ml-2"></i>
+                        `;
                     } else {
                         btnApply.disabled = true;
                         btnApply.classList.add('opacity-50', 'cursor-not-allowed');
                         btnApply.innerHTML = `<span>Tidak ada data baru</span>`;
 
                         if (countMapped > 0) {
-                            showGenericWarning(`<strong>${countMapped} Data</strong> sudah memiliki Rute.<br>Upload ditolak untuk mencegah duplikasi.`);
+                            // Cek apakah data CSV mengandung koordinat untuk ID yang sudah mapped?
+                            const mappedIdsSet = new Set(data.mapped_ids);
+                            const updateCandidates = parsedData.filter(d => mappedIdsSet.has(d.idpel) && d.lat && d.lng);
+
+                            if (updateCandidates.length > 0) {
+                                // Buat Tombol Khusus Update
+                                const updateBtn = document.createElement('button');
+                                updateBtn.id = "btn-update-coords";
+                                updateBtn.className = "mr-auto px-4 py-2 text-sm font-bold text-yellow-700 bg-yellow-100 border border-yellow-300 rounded-lg hover:bg-yellow-200 transition shadow-sm flex items-center";
+                                updateBtn.innerHTML = `<i class="fas fa-map-marker-alt mr-2"></i> Update ${updateCandidates.length} Koordinat`;
+                                updateBtn.onclick = function () {
+                                    window.performBulkCoordinateUpdate(updateCandidates);
+                                };
+
+                                // Sisipkan tombol di sebelah kiri tombol Batal
+                                btnApply.parentNode.insertBefore(updateBtn, btnApply.parentNode.firstChild);
+
+                                // Sembunyikan warning duplikasi jika kita menawarkan solusi
+                                // (Opsional: Atau biarkan warning tapi ganti teksnya)
+                            } else {
+                                showGenericWarning(`<strong>${countMapped} Data</strong> sudah memiliki Rute.<br>Upload ditolak karena duplikasi dan tidak ada data koordinat baru untuk diupdate.`);
+                            }
                         }
                     }
                 }
@@ -836,14 +868,22 @@ window.refreshActiveTab = function (successMessage = null) {
                 if (openRoutes.length > 0) {
                     console.log(`[MAP REFRESH] Menemukan ${openRoutes.length} rute terbuka.`);
 
+                    // [OPTIMASI VPS] Gunakan delay bertingkat (Staggering)
+                    // Request ke-1 jalan di 0ms, ke-2 di 300ms, ke-3 di 600ms, dst.
                     openRoutes.forEach(header => {
-                        const areaCode = header.dataset.areaCode;
-                        const routeCode = header.dataset.routeCode;
+                        setTimeout(() => {
+                            const parentHeader = header.closest('.route-header') || header.closest('[data-action="toggle-route-map"]');
 
-                        // Load Layer untuk setiap rute yang terbuka
-                        if (typeof window.toggleRouteLayer === 'function') {
-                            window.toggleRouteLayer(areaCode, routeCode, true);
-                        }
+                            if (parentHeader) {
+                                const areaCode = parentHeader.dataset.areaCode;
+                                const routeCode = parentHeader.dataset.routeCode;
+
+                                // Load Layer untuk setiap rute yang terbuka
+                                if (typeof window.toggleRouteLayer === 'function') {
+                                    window.toggleRouteLayer(areaCode, routeCode, true);
+                                }
+                            }
+                        }, index * 400); // Jeda 400ms per rute
                     });
                 } else {
                     // Jika tidak ada rute terbuka, inisialisasi peta kosong agar tidak blank
@@ -1834,6 +1874,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // === SKENARIO 1: MENUTUP RUTE (CLEANUP TOTAL) ===
+        const btnReorder = document.getElementById('map-visual-controls');
         if (!isOpening) {
             // Cek apakah layer ada di memori?
             if (activeRouteLayers[layerKey]) {
@@ -1841,17 +1882,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.rbmMap.removeLayer(activeRouteLayers[layerKey]);
                 // 2. HAPUS DARI MEMORI (PENTING AGAR TIDAK TERHITUNG LAGI)
                 delete activeRouteLayers[layerKey];
-
-                console.log(`[MAP] Rute ${layerKey} ditutup & dihapus dari memori.`);
             }
 
             // 3. Update UI Segera
             updateTotalPoints();      // Hitung ulang (sekarang pasti berkurang)
             updateMapTitleWrapper();  // Cek judul lagi
+
+            const keys = Object.keys(activeRouteLayers);
+            if (keys.length === 0 && btnReorder) {
+                btnReorder.classList.add('hidden');
+            }
+
             return;
         }
 
         // === SKENARIO 2: MEMBUKA RUTE YANG SUDAH ADA (CACHE) ===
+        if (btnReorder) {
+            btnReorder.classList.remove('hidden');
+        }
+
         if (activeRouteLayers[layerKey]) {
             const existingLayer = activeRouteLayers[layerKey];
             setTimeout(() => {
@@ -1910,20 +1959,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const marker = L.marker([pt.lat, pt.lng], { icon: icon });
 
+                    let editButtonHtml = '';
+
+                    if (pt.can_edit === true) {
+                        editButtonHtml = `
+                        <div class="mt-2 pt-2 border-t border-gray-200">
+                            <button onclick="window.enableMarkerDrag('${pt.idpel}')" 
+                                class="w-full inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1.5 rounded transition text-[10px] font-bold">
+                                <i class="fas fa-arrows-alt mr-1.5"></i> Geser Posisi
+                            </button>
+                        </div>
+                    `;
+                    }
+
                     const popupContent = `
                         <div class="text-xs min-w-[200px]">
-                            
                             <div class="mb-2">
-                                ${pt.info} 
+                            ${pt.info} 
                             </div>
-                            
-                            <div class="mt-2 pt-2 border-t border-gray-200">
-                                <button onclick="window.enableMarkerDrag('${pt.idpel}')" 
-                                    class="w-full inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1.5 rounded transition text-[10px] font-bold">
-                                    <i class="fas fa-arrows-alt mr-1.5"></i> Geser Posisi
-                                </button>
-                            </div>
-
+                            ${editButtonHtml} 
                         </div>
                     `;
 
@@ -1935,18 +1989,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     marker.kddkData = {
                         route: routeCode,
                         area: areaCode,
-                        idpel: pt.idpel, // Wajib ada
-                        fullKddk: pt.kddk // Wajib ada
+                        idpel: pt.idpel,
+                        fullKddk: pt.kddk,
+                        seq: parseInt(pt.seq) || 0,
+                        can_edit: pt.can_edit
                     };
 
-                    if (pt.is_duplicate) marker.kddkData.isAnomaly = true;// Asumsi data backend kirim is_anomaly
+                    if (pt.is_duplicate) marker.kddkData.isAnomaly = true;
 
                     marker.on('click', (e) => {
                         // Jika mode reorder aktif, matikan popup dan jalankan logika reorder
                         if (window.isReorderMode) {
-                            marker.closePopup(); // Tutup popup info pelanggan
-                            e.originalEvent.preventDefault(); // Cegah aksi default
-                            handleMarkerClickReorder(marker); // Panggil fungsi reorder
+                            marker.closePopup();
+                            e.originalEvent.preventDefault();
+                            handleMarkerClickReorder(marker);
+                            return;
                         }
                     });
                     clusterGroup.addLayer(marker);
@@ -2528,7 +2585,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ============================================================
-    // 9. KEYBOARD SHORTCUTS (DEBUG VERSION)
+    // 10. KEYBOARD SHORTCUTS (DEBUG VERSION)
     // ============================================================
     document.addEventListener('keydown', function (e) {
 
@@ -2912,7 +2969,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ============================================================
-    // 10. DASHBOARD CHARTS (APEXCHARTS HANDLER)
+    // 11. DASHBOARD CHARTS (APEXCHARTS HANDLER)
     // ============================================================
 
     // Simpan instance chart agar bisa di-destroy saat refresh
@@ -3133,124 +3190,246 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ============================================================
-    // 11. VISUAL REORDER LOGIC (FITUR BARU)
+    // 12. VISUAL REORDER: WIDGET MARKER (ON-MARKER CONTROLS)
     // ============================================================
 
     window.isReorderMode = false;
-    window.reorderList = []; // Menyimpan IDPEL yang diklik: ['5123..', '5124..']
+    window.reorderList = [];
+    window.currentRoutePrefix = null;
+    window.nextSequence = 1;
+    window.activeWidgetIdpel = null;
+    window.reorderStartIndex = 1;
     window.polylineLayer = null; // Garis penghubung
-    window.currentRoutePrefix = null; // Menyimpan Prefix Rute yang sedang diedit (A1BRBAA)
 
-    // A. Fungsi Memulai Mode Edit
+    // A. MULAI MODE EDIT
     window.startVisualReorder = function () {
-        // Validasi: Harus ada Rute yang terbuka (Header Accordion Aktif)
         const openRouteHeader = document.querySelector('.route-header .icon-chevron-sub.rotate-180');
-
         if (!openRouteHeader) {
-            alert("Harap BUKA salah satu RUTE (Accordion) terlebih dahulu untuk mengedit.");
+            alert("Harap BUKA salah satu RUTE (Accordion) terlebih dahulu.");
             return;
         }
 
-        // [PERBAIKAN] JANGAN ambil prefix dulu. Kita ambil nanti saat klik pertama.
+        // Reset State
         window.currentRoutePrefix = null;
-
-        // UI Updates
         window.isReorderMode = true;
         window.reorderList = [];
+        window.nextSequence = 1;
+        window.activeWidgetIdpel = null;
 
-        document.getElementById('btn-start-reorder').classList.add('hidden');
-        document.getElementById('panel-reorder-actions').classList.remove('hidden');
+        // UI Updates
+        const btnStart = document.getElementById('btn-start-reorder');
+        const panelAction = document.getElementById('panel-reorder-actions');
+        if (btnStart) btnStart.classList.add('hidden');
+        if (panelAction) panelAction.classList.remove('hidden');
 
-        // Init Polyline Kosong
-        if (window.polylineLayer) rbmMap.removeLayer(window.polylineLayer);
-        window.polylineLayer = L.polyline([], { color: '#4f46e5', weight: 4, dashArray: '10, 10', opacity: 0.7 }).addTo(rbmMap);
+        // Update Info Text
+        const infoText = document.querySelector('#panel-reorder-actions p');
+        if (infoText) infoText.innerHTML = "Klik marker untuk memberi nomor urut.";
 
-        alert("Mode Edit Aktif! Klik marker pertama untuk mengunci Rute.");
+        // Init Garis Polyline
+        if (window.polylineLayer) window.rbmMap.removeLayer(window.polylineLayer);
+        window.polylineLayer = L.polyline([], { color: '#4f46e5', weight: 4, dashArray: '10, 10', opacity: 0.7 }).addTo(window.rbmMap);
+
+        showToast("Mode Edit Aktif. Klik marker untuk mengatur nomor.", "info");
     }
 
-    // B. Fungsi Saat Marker Diklik (Reorder Mode)
+    // B. HANDLE KLIK MARKER (MUNCULKAN WIDGET)
     function handleMarkerClickReorder(marker) {
         if (!window.isReorderMode) return;
-
         const data = marker.kddkData;
+        if (!data || !data.idpel) return;
 
-        // 1. Validasi Data
-        if (!data || !data.idpel) {
-            alert("Error: Data marker tidak lengkap.");
+        // Cek apakah sudah diurutkan?
+        if (window.reorderList.includes(data.idpel)) {
+            showToast("Pelanggan ini sudah diurutkan.", "warning");
             return;
         }
 
-        // 2. Cek Duplikasi
-        if (window.reorderList.includes(data.idpel)) return;
-
-        // 3. [FIX] LOGIKA PREFIX 7 KARAKTER (SESUAI REQUEST SERVER)
-        // Kita butuh format "18111A1" (5 digit Area + 2 digit Rute)
+        // VALIDASI ROUTE PREFIX (Agar tidak campur rute)
         let targetPrefix7 = "";
-
         if (data.fullKddk && data.fullKddk.length >= 7) {
-            // Ambil dari KDDK asli (paling aman)
             targetPrefix7 = data.fullKddk.substring(0, 7);
         } else {
-            // Fallback: Gabung manual
             targetPrefix7 = String(data.area).trim() + String(data.route).trim();
         }
 
-        // Safety Check: Pastikan panjangnya 7
-        if (targetPrefix7.length !== 7) {
-            alert(`Error Data: Prefix rute tidak valid (${targetPrefix7}). Harus 7 karakter.`);
-            return;
-        }
-
-        // 4. Logika Penguncian
         if (window.currentRoutePrefix === null) {
-            // KLIK PERTAMA: Kunci Prefix Ini
             window.currentRoutePrefix = targetPrefix7;
-
-            // Update UI Text
-            const panelMsg = document.querySelector('#panel-reorder-actions p');
-            if (panelMsg) panelMsg.innerHTML = `Mengurutkan Prefix: <b>${targetPrefix7}</b>`;
-
         } else if (window.currentRoutePrefix !== targetPrefix7) {
-            // KLIK SALAH: Beda Rute
-            alert(`JANGAN CAMPUR RUTE!\n\nPrefix Terkunci: ${window.currentRoutePrefix}\nMarker ini: ${targetPrefix7}`);
+            alert(`JANGAN CAMPUR RUTE!\nPrefix Terkunci: ${window.currentRoutePrefix}`);
             return;
         }
 
-        // 5. Tambahkan ke List
-        window.reorderList.push(data.idpel);
+        // ------------------------------------------------------------
+        // [LOGIKA CERDAS: AUTO DETECT NUMBER]
+        // ------------------------------------------------------------
+        let widgetValue = 1;
 
-        // 6. Visual Garis & Icon
-        const latLng = marker.getLatLng();
-        if (window.polylineLayer) window.polylineLayer.addLatLng(latLng);
+        if (window.reorderList.length === 0) {
+            // KASUS 1: KLIK PERTAMA -> Ambil dari data existing
+            widgetValue = data.seq ? parseInt(data.seq) : 1;
+            window.nextSequence = widgetValue;
+        } else {
+            // KASUS 2: KLIK LANJUTAN -> Ambil dari urutan otomatis
+            widgetValue = window.nextSequence;
+        }
 
-        const seqNum = window.reorderList.length;
-        const newIcon = L.divIcon({
-            className: 'custom-reorder-marker',
-            html: `<div class="flex items-center justify-center w-8 h-8 bg-indigo-600 text-white rounded-full text-sm font-bold border-2 border-white shadow-lg z-[9999]">${seqNum}</div>`,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16]
+        // ------------------------------------------------------------
+        // TAMPILKAN WIDGET
+        // ------------------------------------------------------------
+
+        // 1. Tutup widget lain jika ada yang terbuka
+        if (window.activeWidgetIdpel && window.activeWidgetIdpel !== data.idpel) {
+            closeActiveWidget();
+        }
+
+        window.activeWidgetIdpel = data.idpel;
+
+        const widgetIcon = L.divIcon({
+            className: 'custom-widget-marker',
+            html: `
+                <div class="flex items-center shadow-2xl rounded-md bg-white border-2 border-indigo-600 overflow-hidden transform -translate-x-1/2 -translate-y-full mb-2" 
+                     style="width: 120px;"
+                     onclick="event.stopPropagation()" 
+                     ondblclick="event.stopPropagation()">
+                    
+                    <button onclick="window.adjustWidgetVal(event, '${data.idpel}', -1)" 
+                        ondblclick="event.stopPropagation()"
+                        class="w-8 h-8 bg-red-50 text-red-600 hover:bg-red-100 font-bold border-r border-gray-200 flex items-center justify-center transition focus:outline-none">
+                        <i class="fas fa-minus text-xs"></i>
+                    </button>
+
+                    <div onclick="window.confirmWidgetVal(event, '${data.idpel}')"
+                        ondblclick="event.stopPropagation()"
+                        class="flex-1 h-8 flex items-center justify-center bg-indigo-50 text-indigo-800 font-bold text-sm cursor-pointer hover:bg-indigo-100 transition select-none"
+                        title="Klik untuk SIMPAN">
+                        <span id="widget-val-${data.idpel}">${widgetValue}</span>
+                    </div>
+
+                    <button onclick="window.adjustWidgetVal(event, '${data.idpel}', 1)" 
+                        ondblclick="event.stopPropagation()"
+                        class="w-8 h-8 bg-green-50 text-green-600 hover:bg-green-100 font-bold border-l border-gray-200 flex items-center justify-center transition focus:outline-none">
+                        <i class="fas fa-plus text-xs"></i>
+                    </button>
+                </div>
+                
+                <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-indigo-600 absolute left-1/2 transform -translate-x-1/2 top-[-10px]"></div>
+            `,
+            iconSize: [0, 0],
+            iconAnchor: [0, 0]
         });
 
-        marker.setIcon(newIcon);
-        document.getElementById('reorder-count').textContent = seqNum + " Item";
+        marker.setIcon(widgetIcon);
+        marker.setZIndexOffset(10000); // Pastikan widget paling atas
     }
 
-    // C. Simpan Perubahan
+    /**
+     * C. FUNGSI UBAH ANGKA (+/-) DI WIDGET
+     */
+    window.adjustWidgetVal = function (e, idpel, change) {
+        e.stopPropagation(); // Cegah klik tembus ke peta
+
+        const valSpan = document.getElementById(`widget-val-${idpel}`);
+        if (!valSpan) return;
+
+        let currentVal = parseInt(valSpan.textContent);
+        let newVal = currentVal + change;
+        if (newVal < 1) newVal = 1;
+
+        valSpan.textContent = newVal;
+    }
+
+    /**
+     * D. FUNGSI KONFIRMASI (KLIK ANGKA TENGAH)
+     */
+    window.confirmWidgetVal = function (e, idpel) {
+        e.stopPropagation();
+
+        const valSpan = document.getElementById(`widget-val-${idpel}`);
+        if (!valSpan) return;
+
+        const finalVal = parseInt(valSpan.textContent);
+
+        // 1. Simpan ke Global List
+        window.reorderList.push(idpel);
+
+        // 2. Update Global Next Sequence (Otomatis +1 untuk marker berikutnya)
+        window.nextSequence = finalVal + 1;
+
+        // 3. [PENTING] Jika ini adalah item PERTAMA, kita simpan start_index nya
+        // Ini akan dikirim ke server sebagai patokan awal urutan
+        if (window.reorderList.length === 1) {
+            window.reorderStartIndex = finalVal;
+        }
+
+        // 4. Ubah Tampilan Marker Menjadi "TERKUNCI" (Bulat Angka)
+        const marker = window.markerRegistry[idpel];
+        if (marker) {
+            const lockedIcon = L.divIcon({
+                className: 'custom-reorder-marker',
+                html: `<div class="flex items-center justify-center w-8 h-8 bg-indigo-600 text-white rounded-full text-xs font-bold border-2 border-white shadow-lg z-[9000]">${finalVal}</div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
+            marker.setIcon(lockedIcon);
+            marker.setZIndexOffset(0); // Reset Z-Index
+
+            // Tambahkan garis polyline
+            if (window.polylineLayer) window.polylineLayer.addLatLng(marker.getLatLng());
+        }
+
+        // 5. Reset State Widget Aktif
+        window.activeWidgetIdpel = null;
+
+        // 6. Update Info UI
+        const countEl = document.getElementById('reorder-count');
+        if (countEl) countEl.textContent = window.reorderList.length + " Item";
+    }
+
+    /**
+     * Helper: Tutup Widget Aktif (Kembalikan ke marker biasa)
+     */
+    function closeActiveWidget() {
+        if (!window.activeWidgetIdpel) return;
+
+        const idpel = window.activeWidgetIdpel;
+        const marker = window.markerRegistry[idpel];
+
+        // Kembalikan ke icon default sementara
+        if (marker) {
+            const defaultIcon = L.divIcon({
+                className: 'custom-map-marker',
+                html: `<div class="w-4 h-4 bg-white border-2 border-indigo-400 rounded-full shadow-sm"></div>`,
+                iconSize: [16, 16]
+            });
+            marker.setIcon(defaultIcon);
+            marker.setZIndexOffset(0);
+        }
+
+        window.activeWidgetIdpel = null;
+    }
+    /**
+     * E. SIMPAN KE SERVER (SAVE)
+     */
     window.saveVisualReorder = function () {
         if (window.reorderList.length === 0) {
-            alert("Belum ada urutan yang dibuat.");
+            alert("Belum ada marker yang dipilih.");
             return;
         }
 
-        if (!confirm(`Simpan urutan baru untuk ${window.reorderList.length} pelanggan ini?`)) return;
+        // Hitung Range untuk konfirmasi
+        const start = window.reorderStartIndex;
+        const count = window.reorderList.length;
+        const end = start + count - 1;
+
+        if (!confirm(`Simpan urutan baru?\n\nTotal: ${count} Pelanggan\nUrutan Baru: ${start} s/d ${end}`)) return;
 
         const url = document.getElementById('api-save-sequence').value;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
-        // Tombol Loading
         const btnSave = document.querySelector('#panel-reorder-actions button.bg-green-600');
         const originalText = btnSave.innerHTML;
-        btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+        btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         btnSave.disabled = true;
 
         fetch(url, {
@@ -3262,64 +3441,52 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             body: JSON.stringify({
                 route_prefix: window.currentRoutePrefix,
-                ordered_idpels: window.reorderList
+                ordered_idpels: window.reorderList,
+                start_index: window.reorderStartIndex // [PENTING] Kirim start index
             })
         })
             .then(async res => {
-                // 1. Tangkap Error 422 (Validasi Laravel)
+                // Tangkap error validasi Laravel (422)
                 if (res.status === 422) {
                     const errData = await res.json();
-                    let errMsg = "Gagal Validasi:\n";
-                    // Loop semua pesan error dari Laravel
-                    for (const [field, messages] of Object.entries(errData.errors)) {
-                        errMsg += `- ${messages[0]}\n`;
-                    }
+                    let errMsg = "Validasi Gagal:\n";
+                    for (const k in errData.errors) errMsg += `- ${errData.errors[k][0]}\n`;
                     throw new Error(errMsg);
                 }
-
-                // 2. Tangkap Error Lain (500, 403, dll)
-                if (!res.ok) {
-                    const errorData = await res.json().catch(() => ({}));
-                    const errorMessage = errorData.message || res.statusText || "Server Error";
-                    throw new Error(errorMessage);
-                }
-
+                if (!res.ok) throw new Error("Gagal menyimpan data.");
                 return res.json();
             })
             .then(data => {
                 if (data.success) {
-                    alert("Berhasil! " + data.message);
+                    alert("Berhasil disimpan!");
                     cancelVisualReorder();
 
-                    const openRouteHeader = document.querySelector('.route-header .icon-chevron-sub.rotate-180'); if (openRouteHeader) {
+                    // Refresh Tabel & Peta
+                    const openRouteHeader = document.querySelector('.route-header .icon-chevron-sub.rotate-180');
+                    if (openRouteHeader) {
                         const headerEl = openRouteHeader.closest('.route-header');
-                        const targetId = headerEl.dataset.target;     // ID div tabel (route-18111A1-A1)
+                        const targetId = headerEl.dataset.target;
                         const areaCode = headerEl.dataset.areaCode;
                         const routeCode = headerEl.dataset.routeCode;
 
-                        // Panggil fungsi load tabel yang sudah ada di matrix-handler.js
-                        // Ini akan me-request ulang HTML tabel via AJAX tanpa reload halaman
                         if (typeof loadRouteTableData === 'function') {
-                            // Set atribut loaded ke false dulu biar dipaksa reload
+                            // Force reload tabel
                             const contentDiv = document.getElementById(targetId);
                             if (contentDiv) contentDiv.dataset.loaded = "false";
 
-                            // Load ulang
                             loadRouteTableData(targetId, areaCode, routeCode);
-                            window.currentOpenRouteCode = routeCode;
-                            setTimeout(() => {
-                                refreshMapAfterReorder(areaCode);
-                            }, 300);
+
+                            // Force reload peta
+                            setTimeout(() => refreshMapAfterReorder(areaCode), 300);
                         }
                     }
-
                 } else {
-                    throw new Error(data.message);
+                    alert("Gagal: " + data.message);
                 }
             })
             .catch(err => {
                 console.error(err);
-                alert(err.message); // Tampilkan pesan error yang spesifik
+                alert(err.message);
             })
             .finally(() => {
                 btnSave.innerHTML = originalText;
@@ -3327,46 +3494,38 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    // D. Batal / Keluar
+    /**
+     * F. BATALKAN
+     */
     window.cancelVisualReorder = function () {
-        // Simpan key sebelum di-reset
         const savedPrefix = window.currentRoutePrefix;
 
         window.isReorderMode = false;
         window.reorderList = [];
         window.currentRoutePrefix = null;
+        window.activeWidgetIdpel = null;
 
-        // Hapus garis
         if (window.polylineLayer) {
             window.rbmMap.removeLayer(window.polylineLayer);
             window.polylineLayer = null;
         }
 
-        // Reset UI
-        document.getElementById('btn-start-reorder').classList.remove('hidden');
-        document.getElementById('panel-reorder-actions').classList.add('hidden');
-        document.getElementById('reorder-count').textContent = "0";
-        const panelMsg = document.querySelector('#panel-reorder-actions p');
-        if (panelMsg) panelMsg.textContent = "Klik marker satu per satu sesuai urutan yang diinginkan.";
+        // UI Reset
+        const btnStart = document.getElementById('btn-start-reorder');
+        const panelAction = document.getElementById('panel-reorder-actions');
+        if (btnStart) btnStart.classList.remove('hidden');
+        if (panelAction) panelAction.classList.add('hidden');
 
-        // REFRESH PETA (Agar marker angka 1,2,3 kembali jadi titik biasa)
+        const countEl = document.getElementById('reorder-count');
+        if (countEl) countEl.textContent = "0";
+
+        // Refresh Peta jika ada prefix yang sempat tersentuh
+        // Ini akan merender ulang semua marker ke kondisi awal
         if (savedPrefix && savedPrefix.length === 7) {
-            // Parse "18111A1" -> Area "18111", Rute "A1"
             const areaCode = savedPrefix.substring(0, 5);
             const routeCode = savedPrefix.substring(5, 7);
-            const layerKey = `${areaCode}-${routeCode}`; // Format Key Memori (Pake Strip)
-
-            console.log(`[Reorder Cancel] Refreshing: Area ${areaCode}, Rute ${routeCode}`);
-
-            // Hapus dari memori & Load Ulang
-            if (activeRouteLayers[layerKey]) {
-                window.rbmMap.removeLayer(activeRouteLayers[layerKey]);
-                delete activeRouteLayers[layerKey];
-            }
-
-            if (typeof window.toggleRouteLayer === 'function') {
-                window.toggleRouteLayer(areaCode, routeCode, true);
-            }
+            // Panggil refresh map
+            refreshMapAfterReorder(areaCode);
         }
     }
 
@@ -3446,7 +3605,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (l instanceof L.Marker) {
                                 const isIdMatch = targetIdpel && l.kddkData && String(l.kddkData.idpel) === String(targetIdpel);
                                 const isLocMatch = l.getLatLng().distanceTo(targetLatLng) < 1;
-                                
+
                                 if (isIdMatch || (!targetIdpel && isLocMatch)) {
                                     l.openPopup();
                                 }
@@ -3715,4 +3874,185 @@ function saveCoordinate(idpel, lat, lng) {
             showToast("Error koneksi.", "error");
             cancelDrag();
         });
+}
+
+// =================================================================
+// UPDATE KOORDINAT MASSAL (HELPER & LOGIC)
+// Letakkan kode ini di bagian paling bawah file matrix-handler.js
+// =================================================================
+
+/**
+ * [HELPER 1] MODAL KONFIRMASI CANTIK (BIRU)
+ */
+window.showBeautifulConfirm = function (message, onYesCallback) {
+    const modal = document.getElementById('modal-confirm-beautiful');
+    const msgEl = document.getElementById('beautiful-confirm-message');
+    const btnYes = document.getElementById('btn-beautiful-yes');
+    const btnCancel = document.getElementById('btn-beautiful-cancel');
+
+    // Fallback jika HTML modal belum ada
+    if (!modal || !msgEl || !btnYes) {
+        if (confirm(message)) onYesCallback();
+        return;
+    }
+
+    msgEl.textContent = message;
+
+    // Handler Tombol YA
+    btnYes.onclick = function () {
+        closeBeautifulConfirm();
+        if (onYesCallback) onYesCallback();
+    };
+
+    // Handler Tombol BATAL
+    btnCancel.onclick = function () {
+        closeBeautifulConfirm();
+    };
+
+    // Tampilkan
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.classList.add('opacity-100');
+        btnYes.focus();
+    }, 10);
+}
+
+function closeBeautifulConfirm() {
+    const modal = document.getElementById('modal-confirm-beautiful');
+    if (!modal) return;
+    modal.classList.remove('opacity-100');
+    modal.classList.add('opacity-0');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }, 200);
+}
+
+/**
+ * [HELPER 2] MODAL SUKSES CANTIK (HIJAU)
+ */
+window.showBeautifulSuccess = function(message, onOkCallback, skippedData = []) {
+    const modal = document.getElementById('modal-success-beautiful');
+    const msgEl = document.getElementById('beautiful-success-message');
+    const btn = document.getElementById('btn-beautiful-ok');
+    const skipContainer = document.getElementById('skipped-list-container');
+    const skipBody = document.getElementById('skipped-list-body');
+
+    // Fallback jika HTML belum update
+    if(!modal || !msgEl || !btn) {
+        alert(message);
+        if(onOkCallback) onOkCallback();
+        return;
+    }
+
+    // 1. Set Pesan Utama
+    msgEl.textContent = message;
+
+    // 2. Render List Skip (Jika Ada)
+    if(skipContainer && skipBody) {
+        if (skippedData && skippedData.length > 0) {
+            skipContainer.classList.remove('hidden');
+            skipBody.innerHTML = ''; // Reset
+
+            skippedData.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="py-1 text-gray-600 dark:text-gray-300 font-mono select-all">${item.idpel}</td>
+                    <td class="py-1 text-right text-yellow-600 dark:text-yellow-500 font-bold font-mono text-[9px]">${item.objectid}</td>
+                `;
+                skipBody.appendChild(tr);
+            });
+        } else {
+            skipContainer.classList.add('hidden');
+        }
+    }
+
+    // 3. Setup Tombol OK
+    btn.onclick = function() {
+        modal.classList.remove('opacity-100');
+        modal.classList.add('opacity-0');
+        
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            if(onOkCallback) onOkCallback();
+        }, 200);
+    };
+
+    // 4. Tampilkan
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modal.classList.add('opacity-100');
+        btn.focus(); 
+    }, 10);
+}
+
+/**
+ * [UTAMA] EKSEKUSI UPDATE KOORDINAT MASSAL
+ */
+window.performBulkCoordinateUpdate = function(candidates) {
+    if(!candidates || candidates.length === 0) return;
+
+    // 1. Konfirmasi (Biru)
+    window.showBeautifulConfirm(`Yakin ingin memperbarui titik koordinat untuk ${candidates.length} pelanggan existing?`, function() {
+        
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        const btn = document.getElementById('btn-update-coords');
+        let originalText = '';
+        
+        if(btn) {
+            originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Proses...';
+        }
+    
+        fetch('/team/matrix-kddk/bulk-update-coords', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ updates: candidates })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+    
+            if(data.success) {
+                window.closeUploadModal();
+                
+                // Pesan Utama
+                let finalMsg = data.message; 
+                // (Tidak perlu tambah teks peringatan manual lagi, karena sudah ada tabelnya)
+
+                // Ambil data skip dari response
+                const skippedDetails = data.stats ? data.stats.skipped_details : [];
+                // 2. Panggil Modal Sukses dengan Data Skip
+                window.showBeautifulSuccess(finalMsg, function() {
+                    if(typeof refreshActiveTab === 'function') {
+                        refreshActiveTab();
+                    }
+                }, skippedDetails); // <--- Kirim data array ke sini
+    
+            } else {
+                alert("Gagal: " + data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            if(btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+            alert("Terjadi kesalahan koneksi.");
+        });
+    });
 }
