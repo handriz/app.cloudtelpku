@@ -98,8 +98,8 @@
                     <td style="border: 1px solid #000000; mso-number-format:'\@'; text-align: center;">{{ $urut }}</td>
                     <td style="border: 1px solid #000000; mso-number-format:'\@'; text-align: center;">{{ $sisip }}</td>
 
-                    <td style="border: 1px solid #000000; text-align: right;">{{ $row->latitudey }}</td>
-                    <td style="border: 1px solid #000000; text-align: right;">{{ $row->longitudex }}</td>
+                    <td style="border: 1px solid #000000; text-align: right; mso-number-format:'\@';">{{ $row->latitudey }}</td>
+                    <td style="border: 1px solid #000000; text-align: right; mso-number-format:'\@';">{{ $row->longitudex }}</td>
                 </tr>
             @endforeach
         </tbody>

@@ -23,10 +23,7 @@ class MatrixKddkController extends Controller
     {
         // 1. DAPATKAN FILTER HIERARKI (Source of Truth)
         $user = Auth::user();
-        $filter = $this->getHierarchyFilterForJoin($user);
-
-        $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
-        $cacheKey = 'matrix_recap_v6_' . $filterString;
+        $cacheKey = 'matrix_recap_v7_user_' . $user->id;
         $matrixData = Cache::remember($cacheKey, 60 * 60 * 24, function () use ($user) {
 
             $hierarchyFilter = $this->getHierarchyFilterForJoin($user);
@@ -34,11 +31,13 @@ class MatrixKddkController extends Controller
             $query = DB::table('master_data_pelanggan')
                 ->join('hierarchy_levels as h_ulp', 'master_data_pelanggan.unitup', '=', 'h_ulp.code')
                 ->leftJoin('hierarchy_levels as h_up3', 'h_ulp.parent_code', '=', 'h_up3.code')
+
                 ->leftJoin('mapping_kddk', function ($join) {
                     $join->on('master_data_pelanggan.idpel', '=', 'mapping_kddk.idpel')
                         ->where('mapping_kddk.enabled', 1);
                 })
                 ->leftJoin('temporary_mappings', 'master_data_pelanggan.idpel', '=', 'temporary_mappings.idpel')
+
                 ->select(
                     'h_ulp.name as unit_layanan',
                     'master_data_pelanggan.unitup as unit_code',
@@ -74,7 +73,7 @@ class MatrixKddkController extends Controller
                     DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.ket_validasi LIKE "rejected_%" THEN temporary_mappings.id END) as ditolak')
                 );
 
-
+            // Terapkan Filter HANYA JIKA bukan Admin
             if (!$user->hasRole('admin') && $hierarchyFilter) {
                 $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
             }
@@ -83,6 +82,7 @@ class MatrixKddkController extends Controller
                 'h_ulp.name',           // Group by Nama (Kota Barat)
                 'master_data_pelanggan.unitup', // Group by Kode (18111)
                 'h_ulp.kddk_code',
+                'h_up3.name',
                 'h_up3.kddk_code',
                 'h_up3.order',
                 'h_ulp.order'
@@ -91,7 +91,7 @@ class MatrixKddkController extends Controller
                 ->orderBy('h_ulp.order', 'asc')
                 ->get();
 
-            // Logika Grouping (ULP vs Admin)
+            // Format Output
             $isUserULP = false;
             if (!$user->hasRole('admin') && $user->hierarchy_level_code) {
                 $userType = \App\Models\HierarchyLevel::where('code', $user->hierarchy_level_code)
@@ -338,10 +338,8 @@ class MatrixKddkController extends Controller
 
         // Hapus Cache
         if (Auth::check()) {
-            $currentUser = Auth::user();
-            $filter = $this->getHierarchyFilterForJoin($currentUser);
-            $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
-            Cache::forget('matrix_recap_v6_' . $filterString);
+
+            Cache::forget('matrix_recap_v7_user_' . Auth::id());
         }
 
         // Pesan Respon yang Informatif
@@ -731,10 +729,7 @@ class MatrixKddkController extends Controller
                 );
             });
 
-            $currentUser = Auth::user();
-            $filter = $this->getHierarchyFilterForJoin($currentUser);
-            $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
-            Cache::forget('matrix_recap_v6_' . $filterString);
+            Cache::forget('matrix_recap_v7_user_' . Auth::id());
 
             return response()->json(['success' => true, 'message' => "Berhasil dipindahkan."]);
         } catch (\Exception $e) {
@@ -877,11 +872,7 @@ class MatrixKddkController extends Controller
             \App\Models\MasterKddk::insertOrIgnore($batchMaster);
         });
 
-        $currentUser = Auth::user();
-        $filter = $this->getHierarchyFilterForJoin($currentUser);
-        $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
-
-        Cache::forget('matrix_recap_v6_' . $filterString);
+        Cache::forget('matrix_recap_v7_user_' . Auth::id());
 
         return response()->json([
             'success' => true,
@@ -979,11 +970,8 @@ class MatrixKddkController extends Controller
 
             // 5. Hapus Cache
             if (Auth::check()) {
-                $currentUser = Auth::user();
-                $filter = $this->getHierarchyFilterForJoin($currentUser);
-                $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
 
-                Cache::forget('matrix_recap_v6_' . $filterString);
+                Cache::forget('matrix_recap_v7_user_' . Auth::id());
             }
 
             return response()->json([
@@ -1145,11 +1133,7 @@ class MatrixKddkController extends Controller
                 );
             });
 
-            $currentUser = Auth::user();
-            $filter = $this->getHierarchyFilterForJoin($currentUser);
-            $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
-
-            Cache::forget('matrix_recap_v6_' . $filterString);
+            Cache::forget('matrix_recap_v7_user_' . Auth::id());
 
             return response()->json(['success' => true, 'message' => count($idpels) . " Pelanggan berhasil dipindahkan."]);
         } catch (\Exception $e) {
@@ -1199,11 +1183,7 @@ class MatrixKddkController extends Controller
                 }
             }
 
-            $currentUser = Auth::user();
-            $filter = $this->getHierarchyFilterForJoin($currentUser);
-            $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
-
-            Cache::forget('matrix_recap_v6_' . $filterString);
+            Cache::forget('matrix_recap_v7_user_' . Auth::id());
 
             return response()->json(['success' => true, 'message' => count($request->idpels) . " Pelanggan berhasil dikeluarkan."]);
         } catch (\Exception $e) {
@@ -1532,11 +1512,8 @@ class MatrixKddkController extends Controller
 
             // Hapus Cache
             if (Auth::check()) {
-                $currentUser = Auth::user();
-                $filter = $this->getHierarchyFilterForJoin($currentUser);
-                $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
-
-                Cache::forget('matrix_recap_v6_' . $filterString);
+  
+                Cache::forget('matrix_recap_v7_user_' . Auth::id());
             }
 
             return response()->json([
@@ -1581,11 +1558,8 @@ class MatrixKddkController extends Controller
 
             // Hapus Cache agar user lain melihat perubahannya
             if (Auth::check()) {
-                $currentUser = Auth::user();
-                $filter = $this->getHierarchyFilterForJoin($currentUser);
-                $filterString = $filter ? ($filter['column'] . '_' . $filter['code']) : 'global_all';
 
-                Cache::forget('matrix_recap_v6_' . $filterString);
+                Cache::forget('matrix_recap_v7_user_' . Auth::id());
             }
 
             return response()->json(['success' => true, 'message' => 'Lokasi berhasil diperbarui.']);
