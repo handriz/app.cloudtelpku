@@ -1815,6 +1815,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mapContainer = document.getElementById('rbm-map');
         const urlInput = document.getElementById('map-data-url');
         const layerKey = `${areaCode}-${routeCode}`;
+        const domId = `route-${areaCode}-${routeCode}`;
 
         // 0. INIT MAP (Jika belum ada)
         if (!window.rbmMap) {
@@ -1835,7 +1836,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.rbmMap = L.map('rbm-map', {
                 zoomControl: false,
                 fadeAnimation: true,
-                layers: [satellite] // Default layer
+                layers: [satellite]
             }).setView([0.5071, 101.4478], 13);
 
             // 3. Posisi Zoom Control di Kanan Bawah
@@ -1875,31 +1876,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // === SKENARIO 1: MENUTUP RUTE (CLEANUP TOTAL) ===
         const btnReorder = document.getElementById('map-visual-controls');
+
         if (!isOpening) {
-            // Cek apakah layer ada di memori?
+            // 1. Hapus Layer
             if (activeRouteLayers[layerKey]) {
-                // 1. Hapus dari Peta Visual
                 window.rbmMap.removeLayer(activeRouteLayers[layerKey]);
-                // 2. HAPUS DARI MEMORI (PENTING AGAR TIDAK TERHITUNG LAGI)
                 delete activeRouteLayers[layerKey];
             }
 
-            // 3. Update UI Segera
-            updateTotalPoints();      // Hitung ulang (sekarang pasti berkurang)
-            updateMapTitleWrapper();  // Cek judul lagi
+            // 2. Update UI
+            updateTotalPoints();
+            updateMapTitleWrapper();
 
             const keys = Object.keys(activeRouteLayers);
-            if (keys.length === 0 && btnReorder) {
-                btnReorder.classList.add('hidden');
-            }
-
+            if (keys.length === 0 && btnReorder) btnReorder.classList.add('hidden');
             return;
         }
 
         // === SKENARIO 2: MEMBUKA RUTE YANG SUDAH ADA (CACHE) ===
-        if (btnReorder) {
-            btnReorder.classList.remove('hidden');
-        }
+        if (btnReorder) btnReorder.classList.remove('hidden');
 
         if (activeRouteLayers[layerKey]) {
             const existingLayer = activeRouteLayers[layerKey];
@@ -1916,24 +1911,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // === SKENARIO 3: FETCH DATA BARU ===
         const fetchUrl = `${urlInput.value}?area=${areaCode}&route=${routeCode}`;
+        document.body.style.cursor = 'wait';
 
         fetch(fetchUrl)
             .then(res => res.json())
             .then(points => {
+                document.body.style.cursor = 'default';
+
+                //Cek apakah Accordion Masih Terbuka?
+                const contentEl = document.getElementById(domId);
+                if (contentEl && contentEl.classList.contains('hidden')) return;
+
                 // A. Wadah Layer
+                const style = getRouteStyle(areaCode + routeCode);
                 const clusterGroup = L.markerClusterGroup({ disableClusteringAtZoom: 19, spiderfyOnMaxZoom: true, chunkedLoading: true });
                 const mainLayer = L.featureGroup();
-
-                // B. Proses Data
-                const style = getRouteStyle(routeCode);
                 const lineCoords = [];
 
                 points.sort((a, b) => (parseInt(a.seq) || 0) - (parseInt(b.seq) || 0)).forEach(pt => {
                     if (!pt.lat || !pt.lng) return;
 
-                    let bgClass = "bg-white";          // Default: Putih
-                    let textClass = "text-gray-700";   // Default: Teks Abu
-                    let borderClass = "border-blue-600"; // Default: Border Biru
+                    let bgClass = style.bg;
+                    let textClass = style.border.replace('border-', 'text-');
+                    let borderClass = style.border;
                     let extraHtml = "";
 
                     // JIKA DUPLIKAT TERDETEKSI
@@ -1950,7 +1950,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const icon = L.divIcon({
                         className: 'custom-map-marker',
                         html: `
-                            <div class="relative flex items-center justify-center w-6 h-6 ${bgClass} ${textClass} border-2 ${borderClass} rounded-full text-[9px] font-bold shadow-sm opacity-90 transition transform hover:scale-110">
+                            <div class="relative flex items-center justify-center w-6 h-6 ${bgClass} ${textClass} border-2 ${borderClass} rounded-full text-[9px] font-bold shadow-sm opacity-90 transition hover:scale-110">
                                 ${pt.seq}
                                 ${extraHtml}
                             </div>`,
@@ -2012,7 +2012,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // C. Garis & Panah
                 if (lineCoords.length > 1) {
-                    const routeLine = L.polyline(lineCoords, { color: style.line, weight: 3, opacity: 0.8, dashArray: '10, 10' });
+                    const routeLine = L.polyline(lineCoords, {
+                        color: style.line,
+                        weight: 3,
+                        opacity: 0.8,
+                        dashArray: '10, 10'
+                    });
                     mainLayer.addLayer(routeLine);
                     try {
                         const arrowLayer = L.polylineDecorator(routeLine, {
@@ -2025,6 +2030,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 mainLayer.addLayer(clusterGroup);
 
                 // D. SIMPAN KE MEMORI & TAMPILKAN
+                if (activeRouteLayers[layerKey]) {
+                    // Jika sudah ada (mungkin request ganda), hapus dulu
+                    window.rbmMap.removeLayer(activeRouteLayers[layerKey]);
+                }
+
                 activeRouteLayers[layerKey] = mainLayer;
                 window.rbmMap.addLayer(mainLayer);
 
@@ -2033,10 +2043,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateMapTitleWrapper();
 
                 // F. Zoom
-                setTimeout(() => {
-                    window.rbmMap.invalidateSize();
-                    if (mainLayer.getBounds().isValid()) window.rbmMap.fitBounds(mainLayer.getBounds().pad(0.1), { animate: true, duration: 1 });
-                }, 400);
+                if (Object.keys(activeRouteLayers).length === 1) {
+                    setTimeout(() => {
+                        window.rbmMap.invalidateSize();
+                        if (mainLayer.getBounds().isValid()) window.rbmMap.fitBounds(mainLayer.getBounds().pad(0.1), { animate: true, duration: 1 });
+                    }, 300);
+                }
             })
             .catch(err => console.error("Load Route Error:", err));
     };
@@ -2068,33 +2080,81 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     window.updateTotalPoints = function () {
         const countSpan = document.getElementById('map-count');
-
         if (!countSpan) return;
 
         let total = 0;
-        let totalAnomalies = 0;
+        const points = [];
 
-        // Hitung Total dari Layer Aktif
+        // --- TAHAP 1: Kumpulkan Data & Reset Tampilan ---
         if (typeof activeRouteLayers !== 'undefined') {
             Object.values(activeRouteLayers).forEach(mainLayer => {
                 mainLayer.eachLayer(subLayer => {
                     if (subLayer instanceof L.MarkerClusterGroup) {
                         const markers = subLayer.getLayers();
                         total += markers.length;
+
                         // Hitung anomali sekalian
+                        // markers.forEach(m => {
+                        //     if (m.kddkData && m.kddkData.isAnomaly) totalAnomalies++;
+                        // });
                         markers.forEach(m => {
-                            if (m.kddkData && m.kddkData.isAnomaly) totalAnomalies++;
+                            // 1. Reset style marker (hapus merah jika ada sisa sebelumnya)
+                            if (m.getElement()) {
+                                m.getElement().classList.remove('marker-outlier', 'animate-marker-pulse');
+                            }
+                            // 2. Simpan koordinat untuk hitung titik tengah nanti
+                            points.push(m.getLatLng());
                         });
                     }
                 });
             });
         }
 
-        // UPDATE UI
-        // Jika 0, tulis "0 Titik" saja (JANGAN "Pilih Rute" lagi)
+        // Update Teks Total di Pojok Kiri Atas Peta
         countSpan.textContent = total + ' Titik';
 
-        // Update Alert Anomali (Opsional jika Anda pakai)
+        // --- TAHAP 2: Hitung Pusat & Deteksi Anomali ---
+        let totalAnomalies = 0;
+
+        if (points.length > 0) {
+            // A. Hitung Titik Tengah (Centroid) dari semua data
+            const bounds = L.latLngBounds(points);
+            const center = bounds.getCenter();
+
+            // Batas Jarak: 5000 meter (5 KM)
+            const MAX_DISTANCE = 5000;
+
+            // B. Loop lagi untuk cek Anomali (Jarak Jauh ATAU Duplikat)
+            Object.values(activeRouteLayers).forEach(mainLayer => {
+                mainLayer.eachLayer(subLayer => {
+                    if (subLayer instanceof L.MarkerClusterGroup) {
+                        subLayer.getLayers().forEach(m => {
+
+                            // Hitung Jarak ke Pusat (Meter)
+                            const dist = center.distanceTo(m.getLatLng());
+
+                            // Cek 1: Apakah Jaraknya Jauh?
+                            const isFar = dist > MAX_DISTANCE;
+
+                            // Cek 2: Apakah Duplikat? (Flag dari Controller/Database)
+                            const isDuplicate = m.kddkData && m.kddkData.isAnomaly;
+
+                            // JIKA SALAH SATU TERPENUHI -> TANDAI MERAH
+                            if (isFar || isDuplicate) {
+                                totalAnomalies++;
+
+                                // Beri efek Merah & Berkedip
+                                if (m.getElement()) {
+                                    m.getElement().classList.add('marker-outlier', 'animate-marker-pulse');
+                                }
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        // 3. Tampilkan Alert Merah di Peta
         const alertBox = document.getElementById('anomaly-alert');
         const alertCount = document.getElementById('anomaly-count');
 
@@ -3698,15 +3758,21 @@ const ROUTE_PALETTE = [
 ];
 
 function getRouteStyle(routeCode) {
-    if (!routeCode) return ROUTE_PALETTE[1]; // Default Blue
-
-    // Ubah string "A1" menjadi angka unik
-    let hash = 0;
-    for (let i = 0; i < routeCode.length; i++) {
-        hash = routeCode.charCodeAt(i) + ((hash << 5) - hash);
+    // 1. Validasi: Jika kode kosong, kembalikan warna Default (Biru)
+    if (!routeCode || routeCode === 'undefined') {
+        return ROUTE_PALETTE[1];
     }
 
-    // Pilih warna berdasarkan angka tersebut (Modulo)
+    // 2. Pastikan String
+    const str = String(routeCode);
+
+    // 3. Algoritma Hashing (DJB2 - Lebih Acak dari sebelumnya)
+    let hash = 5381;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash) + str.charCodeAt(i); /* hash * 33 + c */
+    }
+
+    // 4. Pilih Warna
     const index = Math.abs(hash) % ROUTE_PALETTE.length;
     return ROUTE_PALETTE[index];
 }
@@ -3933,7 +3999,7 @@ function closeBeautifulConfirm() {
 /**
  * [HELPER 2] MODAL SUKSES CANTIK (HIJAU)
  */
-window.showBeautifulSuccess = function(message, onOkCallback, skippedData = []) {
+window.showBeautifulSuccess = function (message, onOkCallback, skippedData = []) {
     const modal = document.getElementById('modal-success-beautiful');
     const msgEl = document.getElementById('beautiful-success-message');
     const btn = document.getElementById('btn-beautiful-ok');
@@ -3941,9 +4007,9 @@ window.showBeautifulSuccess = function(message, onOkCallback, skippedData = []) 
     const skipBody = document.getElementById('skipped-list-body');
 
     // Fallback jika HTML belum update
-    if(!modal || !msgEl || !btn) {
+    if (!modal || !msgEl || !btn) {
         alert(message);
-        if(onOkCallback) onOkCallback();
+        if (onOkCallback) onOkCallback();
         return;
     }
 
@@ -3951,7 +4017,7 @@ window.showBeautifulSuccess = function(message, onOkCallback, skippedData = []) 
     msgEl.textContent = message;
 
     // 2. Render List Skip (Jika Ada)
-    if(skipContainer && skipBody) {
+    if (skipContainer && skipBody) {
         if (skippedData && skippedData.length > 0) {
             skipContainer.classList.remove('hidden');
             skipBody.innerHTML = ''; // Reset
@@ -3970,14 +4036,14 @@ window.showBeautifulSuccess = function(message, onOkCallback, skippedData = []) 
     }
 
     // 3. Setup Tombol OK
-    btn.onclick = function() {
+    btn.onclick = function () {
         modal.classList.remove('opacity-100');
         modal.classList.add('opacity-0');
-        
+
         setTimeout(() => {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
-            if(onOkCallback) onOkCallback();
+            if (onOkCallback) onOkCallback();
         }, 200);
     };
 
@@ -3987,29 +4053,29 @@ window.showBeautifulSuccess = function(message, onOkCallback, skippedData = []) 
     setTimeout(() => {
         modal.classList.remove('opacity-0');
         modal.classList.add('opacity-100');
-        btn.focus(); 
+        btn.focus();
     }, 10);
 }
 
 /**
  * [UTAMA] EKSEKUSI UPDATE KOORDINAT MASSAL
  */
-window.performBulkCoordinateUpdate = function(candidates) {
-    if(!candidates || candidates.length === 0) return;
+window.performBulkCoordinateUpdate = function (candidates) {
+    if (!candidates || candidates.length === 0) return;
 
     // 1. Konfirmasi (Biru)
-    window.showBeautifulConfirm(`Yakin ingin memperbarui titik koordinat untuk ${candidates.length} pelanggan existing?`, function() {
-        
+    window.showBeautifulConfirm(`Yakin ingin memperbarui titik koordinat untuk ${candidates.length} pelanggan existing?`, function () {
+
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const btn = document.getElementById('btn-update-coords');
         let originalText = '';
-        
-        if(btn) {
+
+        if (btn) {
             originalText = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Proses...';
         }
-    
+
         fetch('/team/matrix-kddk/bulk-update-coords', {
             method: 'POST',
             headers: {
@@ -4019,40 +4085,40 @@ window.performBulkCoordinateUpdate = function(candidates) {
             },
             body: JSON.stringify({ updates: candidates })
         })
-        .then(res => res.json())
-        .then(data => {
-            if(btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
-    
-            if(data.success) {
-                window.closeUploadModal();
-                
-                // Pesan Utama
-                let finalMsg = data.message; 
-                // (Tidak perlu tambah teks peringatan manual lagi, karena sudah ada tabelnya)
+            .then(res => res.json())
+            .then(data => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
 
-                // Ambil data skip dari response
-                const skippedDetails = data.stats ? data.stats.skipped_details : [];
-                // 2. Panggil Modal Sukses dengan Data Skip
-                window.showBeautifulSuccess(finalMsg, function() {
-                    if(typeof refreshActiveTab === 'function') {
-                        refreshActiveTab();
-                    }
-                }, skippedDetails); // <--- Kirim data array ke sini
-    
-            } else {
-                alert("Gagal: " + data.message);
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            if(btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
-            }
-            alert("Terjadi kesalahan koneksi.");
-        });
+                if (data.success) {
+                    window.closeUploadModal();
+
+                    // Pesan Utama
+                    let finalMsg = data.message;
+                    // (Tidak perlu tambah teks peringatan manual lagi, karena sudah ada tabelnya)
+
+                    // Ambil data skip dari response
+                    const skippedDetails = data.stats ? data.stats.skipped_details : [];
+                    // 2. Panggil Modal Sukses dengan Data Skip
+                    window.showBeautifulSuccess(finalMsg, function () {
+                        if (typeof refreshActiveTab === 'function') {
+                            refreshActiveTab();
+                        }
+                    }, skippedDetails); // <--- Kirim data array ke sini
+
+                } else {
+                    alert("Gagal: " + data.message);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalText;
+                }
+                alert("Terjadi kesalahan koneksi.");
+            });
     });
 }

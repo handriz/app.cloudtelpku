@@ -455,7 +455,7 @@
                     !</div>
                 <div class="text-xs">
                     <span class="font-bold block">Terdeteksi Anomali!</span>
-                    <span id="anomaly-count">0</span> pelanggan > 2KM dari pusat rute.
+                    <span id="anomaly-count">0</span> pelanggan > 5KM dari pusat rute.
                 </div>
                 <button onclick="document.getElementById('anomaly-alert').classList.add('hidden')"
                     class="text-red-500 hover:text-red-700 ml-2"><i class="fas fa-times"></i></button>

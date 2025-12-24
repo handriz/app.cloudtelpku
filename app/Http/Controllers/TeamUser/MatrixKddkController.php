@@ -23,7 +23,8 @@ class MatrixKddkController extends Controller
     {
         // 1. DAPATKAN FILTER HIERARKI (Source of Truth)
         $user = Auth::user();
-        $cacheKey = 'matrix_recap_v7_user_' . $user->id;
+        $currentVersion = $this->getGlobalDataVersion();
+        $cacheKey = 'matrix_recap_v8_user_' . $user->id . '_ver_' . $currentVersion;
         $matrixData = Cache::remember($cacheKey, 60 * 60 * 24, function () use ($user) {
 
             $hierarchyFilter = $this->getHierarchyFilterForJoin($user);
@@ -339,7 +340,7 @@ class MatrixKddkController extends Controller
         // Hapus Cache
         if (Auth::check()) {
 
-            Cache::forget('matrix_recap_v7_user_' . Auth::id());
+            $this->touchGlobalDataVersion();
         }
 
         // Pesan Respon yang Informatif
@@ -729,7 +730,7 @@ class MatrixKddkController extends Controller
                 );
             });
 
-            Cache::forget('matrix_recap_v7_user_' . Auth::id());
+            $this->touchGlobalDataVersion();
 
             return response()->json(['success' => true, 'message' => "Berhasil dipindahkan."]);
         } catch (\Exception $e) {
@@ -872,7 +873,7 @@ class MatrixKddkController extends Controller
             \App\Models\MasterKddk::insertOrIgnore($batchMaster);
         });
 
-        Cache::forget('matrix_recap_v7_user_' . Auth::id());
+        $this->touchGlobalDataVersion();
 
         return response()->json([
             'success' => true,
@@ -971,7 +972,7 @@ class MatrixKddkController extends Controller
             // 5. Hapus Cache
             if (Auth::check()) {
 
-                Cache::forget('matrix_recap_v7_user_' . Auth::id());
+                $this->touchGlobalDataVersion();
             }
 
             return response()->json([
@@ -1133,7 +1134,7 @@ class MatrixKddkController extends Controller
                 );
             });
 
-            Cache::forget('matrix_recap_v7_user_' . Auth::id());
+            $this->touchGlobalDataVersion();
 
             return response()->json(['success' => true, 'message' => count($idpels) . " Pelanggan berhasil dipindahkan."]);
         } catch (\Exception $e) {
@@ -1183,7 +1184,7 @@ class MatrixKddkController extends Controller
                 }
             }
 
-            Cache::forget('matrix_recap_v7_user_' . Auth::id());
+            $this->touchGlobalDataVersion();
 
             return response()->json(['success' => true, 'message' => count($request->idpels) . " Pelanggan berhasil dikeluarkan."]);
         } catch (\Exception $e) {
@@ -1513,7 +1514,7 @@ class MatrixKddkController extends Controller
             // Hapus Cache
             if (Auth::check()) {
   
-                Cache::forget('matrix_recap_v7_user_' . Auth::id());
+                $this->touchGlobalDataVersion();
             }
 
             return response()->json([
@@ -1559,13 +1560,33 @@ class MatrixKddkController extends Controller
             // Hapus Cache agar user lain melihat perubahannya
             if (Auth::check()) {
 
-                Cache::forget('matrix_recap_v7_user_' . Auth::id());
+                $this->touchGlobalDataVersion();
             }
 
             return response()->json(['success' => true, 'message' => 'Lokasi berhasil diperbarui.']);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Mengambil "Nomor Seri" Data Terakhir.
+     * Jika belum ada, buat baru.
+     */
+    private function getGlobalDataVersion()
+    {
+        return Cache::rememberForever('matrix_global_version', function () {
+            return now()->timestamp; // Contoh: 1709823456
+        });
+    }
+
+    /**
+     * Update "Nomor Seri" agar semua cache user dianggap kadaluarsa.
+     * Dipanggil saat ada Save/Update/Delete.
+     */
+    private function touchGlobalDataVersion()
+    {
+        Cache::forever('matrix_global_version', now()->timestamp);
     }
 
     // --- Helper Hirarki (Copy dari kode lama Anda) ---
