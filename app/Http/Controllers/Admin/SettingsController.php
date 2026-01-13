@@ -23,7 +23,7 @@ class SettingsController extends Controller
         // 1. Ambil Konfigurasi
         $kddkConfig = AppSetting::findValue('kddk_config_data', $scopeCode, $this->getDefaultKddkConfig());
         $activePeriod = AppSetting::findValue('kddk_active_period', $scopeCode, date('Y-m'));
-        
+
         // 2. Susun Collection
         $settings = collect([
             (object)['key' => 'kddk_active_period', 'label' => 'Periode Data Aktif', 'value' => $activePeriod, 'type' => 'string', 'group' => 'general'],
@@ -31,53 +31,197 @@ class SettingsController extends Controller
         ])->groupBy('group');
 
         $currentScope = $user->hasRole('admin') ? 'global' : 'local';
-        $viewData = compact('settings', 'currentScope', 'scopeCode', 'kddkConfig'); 
+        $viewData = compact('settings', 'currentScope', 'scopeCode', 'kddkConfig');
 
         if ($request->has('is_ajax')) {
             return view('admin.settings.partials.index_content', $viewData);
         }
         return view('admin.settings.index', $viewData);
     }
-    
+
     /**
-     * Halaman Manage Routes (Detail)
+     * Menambah Area Baru ke JSON Config
      */
+    public function addArea(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string|size:2|regex:/^[A-Z0-9]+$/', // Izinkan angka juga jika perlu
+            'label' => 'required|string|max:50',
+            'category' => 'nullable|string|max:30', // <--- INPUT BARU
+        ]);
+
+        $newCode = strtoupper($request->code);
+
+        // 1. Ambil Data Lama
+        $user = Auth::user();
+        $scope = $user->hasRole('admin') ? null : $user->hierarchy_level_code;
+        $config = \App\Models\AppSetting::findValue('kddk_config_data', $scope, $this->getDefaultKddkConfig());
+
+        $areas = collect($config['areas'] ?? []);
+
+        // 2. Validasi Duplikat
+        if ($areas->contains('code', $newCode)) {
+            return response()->json(['success' => false, 'message' => "Area dengan kode '$newCode' sudah ada."], 422);
+        }
+
+        // 3. Tambah Item Baru DENGAN KATEGORI
+        $areas->push([
+            'code' => $newCode,
+            'label' => $request->label,
+            'category' => $request->category ?? 'Umum', // Default 'Umum' jika kosong
+            'routes' => []
+        ]);
+
+        // 4. Simpan
+        // Sortir agar rapi: Kategori dulu, baru Kode Area
+        $sortedAreas = $areas->sortBy(['category', 'code'])->values()->all();
+        $config['areas'] = $sortedAreas;
+
+        \App\Models\AppSetting::updateOrCreate(
+            ['key' => 'kddk_config_data', 'hierarchy_code' => $scope],
+            [
+                'value' => json_encode($config),
+                'type' => 'json',
+                'group' => 'kddk',
+                'label' => 'Konfigurasi Area & Rute'
+            ]
+        );
+
+        return response()->json(['success' => true, 'message' => 'Area berhasil ditambahkan.']);
+    }
+
+    /**
+     * Update Data Area (Label & Kategori)
+     */
+    public function updateArea(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string', // Kode jadi kunci pencarian
+            'label' => 'required|string|max:50',
+            'category' => 'nullable|string|max:30',
+        ]);
+
+        $targetCode = strtoupper($request->code);
+
+        // 1. Ambil Data
+        $user = Auth::user();
+        $scope = $user->hasRole('admin') ? null : $user->hierarchy_level_code;
+        $config = \App\Models\AppSetting::findValue('kddk_config_data', $scope, $this->getDefaultKddkConfig());
+
+        $areas = collect($config['areas'] ?? []);
+
+        // 2. Cari & Update Item
+        // Kita gunakan map untuk memodifikasi item di dalam collection
+        $updatedAreas = $areas->map(function ($area) use ($targetCode, $request) {
+            if ($area['code'] === $targetCode) {
+                $area['label'] = $request->label;
+                $area['category'] = $request->category ?? 'Umum';
+            }
+            return $area;
+        });
+
+        // 3. Simpan Kembali
+        // Sortir ulang agar rapi (Kategori -> Kode)
+        $config['areas'] = $updatedAreas->sortBy(['category', 'code'])->values()->all();
+
+        \App\Models\AppSetting::updateOrCreate(
+            ['key' => 'kddk_config_data', 'hierarchy_code' => $scope],
+            [
+                'value' => json_encode($config),
+                'type' => 'json',
+                'group' => 'kddk',
+                'label' => 'Konfigurasi Area & Rute'
+            ]
+        );
+
+        return response()->json(['success' => true, 'message' => 'Area berhasil diperbarui.']);
+    }
+
+
     public function manageRoutes(Request $request, $areaCode)
     {
         $user = Auth::user();
-        $scopeCode = $user->hasRole('admin') ? null : $user->hierarchy_level_code;
+        $isAdmin = $user->hasRole('admin');
         
-        $kddkConfig = AppSetting::findValue('kddk_config_data', $scopeCode, $this->getDefaultKddkConfig());
-        
-        $currentArea = collect($kddkConfig['areas'] ?? [])->firstWhere('code', $areaCode);
-        
-        if (!$currentArea) {
-             // Jika error, lebih baik redirect atau tampilkan error page dengan layout
-             if (!$request->has('is_ajax')) return redirect()->route('admin.settings.index')->with('error', 'Kode Area tidak ditemukan.');
-             return response()->json(['error' => 'Kode Area tidak ditemukan.'], 404);
+        $userCode = $user->hierarchy_level_code; 
+        $configScope = $isAdmin ? null : $userCode;
+
+        // Load Config
+        $config = \App\Models\AppSetting::findValue('kddk_config_data', $configScope, []);
+        if (empty($config) && !$isAdmin) {
+            $config = \App\Models\AppSetting::findValue('kddk_config_data', null, []);
         }
 
-        $routesConfig = $currentArea['routes'] ?? [];
+        $areasCollection = collect($config['areas'] ?? []);
+        $targetArea = $areasCollection->firstWhere('code', $areaCode);
+        $routesConfig = $targetArea['routes'] ?? []; 
+        
+        // 2. TENTUKAN PREFIX UNIT (KEAMANAN KETAT)
+        if ($isAdmin) {
+             // Admin boleh lihat semua (3 digit apa saja)
+            $officialPrefix = '___';
+        } else {
+            // User Biasa: DEFAULT MATI ('###'). 
+            // Jangan pakai '___', nanti user baru bisa lihat data unit lain!
+            $officialPrefix = '###'; 
 
-        $routes = collect($routesConfig)->map(function($route,$index) use ($areaCode) {
-            // Pola KDDK: 3 digit awal (Hirarki) + 2 digit Area + 2 digit Rute + ...
-            // Contoh: '___' + 'RB' + 'AA' + '%'
-            $prefix = '___' . $areaCode . $route['code'];
-            $count = \Illuminate\Support\Facades\DB::table('mapping_kddk')
-                        ->where('kddk', 'like', $prefix . '%')
-                        ->count();
+            if ($userCode) {
+                $hierarchy = \App\Models\HierarchyLevel::where('code', $userCode)->first();
+                
+                if ($hierarchy) {
+                    if ($hierarchy->unit_type === 'ULP') {
+                        // Pola: UP3 + ULP + Wildcard Sub
+                        $ulpCode = $hierarchy->kddk_code; 
+                        $up3Code = $hierarchy->parent ? $hierarchy->parent->kddk_code : '_'; 
+                        
+                        // Pastikan kode valid (A-Z)
+                        if ($ulpCode && $up3Code) {
+                            $officialPrefix = $up3Code . $ulpCode . '_';
+                        }
+                    } 
+                    elseif ($hierarchy->unit_type === 'UP3') {
+                        $up3Code = $hierarchy->kddk_code;
+                        if ($up3Code) {
+                            $officialPrefix = $up3Code . '__';
+                        }
+                    }
+                    elseif ($hierarchy->unit_type === 'SUB_ULP') {
+                        $subCode = $hierarchy->kddk_code;
+                        $ulpCode = $hierarchy->parent ? $hierarchy->parent->kddk_code : '_';
+                        $up3Code = ($hierarchy->parent && $hierarchy->parent->parent) ? $hierarchy->parent->parent->kddk_code : '_';
+                        $officialPrefix = $up3Code . $ulpCode . $subCode;
+                    }
+                }
+            }
+        }
+
+        // 3. HITUNG PELANGGAN (TANPA DETEKTIF / STRICT MODE)
+        $routes = collect($routesConfig)->map(function ($route, $index) use ($areaCode, $officialPrefix) {
             
+            // Cari HANYA dengan Prefix Unit Resmi
+            // Jika user 18120 belum disetting hirarkinya, prefixnya '###'
+            // Maka query LIKE '###AAAB%' -> Hasil pasti 0 (Aman)
+            $strictPrefix = $officialPrefix . $areaCode . $route['code'];
+            
+            $count = \Illuminate\Support\Facades\DB::table('mapping_kddk')
+                ->where('kddk', 'like', $strictPrefix . '%')
+                ->count();
+
             $route['customer_count'] = $count;
             $route['original_index'] = $index;
+            
+            // Hapus label warning detektif jika ada sisa
+            // $route['label'] tetap murni
+            
             return $route;
+
+        })->sortBy('code');
+
+        $groupedRoutes = $routes->groupBy(function ($item) {
+            return substr($item['code'], 0, 1);
         });
 
-        // Contoh: 'AA', 'AB' -> Masuk Group 'A'
-        $groupedRoutes = $routes->sortBy('code')->groupBy(function($item) {
-            return substr($item['code'], 0, 1); 
-        });
-
-        $viewData = compact('areaCode', 'routes', 'groupedRoutes','kddkConfig', 'scopeCode');
+        $viewData = compact('areaCode', 'routes', 'groupedRoutes');
 
         if ($request->has('is_ajax')) {
             return view('admin.settings.partials.routes_manage_content', $viewData);
@@ -104,17 +248,17 @@ class SettingsController extends Controller
             ], [
                 // --- PESAN ERROR KUSTOM (Agar Mudah Dibaca) ---
                 // Gunakan wildcard (*) untuk menangkap semua index array
-                
+
                 // Error Duplikat
                 'settings.kddk_config_data.routes_manage.*.*.code.distinct' => 'Terdapat Kode Rute yang ganda (Duplikat). Mohon cek inputan Anda.',
-                
+
                 // Error Format (Bukan Huruf)
                 'settings.kddk_config_data.routes_manage.*.*.code.regex' => 'Kode Rute wajib 2 Huruf Kapital (A-Z).',
-                
+
                 // Error Wajib Isi
                 'settings.kddk_config_data.routes_manage.*.*.code.required' => 'Kode Rute wajib diisi.',
                 'settings.kddk_config_data.routes_manage.*.*.label.required' => 'Keterangan Rute wajib diisi.',
-                
+
                 // Error Panjang Karakter
                 'settings.kddk_config_data.routes_manage.*.*.code.size' => 'Kode Rute harus tepat 2 karakter.',
             ]);
@@ -129,20 +273,20 @@ class SettingsController extends Controller
                 'settings.kddk_config_data.areas.*.code.distinct' => 'Kode Area tidak boleh ganda.',
             ]);
         }
-        
+
         $user = Auth::user();
         $targetHierarchy = $user->hasRole('admin') ? null : $user->hierarchy_level_code;
         $inputs = $request->input('settings', []);
 
         foreach ($inputs as $key => $value) {
-            
+
             // Auto-create definition jika belum ada
             $settingDefinition = AppSetting::firstOrCreate(
                 ['key' => $key, 'hierarchy_code' => null],
                 [
-                    'type' => ($key === 'kddk_config_data') ? 'json' : 'string', 
+                    'type' => ($key === 'kddk_config_data') ? 'json' : 'string',
                     'group' => ($key === 'kddk_config_data') ? 'kddk' : 'general',
-                    'label' => 'Konfigurasi ' . $key, 
+                    'label' => 'Konfigurasi ' . $key,
                     'value' => ($key === 'kddk_config_data') ? json_encode($this->getDefaultKddkConfig()) : null,
                 ]
             );
@@ -151,19 +295,19 @@ class SettingsController extends Controller
             $type = $settingDefinition->type;
 
             if ($type === 'json' && $key === 'kddk_config_data') {
-                
+
                 // KASUS A: Update Partial Rute (Dari Halaman Manage Routes)
                 if ($targetAreaCode && isset($value['routes_manage'])) {
                     // 1. Ambil data eksisting dari DB
                     $currentData = AppSetting::findValue('kddk_config_data', $targetHierarchy, $this->getDefaultKddkConfig());
-                    
+
                     // 2. Update area spesifik
                     if (isset($currentData['areas'])) {
                         foreach ($currentData['areas'] as &$area) {
                             if ($area['code'] === $targetAreaCode) {
                                 $newRoutes = $value['routes_manage'][$targetAreaCode] ?? [];
                                 // Format & Uppercase
-                                $area['routes'] = collect($newRoutes)->map(function($r) {
+                                $area['routes'] = collect($newRoutes)->map(function ($r) {
                                     $r['code'] = strtoupper($r['code']);
                                     return $r;
                                 })->values()->all();
@@ -172,8 +316,7 @@ class SettingsController extends Controller
                         }
                     }
                     $saveValue = json_encode($currentData);
-                
-                } 
+                }
                 // KASUS B: Update Master Area (Dari Halaman Index)
                 else if (isset($value['areas'])) {
                     // Ambil data lama untuk mempertahankan rute jika tidak dikirim
@@ -181,7 +324,7 @@ class SettingsController extends Controller
                     $oldAreas = collect($oldData['areas'] ?? [])->keyBy('code');
 
                     $value['areas'] = collect($value['areas'])->map(function ($area) use ($oldAreas) {
-                        $area['code'] = strtoupper($area['code']); 
+                        $area['code'] = strtoupper($area['code']);
                         // Pertahankan rute lama jika area code sama
                         if ($oldAreas->has($area['code'])) {
                             $area['routes'] = $oldAreas->get($area['code'])['routes'] ?? [];
@@ -190,18 +333,18 @@ class SettingsController extends Controller
                         }
                         return $area;
                     })->values()->all();
-                    
+
                     $saveValue = json_encode($value);
                 }
             }
-            
+
             AppSetting::updateOrCreate(
                 ['key' => $key, 'hierarchy_code' => $targetHierarchy],
                 [
                     'value' => $saveValue,
-                    'type' => $type, 
+                    'type' => $type,
                     'group' => $settingDefinition->group,
-                    'label' => $settingDefinition->label, 
+                    'label' => $settingDefinition->label,
                 ]
             );
         }
@@ -239,8 +382,7 @@ class SettingsController extends Controller
                     'message' => "Gagal! Area '{$targetAreaCode}' sedang digunakan oleh data pelanggan."
                 ], 422);
             }
-        } 
-        elseif ($type === 'route') {
+        } elseif ($type === 'route') {
             // Cek apakah ada pelanggan dengan rute ini (Digit 4-7)
             // Pola: 3 sembarang + AA (Area) + BB (Rute) + ...
             $prefix = '___' . $targetAreaCode . $targetRouteCode;
@@ -259,7 +401,7 @@ class SettingsController extends Controller
         // 2. HAPUS DARI CONFIG (JSON)
         $user = Auth::user();
         $targetHierarchy = $user->hasRole('admin') ? null : $user->hierarchy_level_code;
-        
+
         $kddkConfig = AppSetting::findValue('kddk_config_data', $targetHierarchy, $this->getDefaultKddkConfig());
         $areas = collect($kddkConfig['areas'] ?? []);
 
@@ -267,7 +409,7 @@ class SettingsController extends Controller
             // Cek apakah area punya rute? (Validasi tambahan)
             $targetArea = $areas->firstWhere('code', $targetAreaCode);
             if ($targetArea && !empty($targetArea['routes'])) {
-                 return response()->json([
+                return response()->json([
                     'success' => false,
                     'message' => "Gagal! Area '{$targetAreaCode}' masih memiliki Rute. Hapus semua rute terlebih dahulu."
                 ], 422);
@@ -277,8 +419,7 @@ class SettingsController extends Controller
             $areas = $areas->reject(function ($area) use ($targetAreaCode) {
                 return $area['code'] === $targetAreaCode;
             });
-        } 
-        elseif ($type === 'route') {
+        } elseif ($type === 'route') {
             // Hapus Rute spesifik
             $areas = $areas->map(function ($area) use ($targetAreaCode, $targetRouteCode) {
                 if ($area['code'] === $targetAreaCode && isset($area['routes'])) {
@@ -292,7 +433,7 @@ class SettingsController extends Controller
 
         // Simpan Perubahan
         $kddkConfig['areas'] = $areas->values()->all();
-        
+
         AppSetting::updateOrCreate(
             ['key' => 'kddk_config_data', 'hierarchy_code' => $targetHierarchy],
             [
@@ -307,7 +448,7 @@ class SettingsController extends Controller
 
         return response()->json(['success' => true, 'message' => 'Item berhasil dihapus.']);
     }
-    
+
     /**
      * Membersihkan Audit Log (Maintenance)
      */
@@ -342,11 +483,12 @@ class SettingsController extends Controller
             return response()->json(['success' => false, 'message' => 'Gagal: ' . $e->getMessage()], 500);
         }
     }
-    
+
     /**
      * Default configuration data for KDDK (Fallback jika DB kosong)
      */
-    private function getDefaultKddkConfig() {
+    private function getDefaultKddkConfig()
+    {
         return [
             'areas' => [
                 ['code' => 'AA', 'label' => 'RBM (Paskabayar)', 'routes' => []],
@@ -354,5 +496,61 @@ class SettingsController extends Controller
             ],
             'route_format' => 'ALPHA'
         ];
+    }
+
+    /**
+     * Menangani Auto-Save dari Javascript
+     */
+    public function saveGenericSetting(Request $request)
+    {
+        // 1. Validasi
+        $request->validate([
+            'key' => 'required|string',
+            'group' => 'required|string',
+        ]);
+
+        $user = Auth::user();
+        // Cek level user (Admin Global atau Unit)
+        $scopeCode = $user->hasRole('admin') ? null : $user->hierarchy_level_code;
+
+        // 2. Deteksi Tipe Data Otomatis (REVISI PRESIISI KOORDINAT)
+        $value = $request->value;
+        $type = 'string';
+
+        if (is_numeric($value)) {
+            // Cek apakah angka ini punya desimal (titik)
+            if (strpos((string)$value, '.') !== false) {
+                $type = 'string'; // Simpan sbg String agar desimal (0.900) tidak hilang
+            } else {
+                $type = 'integer'; // Angka bulat murni (misal: 5000)
+            }
+        } elseif (is_bool($value) || $value === 'true' || $value === 'false') {
+            $type = 'boolean';
+            $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+        } elseif (is_array($value)) {
+            $type = 'json';
+            $value = json_encode($value);
+        }
+
+        // 3. Simpan ke Database (Atomic Update)
+        try {
+            AppSetting::updateOrCreate(
+                [
+                    'key' => $request->key,
+                    'hierarchy_code' => $scopeCode
+                ],
+                [
+                    'value' => $value,
+                    'type' => $type,
+                    'group' => $request->group,
+                    'label' => $request->label ?? ucwords(str_replace('_', ' ', $request->key)),
+                    'updated_by' => $user->id
+                ]
+            );
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 }

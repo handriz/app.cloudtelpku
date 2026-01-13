@@ -261,8 +261,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     
         // Halaman Utama Pengaturan
         Route::get('/', [SettingsController::class, 'index'])->name('index');
+        Route::post('/save-generic-setting', [SettingsController::class, 'saveGenericSetting'])->name('save_generic');
         Route::post('/update', [SettingsController::class, 'update'])->name('update');
         Route::get('/manage-routes/{areaCode}', [SettingsController::class, 'manageRoutes'])->name('manage_routes');
+        Route::post('/add-area', [SettingsController::class, 'addArea'])->name('add_area');
+        Route::post('/update-area', [SettingsController::class, 'updateArea'])->name('update_area');
         Route::post('/delete-item', [SettingsController::class, 'deleteKddkConfigItem'])->name('delete_item');
         Route::post('/clear-audit', [SettingsController::class, 'clearAuditLogs'])->name('clear_audit');
     });

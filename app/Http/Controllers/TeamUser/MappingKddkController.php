@@ -338,7 +338,12 @@ class MappingKddkController extends Controller
 
     public function store(Request $request)
     {
-        // 1. Validasi Data (user_pendataan tidak perlu divalidasi dari input)
+        // 1. AMBIL SETTING DARI DB (Dalam MB)
+        $maxMb = \App\Models\AppSetting::findValue('system_max_upload_mb', null, 5);
+        // Konversi ke Kilobyte untuk Validator Laravel
+        $maxKb = $maxMb * 1024;
+    
+        // 2. Validasi Data (user_pendataan tidak perlu divalidasi dari input)
         $validator = Validator::make($request->all(), [
             'idpel'         => 'required|string|max:12',
             'foto_kwh'      => 'required|string',
@@ -410,8 +415,9 @@ class MappingKddkController extends Controller
                 $km = $miles * 1.609344;
 
                 // D. Tentukan Batas Toleransi (Misal: 50 KM)
-                // Jika input > 50 KM dari teman se-unitnya, kemungkinan besar SALAH INPUT.
-                if ($km > 50) {
+                $maxMeter = \App\Models\AppSetting::findValue('kddk_anomaly_distance', null, 5000);
+                $maxKm = $maxMeter / 1000;
+                if ($km > $maxKm) {
                     // Hapus file temp karena validasi gagal
                     if ($request->filled('foto_kwh')) Storage::disk('local')->delete('temp_photos/' . basename($request->input('foto_kwh')));
                     if ($request->filled('foto_bangunan')) Storage::disk('local')->delete('temp_photos/' . basename($request->input('foto_bangunan')));
@@ -419,7 +425,7 @@ class MappingKddkController extends Controller
                     return response()->json([
                         'errors' => [
                             'latitudey' => [
-                                "Koordinat mencurigakan! Titik ini berjarak " . round($km) . " KM dari pusat data unit {$customerInfo->unitup}. Mohon cek kembali Latitude/Longitude Anda."
+                                "Jarak Terlalu Jauh! Titik ini berjarak " . round($km, 2) . " KM dari pusat data unit. Batas toleransi adalah {$maxKm} KM."
                             ]
                         ]
                     ], 422);
@@ -555,11 +561,13 @@ class MappingKddkController extends Controller
     public function uploadTemporaryPhoto(Request $request)
     {
         // Validasi file yang masuk
+        $maxMb = \App\Models\AppSetting::findValue('system_max_upload_mb', null, 5);
+        $maxKb = $maxMb * 1024;
         $validated = $request->validate([
-            'photo' => 'required|image|mimes:jpg,jpeg,png|max:2048',
+            'photo' => "required|image|mimes:jpg,jpeg,png|max:{$maxKb}",
         ],[
             'photo.mimes' => 'Format file harus JPG, JPEG, atau PNG.',
-            'photo.max' => 'Ukuran file maksimal 2MB.',
+            'photo.max' => "Ukuran file maksimal {$maxMb} MB.",
             'photo.image' => 'File harus berupa gambar.',
         ]);
 
@@ -640,12 +648,18 @@ class MappingKddkController extends Controller
         }
 
         // 1. Validasi Input
+        // AMBIL SETTING DINAMIS
+        $maxMb = \App\Models\AppSetting::findValue('system_max_upload_mb', null, 5);
+        $maxKb = $maxMb * 1024;
         $validator = Validator::make($request->all(), [
             'latitudey'     => ['required', 'numeric', 'between:-90,90'],
             'longitudex'    => ['required', 'numeric', 'between:-180,180'],
             'ket_survey'    => 'required|string',
-            'foto_kwh_input' => 'nullable|image|max:5120', 
-            'foto_bangunan_input' => 'nullable|image|max:5120',
+            'foto_kwh_input' => "nullable|image|max:{$maxKb}",
+            'foto_bangunan_input' => "nullable|image|max:{$maxKb}",
+        ],[
+            'foto_kwh_input.max' => "Foto KWH maksimal {$maxMb} MB.",
+            'foto_bangunan_input.max' => "Foto Bangunan maksimal {$maxMb} MB.",
         ]);
 
         if ($validator->fails()) {

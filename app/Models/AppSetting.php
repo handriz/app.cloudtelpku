@@ -33,7 +33,20 @@ class AppSetting extends Model
 
         if ($globalSetting) return self::castValue($globalSetting);
 
-        // 3. Return Default jika tidak ditemukan sama sekali
+        // 3. SMART DEFAULTS (LOGIKA OTOMATIS)
+
+        // Periode Data Operasi
+        if ($key === 'data_active_period') {
+            // Jika default tidak diisi pemanggil, gunakan BULAN SAAT INI (Server Time)
+            return $default ?? date('Y-m'); 
+        }
+
+        // Kasus: Jarak Anomali
+        if ($key === 'kddk_anomaly_distance') {
+            return $default ?? 5000; // Default 5KM
+        }
+
+        // 4. Return Default Murni (jika tidak masuk logic di atas)
         return $default;
     }
 
@@ -50,7 +63,7 @@ class AppSetting extends Model
             return intval($setting->value);
         }
         if ($setting->type === 'boolean') {
-            return (bool) $setting->value;
+            return filter_var($setting->value, FILTER_VALIDATE_BOOLEAN);
         }
         
         // Default String

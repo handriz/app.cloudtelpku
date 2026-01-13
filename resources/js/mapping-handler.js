@@ -3,14 +3,14 @@
  * Mengurus interaksi UI pada halaman Mapping/Validasi
  */
 
-(function() {
+(function () {
     // 1. Fungsi Ganti Tab (KWH vs Bangunan)
-    window.switchInspectorTab = function(tab) {
+    window.switchInspectorTab = function (tab) {
         const btnKwh = document.getElementById('tab-btn-kwh');
         const btnBang = document.getElementById('tab-btn-bangunan');
         const panelKwh = document.getElementById('inspector-kwh');
         const panelBang = document.getElementById('inspector-bangunan');
-        
+
         // Safety check jika elemen belum ada (misal tab belum dimuat)
         if (!btnKwh || !panelKwh) return;
 
@@ -41,17 +41,17 @@
     }
 
     // 2. Fungsi Klik Baris Tabel (Master-Detail)
-    window.selectMappingRow = function(row, data) {
+    window.selectMappingRow = function (row, data) {
         // A. Highlight Baris
         document.querySelectorAll('tbody tr').forEach(tr => {
             tr.classList.remove('bg-indigo-50', 'dark:bg-indigo-900/30');
         });
-        if(row) row.classList.add('bg-indigo-50', 'dark:bg-indigo-900/30');
+        if (row) row.classList.add('bg-indigo-50', 'dark:bg-indigo-900/30');
 
         // B. Update Teks Info
         setText('detail-idpel', data.idpel);
         setText('detail-user', data.user_pendataan);
-        
+
         // C. Update Foto
         updatePhotoInspector('kwh', data.foto_kwh);
         updatePhotoInspector('bangunan', data.foto_bangunan);
@@ -59,7 +59,7 @@
         // D. [LOGIKA BARU] Cek Koordinat & Update Peta
         const lat = parseFloat(data.latitudey);
         const lng = parseFloat(data.longitudex);
-        
+
         const mapOverlay = document.getElementById('map-error-overlay');
         const svBtn = document.getElementById('google-street-view-link');
         const coordText = document.getElementById('detail-lat-lon');
@@ -67,41 +67,41 @@
 
         // Validasi: Harus angka, tidak NaN, dan tidak 0
         if (lat && lng && !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
-            
+
             // 1. Koordinat VALID
-            if(coordText) coordText.textContent = `${lat}, ${lng}`;
-            if(mapOverlay) mapOverlay.classList.add('hidden'); // Sembunyikan Error
-            
-            if(svBtn) {
+            if (coordText) coordText.textContent = `${lat}, ${lng}`;
+            if (mapOverlay) mapOverlay.classList.add('hidden'); // Sembunyikan Error
+
+            if (svBtn) {
                 svBtn.classList.remove('hidden', 'pointer-events-none', 'opacity-50');
-                svBtn.onclick = function() {
+                svBtn.onclick = function () {
                     window.open(`https://www.google.com/maps?q&layer=c&cbll=$${lat},${lng}`, '_blank');
                 };
             }
 
             // KIRIM SINYAL KE PETA
-            window.dispatchEvent(new CustomEvent('map:focus', { 
-                detail: { lat: lat, lng: lng, idpel: data.idpel } 
+            window.dispatchEvent(new CustomEvent('map:focus', {
+                detail: { lat: lat, lng: lng, idpel: data.idpel }
             }));
 
         } else {
             // 2. Koordinat INVALID / NULL
-            if(coordText) coordText.textContent = 'Tidak Ada Data';
-            if(mapOverlay) mapOverlay.classList.remove('hidden'); // Tampilkan Error
-            
-            if(svBtn) svBtn.classList.add('hidden', 'pointer-events-none', 'opacity-50');
+            if (coordText) coordText.textContent = 'Tidak Ada Data';
+            if (mapOverlay) mapOverlay.classList.remove('hidden'); // Tampilkan Error
+
+            if (svBtn) svBtn.classList.add('hidden', 'pointer-events-none', 'opacity-50');
 
             if (btnInputManual) {
                 // Hapus event listener lama (penting agar tidak menumpuk)
-                btnInputManual.onclick = null; 
-                
-                btnInputManual.onclick = function(e) {
+                btnInputManual.onclick = null;
+
+                btnInputManual.onclick = function (e) {
                     e.stopPropagation(); // Agar tidak men-trigger klik baris lagi
 
                     // Ambil URL langsung dari atribut data-edit-url di baris tabel (Tahap 1)
                     const isVerified = row.getAttribute('data-verified') === '1';
                     const editUrl = row.dataset.editUrl;
-                    
+
                     if (isVerified) {
                         window.showToast("Data ini Terkunci (Verified). Silakan 'Tarik Kembali' dulu dari tabel.", "error");
                     } else {
@@ -126,7 +126,7 @@
         const imgEl = document.getElementById(`detail-foto-${type}`);
         const phEl = document.getElementById(`placeholder-foto-${type}`);
         const zoomEl = document.getElementById(`zoom-${type}`);
-        
+
         if (!imgEl || !phEl) return;
 
         if (path) {
@@ -134,11 +134,11 @@
             imgEl.src = `/storage/${path}?t=${new Date().getTime()}`;
             imgEl.classList.remove('hidden');
             phEl.classList.add('hidden');
-            if(zoomEl) zoomEl.classList.remove('hidden');
+            if (zoomEl) zoomEl.classList.remove('hidden');
         } else {
             imgEl.classList.add('hidden');
             phEl.classList.remove('hidden');
-            if(zoomEl) zoomEl.classList.add('hidden');
+            if (zoomEl) zoomEl.classList.add('hidden');
         }
     }
 
@@ -160,18 +160,18 @@
 
     // --- FUNGSI UTAMA ---
 
-    window.viewImage = function(type) {
+    window.viewImage = function (type) {
         const source = document.getElementById(`detail-foto-${type}`);
         if (source && source.src && modal && imgEl) {
             imgEl.src = source.src;
             resetImageState(); // Reset posisi tiap buka baru
-            
+
             modal.classList.remove('hidden', 'pointer-events-none');
             setTimeout(() => modal.classList.remove('opacity-0'), 10);
         }
     };
 
-    window.closeImageViewer = function() {
+    window.closeImageViewer = function () {
         if (modal) {
             modal.classList.add('opacity-0');
             setTimeout(() => {
@@ -181,12 +181,12 @@
         }
     };
 
-    window.resetImageState = function() {
+    window.resetImageState = function () {
         imgState = { scale: 1, rotate: 0, pX: 0, pY: 0, isDragging: false };
         updateTransform(true); // true = gunakan animasi halus
     };
 
-    window.adjustImage = function(action, val) {
+    window.adjustImage = function (action, val) {
         if (action === 'zoom') {
             const newScale = imgState.scale + val;
             if (newScale >= 0.5 && newScale <= 10) imgState.scale = newScale;
@@ -199,11 +199,11 @@
     // Fungsi Update CSS
     function updateTransform(useTransition = false) {
         if (!imgEl) return;
-        
+
         // KUNCI: Hanya gunakan animasi (transition) saat Zoom/Rotate via tombol.
         // Saat Drag, transition harus 'none'.
         imgEl.style.transition = useTransition ? 'transform 0.2s cubic-bezier(0.1, 0.7, 1.0, 0.1)' : 'none';
-        
+
         imgEl.style.transform = `translate(${imgState.pX}px, ${imgState.pY}px) scale(${imgState.scale}) rotate(${imgState.rotate}deg)`;
     }
 
@@ -211,7 +211,7 @@
     // --- EVENT LISTENERS (MOUSE WHEEL & DRAG) ---
 
     if (container) {
-        
+
         // 1. MOUSE WHEEL ZOOM (Tetap sama)
         container.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -220,7 +220,7 @@
             if (newScale >= 0.5 && newScale <= 10) {
                 imgState.scale = newScale;
                 // Gunakan true (animasi) untuk zoom agar halus
-                updateTransform(true); 
+                updateTransform(true);
             }
         }, { passive: false });
 
@@ -233,14 +233,14 @@
             e.stopPropagation();
 
             imgState.isDragging = true;
-            
+
             // TITIK KRUSIAL: Matikan animasi CSS seketika saat mulai geser!
             // Jika tidak dimatikan, ini yang bikin BERGETAR.
-            imgEl.style.transition = 'none'; 
-            
+            imgEl.style.transition = 'none';
+
             imgState.startX = e.clientX - imgState.pX;
             imgState.startY = e.clientY - imgState.pY;
-            
+
             container.style.cursor = 'grabbing';
         });
 
@@ -248,7 +248,7 @@
         window.addEventListener('mousemove', (e) => {
             if (!imgState.isDragging) return;
             e.preventDefault(); // PENTING: Mencegah seleksi browser
-            
+
             // Hitung posisi baru (Raw calculation)
             // Kita tidak pakai requestAnimationFrame agar instan mengikuti mouse
             imgState.pX = e.clientX - imgState.startX;
@@ -264,12 +264,12 @@
             if (imgState.isDragging) {
                 imgState.isDragging = false;
                 container.style.cursor = 'grab';
-                
+
                 // Opsional: Nyalakan lagi transisi supaya kalau di-zoom/rotate setelah ini jadi halus lagi
                 // imgEl.style.transition = 'transform 0.2s ease-out'; 
             }
         });
-        
+
         // Mencegah "Ghost Image" saat drag
         container.addEventListener('dragstart', (e) => e.preventDefault());
     }
@@ -288,16 +288,16 @@
     // Init Drag Events saat DOM siap
     setTimeout(() => {
         const cont = document.getElementById('image-container');
-        if(cont) {
+        if (cont) {
             cont.onmousedown = (e) => {
-                if(e.target.tagName !== 'IMG') return;
+                if (e.target.tagName !== 'IMG') return;
                 e.preventDefault();
                 imgState.panning = true;
                 imgState.startX = e.clientX - imgState.pointX;
                 imgState.startY = e.clientY - imgState.pointY;
                 cont.style.cursor = 'grabbing';
             };
-            
+
             // ... (Event listener lain sudah di handle global window di atas)
         }
     }, 1000);
@@ -305,7 +305,7 @@
     // ==========================================
     // 5. ROBUST MAP HANDLER (FIX KLIK BERULANG)
     // ==========================================
-    
+
     // Gunakan Window variable agar persisten
     window.validationMap = null;
     window.validationMarker = null; // Marker Utama (Target)
@@ -321,7 +321,7 @@
 
         if (isMapMissing) {
             if (window.validationMap) {
-                try { window.validationMap.remove(); } catch(e) {}
+                try { window.validationMap.remove(); } catch (e) { }
                 window.validationMap = null;
             }
 
@@ -332,7 +332,7 @@
                 attribution: 'Tiles © Esri',
                 maxZoom: 19
             }).addTo(window.validationMap);
-            
+
             // Layer Jalan
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
                 maxZoom: 19
@@ -395,47 +395,47 @@
         fetch(`${urlInput.value}?search=${searchIdpel}`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
-        .then(res => res.json())
-        .then(data => {
-            // Data return: { searched: [...], nearby: [...] }
-            
-            if (data.nearby && data.nearby.length > 0) {
-                data.nearby.forEach(p => {
-                    // Jangan gambar ulang target utama (double marker)
-                    if (p.idpel == searchIdpel) return;
+            .then(res => res.json())
+            .then(data => {
+                // Data return: { searched: [...], nearby: [...] }
 
-                    const lat = parseFloat(p.latitudey);
-                    const lng = parseFloat(p.longitudex);
+                if (data.nearby && data.nearby.length > 0) {
+                    data.nearby.forEach(p => {
+                        // Jangan gambar ulang target utama (double marker)
+                        if (p.idpel == searchIdpel) return;
 
-                    if (lat && lng) {
-                        // Marker Tetangga (Lebih Kecil & Warna Beda)
-                        const neighborIcon = L.divIcon({
-                            className: 'neighbor-pin',
-                            html: `<div class="w-3 h-3 bg-yellow-400 rounded-full border border-white shadow-sm opacity-90 hover:scale-125 transition-transform"></div>`,
-                            iconSize: [12, 12],
-                            iconAnchor: [6, 6]
-                        });
+                        const lat = parseFloat(p.latitudey);
+                        const lng = parseFloat(p.longitudex);
 
-                        const marker = L.marker([lat, lng], { icon: neighborIcon })
-                            .bindPopup(`
+                        if (lat && lng) {
+                            // Marker Tetangga (Lebih Kecil & Warna Beda)
+                            const neighborIcon = L.divIcon({
+                                className: 'neighbor-pin',
+                                html: `<div class="w-3 h-3 bg-yellow-400 rounded-full border border-white shadow-sm opacity-90 hover:scale-125 transition-transform"></div>`,
+                                iconSize: [12, 12],
+                                iconAnchor: [6, 6]
+                            });
+
+                            const marker = L.marker([lat, lng], { icon: neighborIcon })
+                                .bindPopup(`
                                 <div class="text-xs">
                                     <strong class="text-gray-600">Tetangga</strong><br>
                                     ${p.idpel}<br>
                                     <span class="text-[10px] text-gray-400">${Math.round(p.distance * 1000) || '?'} m</span>
                                 </div>
                             `);
-                        
-                        // Masukkan ke Layer Tetangga
-                        if (window.neighborLayer) window.neighborLayer.addLayer(marker);
-                    }
-                });
-            }
-        })
-        .catch(err => console.error("Gagal load tetangga:", err));
+
+                            // Masukkan ke Layer Tetangga
+                            if (window.neighborLayer) window.neighborLayer.addLayer(marker);
+                        }
+                    });
+                }
+            })
+            .catch(err => console.error("Gagal load tetangga:", err));
     }
 
     // LISTENER
-    window.addEventListener('map:focus', function(e) {
+    window.addEventListener('map:focus', function (e) {
         const { lat, lng, idpel } = e.detail;
         if (lat && lng) {
             updateMapPosition(lat, lng, idpel);
@@ -443,11 +443,25 @@
     });
 
     // Init Awal
+    // Init Awal
     setTimeout(() => {
         const mapContainer = document.getElementById('rbm-map');
         if (mapContainer && !window.validationMap) {
-             window.validationMap = L.map('rbm-map').setView([0.5071, 101.4478], 10);
-             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(window.validationMap);
+            // 1. Ambil Koordinat Default dari Input Hidden (Kita akan buat input ini di langkah 3)
+            const defLat = document.getElementById('setting-default-lat')?.value || 0.5071;
+            const defLng = document.getElementById('setting-default-lng')?.value || 101.4478;
+
+            // 2. Gunakan koordinat tersebut
+            window.validationMap = L.map('rbm-map').setView([defLat, defLng], 10);
+
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles © Esri',
+                maxZoom: 19
+            }).addTo(window.validationMap);
+
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19
+            }).addTo(window.validationMap);
         }
     }, 1000);
 
@@ -456,7 +470,7 @@
     // ==========================================
 
     // Kita pasang listener di body untuk menangkap klik dari elemen yang baru muncul (AJAX)
-    window.openEditModal = function(url) {
+    window.openEditModal = function (url) {
         console.log("Membuka Modal Edit: " + url);
 
         // A. Siapkan Wadah Modal
@@ -495,23 +509,23 @@
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
             }
         })
-        .then(res => {
-            if (!res.ok) throw new Error("Gagal memuat data.");
-            return res.text();
-        })
-        .then(html => {
-            // D. Masukkan HTML ke Modal
-            contentBox.innerHTML = html;
+            .then(res => {
+                if (!res.ok) throw new Error("Gagal memuat data.");
+                return res.text();
+            })
+            .then(html => {
+                // D. Masukkan HTML ke Modal
+                contentBox.innerHTML = html;
 
-            // Pasang event listener untuk tombol Close yang baru dimuat
-            const closeBtns = contentBox.querySelectorAll('[data-modal-close]');
-            closeBtns.forEach(btn => btn.onclick = window.closeDynamicModal);
-            
-            // Re-init form scripts jika perlu (misal: preview foto)
-            // (Opsional)
-        })
-        .catch(err => {
-            contentBox.innerHTML = `
+                // Pasang event listener untuk tombol Close yang baru dimuat
+                const closeBtns = contentBox.querySelectorAll('[data-modal-close]');
+                closeBtns.forEach(btn => btn.onclick = window.closeDynamicModal);
+
+                // Re-init form scripts jika perlu (misal: preview foto)
+                // (Opsional)
+            })
+            .catch(err => {
+                contentBox.innerHTML = `
                 <div class="p-8 text-center">
                     <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full mx-auto mb-4 flex items-center justify-center"><i class="fas fa-exclamation-triangle text-2xl"></i></div>
                     <p class="text-gray-800 font-bold">Error</p>
@@ -519,10 +533,10 @@
                     <button onclick="window.closeDynamicModal()" class="mt-4 px-4 py-2 bg-gray-200 rounded font-bold text-sm">Tutup</button>
                 </div>
             `;
-        });
+            });
     };
 
-    window.closeDynamicModal = function() {
+    window.closeDynamicModal = function () {
         const modalContainer = document.getElementById('dynamic-form-modal');
         if (modalContainer) {
             modalContainer.classList.add('opacity-0');
@@ -534,12 +548,12 @@
     };
 
     // Fungsi Tutup Modal Global
-    window.closeDynamicModal = function() {
+    window.closeDynamicModal = function () {
         const modalContainer = document.getElementById('dynamic-form-modal');
         if (modalContainer) {
             modalContainer.classList.add('opacity-0');
             const contentBox = document.getElementById('dynamic-modal-content');
-            if(contentBox) {
+            if (contentBox) {
                 contentBox.classList.remove('scale-100');
                 contentBox.classList.add('scale-95');
             }
@@ -554,7 +568,7 @@
     // ==========================================
     // 7. TOAST NOTIFICATION SYSTEM (PENGGANTI ALERT)
     // ==========================================
-    window.showToast = function(message, type = 'error') {
+    window.showToast = function (message, type = 'error') {
         // Hapus toast lama jika ada
         const oldToast = document.getElementById('custom-toast');
         if (oldToast) oldToast.remove();
@@ -567,7 +581,7 @@
         const toast = document.createElement('div');
         toast.id = 'custom-toast';
         toast.className = `fixed top-6 right-6 z-[10000] flex items-center w-full max-w-xs p-4 space-x-4 text-white ${bgColor} rounded-lg shadow-2xl transform translate-y-[-100%] opacity-0 transition-all duration-300 ease-out`;
-        
+
         toast.innerHTML = `
             <div class="inline-flex items-center justify-center flex-shrink-0 w-8 h-8 bg-white/20 rounded-lg">
                 <i class="fas ${icon}"></i>
@@ -597,16 +611,16 @@
     // ==========================================
     // 8. GLOBAL FIX: LEAFLET POPUP CLOSE BUTTON
     // ==========================================
-    
+
     // Mencegah tombol close (X) pada popup peta me-refresh halaman
-    document.body.addEventListener('click', function(e) {
+    document.body.addEventListener('click', function (e) {
         // Cek apakah elemen yang diklik adalah tombol close popup Leaflet
         const closeBtn = e.target.closest('.leaflet-popup-close-button');
-        
+
         if (closeBtn) {
             e.preventDefault();  // Stop aksi default (pindah halaman)
             e.stopPropagation(); // Stop event bubbling ke TabManager
-            
+
             // Secara manual tutup popup jika perlu (biasanya Leaflet sudah handle ini, 
             // tapi karena stopPropagation kadang kita perlu bantu tutup)
             if (window.validationMap) {
@@ -617,17 +631,17 @@
 
     // Tambahan: Fix juga untuk link di dalam popup agar tidak refresh
     // (Misal link IDPEL di dalam popup marker)
-    document.body.addEventListener('click', function(e) {
+    document.body.addEventListener('click', function (e) {
         // Cek apakah klik terjadi DI DALAM container peta
         const mapContainer = e.target.closest('#rbm-map');
-        
+
         if (mapContainer && e.target.tagName === 'A') {
-             // Jika link itu hanyalah anchor kosong atau javascript:void
-             const href = e.target.getAttribute('href');
-             if (!href || href === '#' || href.startsWith('javascript')) {
-                 e.preventDefault();
-             }
+            // Jika link itu hanyalah anchor kosong atau javascript:void
+            const href = e.target.getAttribute('href');
+            if (!href || href === '#' || href.startsWith('javascript')) {
+                e.preventDefault();
+            }
         }
     });
-    
+
 })();
