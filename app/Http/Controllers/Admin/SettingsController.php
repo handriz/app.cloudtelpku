@@ -137,7 +137,6 @@ class SettingsController extends Controller
         return response()->json(['success' => true, 'message' => 'Area berhasil diperbarui.']);
     }
 
-
     public function manageRoutes(Request $request, $areaCode)
     {
         $user = Auth::user();
@@ -552,5 +551,38 @@ class SettingsController extends Controller
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * [BARU] Cek apakah Area aman untuk dihapus?
+     * Dipanggil via AJAX sebelum tombol hapus dieksekusi.
+     */
+    public function checkAreaUsage(Request $request, $areaCode)
+    {
+        // 1. Tentukan Prefix Area
+        // Area di DB Mapping biasanya menempati digit ke-4 dan 5 (setelah 3 digit unit)
+        // Pola: ___[KodeArea]%
+        
+        $prefix = '___' . $areaCode; 
+
+        // 2. Hitung Pelanggan Aktif
+        $count = \Illuminate\Support\Facades\DB::table('mapping_kddk')
+            ->where('kddk', 'like', $prefix . '%')
+            ->where('enabled', 1)
+            ->count();
+
+        // 3. Respon
+        if ($count > 0) {
+            return response()->json([
+                'safe' => false,
+                'count' => $count,
+                'message' => "Gagal! Masih ada {$count} pelanggan aktif di Area {$areaCode}. Harap pindahkan atau hapus data pelanggan terlebih dahulu."
+            ]);
+        }
+
+        return response()->json([
+            'safe' => true,
+            'message' => 'Area aman dihapus.'
+        ]);
     }
 }
