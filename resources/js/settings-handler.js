@@ -396,6 +396,386 @@
                     document.body.style.cursor = 'default';
                     alert("Terjadi kesalahan koneksi.");
                 });
+        },
+
+
+        uploadApkFile: function (input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                const formData = new FormData();
+                formData.append('apk_file', file);
+                // Ambil CSRF Token dari meta tag head
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                formData.append('_token', csrfToken);
+
+                // UI Elements
+                const btnLabel = document.getElementById('apk_btn_label');
+                const progressBar = document.getElementById('apk_progress_bar');
+                const originalText = '<i class="fas fa-cloud-upload-alt"></i> Upload APK Baru'; // Text default
+
+                // State Loading
+                btnLabel.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Mengupload...';
+                progressBar.style.width = '30%';
+
+                // AJAX Request (Fetch)
+                // Pastikan route URL ini sesuai dengan definisi route di Laravel Anda
+                fetch('/settings/upload-apk', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken
+                    }
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        progressBar.style.width = '100%';
+                        if (data.success) {
+                            btnLabel.innerHTML = '<i class="fas fa-check"></i> Berhasil!';
+                            // Reload halaman atau update UI parsial setelah 1 detik
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            alert('Gagal: ' + (data.message || 'Terjadi kesalahan'));
+                            btnLabel.innerHTML = originalText;
+                            progressBar.style.width = '0';
+                            input.value = ''; // Reset input file
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Gagal Upload. Cek koneksi atau ukuran file (Max 50MB).');
+                        btnLabel.innerHTML = originalText;
+                        progressBar.style.width = '0';
+                        input.value = '';
+                    });
+            }
+        },
+
+        filterRoutesTable: function () {
+            const input = document.getElementById('route-search-input');
+            if (!input) return;
+
+            const filter = input.value.toLowerCase();
+            const rows = document.querySelectorAll('.route-row-item');
+
+            rows.forEach(row => {
+                // Ambil data search dari atribut data-search
+                const text = row.dataset.search || '';
+                if (text.includes(filter)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        },
+
+        // --- 6. AUDIT LOG VIEWER (YANG KURANG) ---
+        showAuditLogs: function () {
+            // 1. Siapkan Konten Modal (Skeleton Loading)
+            const modalContent = `
+                <div class="p-6 h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-4 border-b pb-4 flex-none">
+                        <h3 class="text-xl font-bold text-gray-800 dark:text-white">
+                            <i class="fas fa-history text-indigo-500 mr-2"></i> Riwayat Aktivitas Sistem
+                        </h3>
+                        <button onclick="document.getElementById('main-modal').classList.add('hidden')" class="text-gray-400 hover:text-red-500 text-2xl">&times;</button>
+                    </div>
+                    
+                    <div id="audit-log-table-container" class="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+                        <div class="flex justify-center py-10 text-gray-400 animate-pulse">
+                            <i class="fas fa-spinner fa-spin mr-2"></i> Memuat data log...
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 pt-4 border-t flex justify-end flex-none">
+                        <button onclick="document.getElementById('main-modal').classList.add('hidden')" 
+                            class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-bold transition">Tutup</button>
+                    </div>
+                </div>
+            `;
+
+            // 2. Tampilkan Modal Generik
+            const modal = document.getElementById('main-modal');
+            const modalBody = document.getElementById('modal-content');
+
+            if (modal && modalBody) {
+                modalBody.innerHTML = modalContent;
+                modal.classList.remove('hidden');
+            } else {
+                console.error("Modal element #main-modal not found!");
+                return;
+            }
+
+            // 3. Fetch Data dari Server (URL SUDAH BENAR: /settings/logs)
+            fetch('/settings/logs')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        this.renderLogTable(data.logs);
+                    } else {
+                        document.getElementById('audit-log-table-container').innerHTML =
+                            '<p class="text-red-500 text-center py-4">Gagal memuat data log.</p>';
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    const container = document.getElementById('audit-log-table-container');
+                    if (container) container.innerHTML = '<p class="text-red-500 text-center py-4">Terjadi kesalahan koneksi.</p>';
+                });
+        },
+
+        renderLogTable: function (logs) {
+            const container = document.getElementById('audit-log-table-container');
+            if (!container) return;
+
+            if (logs.length === 0) {
+                container.innerHTML = '<div class="text-center py-12 text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg">Belum ada riwayat aktivitas.</div>';
+                return;
+            }
+
+            let html = `
+                <table class="w-full text-sm text-left border-collapse">
+                    <thead class="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-700 sticky top-0 z-10 shadow-sm">
+                        <tr>
+                            <th class="px-4 py-3 border-b dark:border-gray-600">Waktu</th>
+                            <th class="px-4 py-3 border-b dark:border-gray-600">User</th>
+                            <th class="px-4 py-3 border-b dark:border-gray-600">Setting</th>
+                            <th class="px-4 py-3 border-b dark:border-gray-600">Perubahan</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
+            `;
+
+            logs.forEach(log => {
+                // Style badge untuk aksi
+                let actionColor = 'bg-blue-100 text-blue-700 border-blue-200';
+
+                html += `
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <td class="px-4 py-3 whitespace-nowrap align-top w-32">
+                            <div class="font-bold text-gray-700 dark:text-gray-300 text-xs">${log.time_ago}</div>
+                            <div class="text-[10px] text-gray-400">${log.date_formatted}</div>
+                        </td>
+                        <td class="px-4 py-3 align-top w-40">
+                            <div class="font-bold text-gray-800 dark:text-white text-xs truncate max-w-[150px]" title="${log.user_name || 'System'}">
+                                <i class="fas fa-user-circle mr-1 text-gray-400"></i> ${log.user_name || 'System'}
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 align-top w-48">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${actionColor}">
+                                UPDATE
+                            </span>
+                            <div class="mt-1 text-[11px] text-gray-500 font-mono break-all leading-tight bg-gray-50 dark:bg-gray-900 p-1 rounded border border-gray-100 dark:border-gray-700">
+                                ${log.setting_key}
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-xs align-top">
+                            <div class="grid grid-cols-1 gap-1">
+                                ${log.old_value ? `
+                                    <div class="bg-red-50 text-red-600 p-1.5 rounded border border-red-100 break-all">
+                                        <i class="fas fa-minus mr-1 text-[9px]"></i> <span class="line-through opacity-70">${log.old_value}</span>
+                                    </div>` : ''}
+                                <div class="bg-green-50 text-green-700 p-1.5 rounded border border-green-100 break-all font-medium shadow-sm">
+                                    <i class="fas fa-plus mr-1 text-[9px]"></i> ${log.new_value}
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        },
+
+        // --- 7. CONFIG SNAPSHOTS (BACKUP & RESTORE) ---
+        showConfigHistory: function () {
+            // 1. UI Skeleton
+            const modalContent = `
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-4 border-b pb-4">
+                        <h3 class="text-lg font-bold text-gray-800 dark:text-white">
+                            <i class="fas fa-history text-indigo-500 mr-2"></i> Riwayat Konfigurasi Area
+                        </h3>
+                        <button onclick="document.getElementById('main-modal').classList.add('hidden')" class="text-2xl">&times;</button>
+                    </div>
+                    <div id="snapshot-list-container" class="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                        <div class="text-center py-8 text-gray-400"><i class="fas fa-spinner fa-spin"></i> Memuat backup...</div>
+                    </div>
+                </div>
+            `;
+
+            const modal = document.getElementById('main-modal');
+            document.getElementById('modal-content').innerHTML = modalContent;
+            modal.classList.remove('hidden');
+
+            // 2. Fetch Data
+            fetch('/settings/snapshots?key=kddk_config_data')
+                .then(res => res.json())
+                .then(resp => {
+                    const container = document.getElementById('snapshot-list-container');
+                    if (resp.data.length === 0) {
+                        container.innerHTML = '<div class="text-center py-8 text-gray-400 italic">Belum ada data backup tersimpan.</div>';
+                        return;
+                    }
+
+                    let html = '';
+                    resp.data.forEach(item => {
+                        html += `
+                            <div class="flex items-center justify-between p-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-indigo-400 transition">
+                                <div>
+                                    <div class="font-bold text-gray-800 dark:text-white text-sm">
+                                        Versi: ${item.date} 
+                                        <span class="text-[10px] bg-gray-100 text-gray-500 px-2 rounded-full ml-2">${item.size}</span>
+                                    </div>
+                                    <div class="text-xs text-gray-500 mt-1">
+                                        <i class="fas fa-user-edit mr-1"></i> ${item.user} &bull; ${item.ago}
+                                    </div>
+                                </div>
+                                <button onclick="window.settingsHandler.confirmRestore(${item.id}, '${item.date}')" 
+                                    class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded border border-indigo-200 transition">
+                                    <i class="fas fa-undo-alt mr-1"></i> Restore
+                                </button>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+                });
+        },
+
+        confirmRestore: function (id, dateStr) {
+            if (!confirm(`⚠️ PERINGATAN KERAS!\n\nAnda akan mengembalikan konfigurasi ke versi tanggal:\n[ ${dateStr} ]\n\nData konfigurasi saat ini akan ditimpa. Lanjutkan?`)) return;
+
+            document.body.style.cursor = 'wait';
+            fetch('/settings/restore', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify({ id: id })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    document.body.style.cursor = 'default';
+                    if (data.success) {
+                        alert('Sukses! Halaman akan dimuat ulang.');
+                        location.reload();
+                    } else {
+                        alert('Gagal: ' + data.message);
+                    }
+                })
+                .catch(err => {
+                    document.body.style.cursor = 'default';
+                    alert('Terjadi kesalahan koneksi.');
+                });
+        },
+
+        // --- 8. DEVICE MANAGER ---
+        showDeviceManager: function () {
+            const modalContent = `
+                <div class="p-6 h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-4 border-b pb-4 flex-none">
+                        <h3 class="text-lg font-bold text-gray-800 dark:text-white">
+                            <i class="fas fa-shield-alt text-indigo-500 mr-2"></i> Perangkat Terdaftar
+                        </h3>
+                        <button onclick="document.getElementById('main-modal').classList.add('hidden')" class="text-2xl text-gray-400">&times;</button>
+                    </div>
+                    <div id="device-list-container" class="space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                        <div class="text-center py-10 text-gray-400 animate-pulse">
+                            <i class="fas fa-spinner fa-spin mr-2"></i> Memuat data perangkat...
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const modal = document.getElementById('main-modal');
+            document.getElementById('modal-content').innerHTML = modalContent;
+            modal.classList.remove('hidden');
+
+            this.loadDevices();
+        },
+
+        loadDevices: function () {
+            fetch('/settings/devices')
+                .then(res => res.json())
+                .then(resp => {
+                    const container = document.getElementById('device-list-container');
+                    if (!resp.success || resp.data.length === 0) {
+                        container.innerHTML = '<div class="text-center py-8 text-gray-400">Belum ada perangkat yang login.</div>';
+                        return;
+                    }
+
+                    let html = '<div class="grid gap-3">';
+                    resp.data.forEach(dev => {
+                        const statusClass = dev.is_blocked
+                            ? 'bg-red-50 border-red-200 opacity-75'
+                            : 'bg-white border-gray-200';
+
+                        const btnText = dev.is_blocked
+                            ? '<i class="fas fa-unlock mr-1"></i> Buka Blokir'
+                            : '<i class="fas fa-ban mr-1"></i> Blokir';
+
+                        const btnColor = dev.is_blocked
+                            ? 'bg-white border-red-200 text-red-600 hover:bg-red-50'
+                            : 'bg-white border-gray-300 text-gray-700 hover:text-red-600 hover:border-red-300';
+
+                        html += `
+                            <div class="flex items-center justify-between p-3 rounded-lg border ${statusClass} shadow-sm transition">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                                        <i class="fas fa-mobile-alt text-lg"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-gray-800 text-sm">
+                                            ${dev.user_name} 
+                                            <span class="font-normal text-gray-500 text-xs">(${dev.model})</span>
+                                        </div>
+                                        <div class="text-xs text-gray-400 flex gap-2 mt-0.5">
+                                            <span>v${dev.app_ver || '?'}</span> &bull; 
+                                            <span>${dev.ip || 'Unknown IP'}</span> &bull; 
+                                            <span>${dev.last_seen}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onclick="window.settingsHandler.toggleBlockDevice(${dev.id})" 
+                                    class="px-3 py-1.5 text-xs font-bold rounded border ${btnColor} transition">
+                                    ${btnText}
+                                </button>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    container.innerHTML = html;
+                });
+        },
+
+        toggleBlockDevice: function (id) {
+            if (!confirm('Ubah status blokir perangkat ini?')) return;
+
+            // UI Optimistic Update (Loading)
+            document.body.style.cursor = 'wait';
+
+            fetch('/settings/device-block', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify({ id: id })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    document.body.style.cursor = 'default';
+                    if (data.success) {
+                        this.loadDevices(); // Reload list
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(err => {
+                    document.body.style.cursor = 'default';
+                    alert('Gagal koneksi.');
+                });
         }
     };
 

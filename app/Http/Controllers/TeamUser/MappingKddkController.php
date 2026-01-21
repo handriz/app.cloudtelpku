@@ -4,7 +4,7 @@ namespace App\Http\Controllers\TeamUser;
 
 use App\Http\Controllers\Controller;
 use App\Models\MappingKddk;
-use App\Models\TemporaryMapping; 
+use App\Models\TemporaryMapping;
 use App\Models\MasterDataPelanggan;
 use App\Models\HierarchyLevel;
 use Illuminate\Support\Facades\DB;
@@ -36,7 +36,7 @@ class MappingKddkController extends Controller
                 ->when(!$user->hasRole('admin'), function ($query) use ($hierarchyFilter) {
                     // Cek di tabel master untuk hirarki
                     return $query->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
-                                 ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+                        ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
                 });
             if ($existsQuery->exists()) {
                 $isIdpelSearch = true;
@@ -56,7 +56,7 @@ class MappingKddkController extends Controller
 
         // 4. Terapkan Logika Pencarian
         if ($isIdpelSearch) {
-            
+
             // SKENARIO 1: User mencari IDPEL. Tampilkan semua objectid.
             $query->where('mapping_kddk.idpel', $search);
             $query->orderBy('mapping_kddk.enabled', 'DESC');
@@ -70,9 +70,8 @@ class MappingKddkController extends Controller
                 END ASC
             ");
             $query->orderBy('mapping_kddk.created_at', 'desc');
-
         } else {
-            
+
             // 1. Buat query dalam (ranking)
             $rankingQuery = DB::table('mapping_kddk')
                 ->select(
@@ -94,14 +93,14 @@ class MappingKddkController extends Controller
                 // Filter hirarki HARUS diterapkan di dalam ranking
                 ->when(!$user->hasRole('admin'), function ($q) use ($hierarchyFilter) {
                     $q->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
-                      ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+                        ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
                 });
-                // Terapkan filter pencarian (non-IDPEL) di dalam ranking juga
+            // Terapkan filter pencarian (non-IDPEL) di dalam ranking juga
             if ($search) {
-                $rankingQuery->where(function($q) use ($search) {
+                $rankingQuery->where(function ($q) use ($search) {
                     $q->where('mapping_kddk.idpel', 'like', "%{$search}%")
-                      ->orWhere('mapping_kddk.nokwhmeter', 'like', "%{$search}%")
-                      ->orWhere('mapping_kddk.user_pendataan', 'like', "%{$search}%");
+                        ->orWhere('mapping_kddk.nokwhmeter', 'like', "%{$search}%")
+                        ->orWhere('mapping_kddk.user_pendataan', 'like', "%{$search}%");
                 });
             }
 
@@ -109,48 +108,47 @@ class MappingKddkController extends Controller
             $subQuery = DB::table($rankingQuery, 'ranked_mappings')
                 ->select('id')
                 ->where('rn', 1);
-            
+
             // 3. Query utama HANYA mengambil ID yang ada di hasil SubQuery
             $query->whereIn('mapping_kddk.id', $subQuery);
             // Terapkan sorting HANYA untuk general search (non-IDPEL)    
             $query->orderBy($sortColumn, $sortDirection);
-        }    
+        }
 
         // 5. Terapkan paginasi
         $mappings = $query->paginate(10)->withQueryString();
-            $pageIdpels = $mappings->pluck('idpel')->unique();
-            $activeIdpels = MappingKddk::whereIn('idpel', $pageIdpels)
-                            ->where('enabled', true)
-                            ->pluck('idpel')
-                            ->toArray();
+        $pageIdpels = $mappings->pluck('idpel')->unique();
+        $activeIdpels = MappingKddk::whereIn('idpel', $pageIdpels)
+            ->where('enabled', true)
+            ->pluck('idpel')
+            ->toArray();
 
         // 6. Siapkan Data Header (Foto, Peta, Status)
         $searchedMapping = null;
         $mappingStatus = null;
         $searchedIdpel = null;
-        
+
         if ($search) {
             $searchedIdpel = $search;
-            
+
             // 6a. Coba cari data yang 'enabled' DULU untuk IDPEL ini
             $focusedQuery = MappingKddk::query()
                 ->where('mapping_kddk.idpel', $searchedIdpel)
                 ->where('mapping_kddk.enabled', true) // Prioritas: Enabled = 1
                 ->latest() // Ambil yang terbaru jika ada beberapa yang enabled (jarang)
                 ->first();
-            
+
             if (!$focusedQuery) {
                 // 6b. Jika tidak ada yang enabled, ambil saja data yang paling verified/terbaru
                 // Kita gunakan hasil pertama dari Paginasi sebagai fallback
                 $focusedQuery = $mappings->first();
             }
-            
+
             $searchedMapping = $focusedQuery;
             // END PERBAIKAN FOKUS DATA ENABLE
 
             if ($searchedMapping) {
                 $mappingStatus = ($searchedMapping->enabled) ? 'valid' : 'unverified';
-                
             } elseif ($isIdpelSearch) {
                 // Kasus jika IDPEL dicari tapi tidak ada hasil
                 $mappingStatus = 'unverified';
@@ -162,22 +160,31 @@ class MappingKddkController extends Controller
         $totalMappingEnabled = MappingKddk::where('mapping_kddk.enabled', true)
             ->when(!$user->hasRole('admin'), function ($query) use ($hierarchyFilter) {
                 return $query->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
-                             ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+                    ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
             })
             ->count();
         $mappingPercentage = ($totalPelanggan > 0) ? ($totalMappingEnabled / $totalPelanggan) * 100 : 0;
-        
+
         // 8. Siapkan semua data yang dibutuhkan oleh view
         $viewData = compact(
-            'mappings', 'totalMappingEnabled', 'totalPelanggan', 'mappingPercentage',
-            'search', 'sortColumn', 'sortDirection', 'mappingStatus', 'searchedIdpel', 'searchedMapping','activeIdpels'
+            'mappings',
+            'totalMappingEnabled',
+            'totalPelanggan',
+            'mappingPercentage',
+            'search',
+            'sortColumn',
+            'sortDirection',
+            'mappingStatus',
+            'searchedIdpel',
+            'searchedMapping',
+            'activeIdpels'
         );
 
         // 9. Logika untuk membedakan request biasa dan AJAX
         if ($request->has('is_ajax')) {
             return view('team.mapping-kddk.partials.index_content', $viewData);
         }
-        return view('team.mapping-kddk.index', $viewData); 
+        return view('team.mapping-kddk.index', $viewData);
     }
 
     public function getMapCoordinates(Request $request)
@@ -190,7 +197,7 @@ class MappingKddkController extends Controller
         $baseQuery = MappingKddk::query()
             ->when(!$user->hasRole('admin'), function ($query) use ($hierarchyFilter) {
                 return $query->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
-                            ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+                    ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
             })
             ->whereNotNull('mapping_kddk.latitudey')
             ->whereNotNull('mapping_kddk.longitudex');
@@ -198,10 +205,10 @@ class MappingKddkController extends Controller
         // SKENARIO 1: Tidak Ada Pencarian (Ambil Random Sample)
         if (!$search) {
             $initialCustomers = (clone $baseQuery)
-            ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex')
-            ->inRandomOrder()
-            ->limit(100)
-            ->get();
+                ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex')
+                ->inRandomOrder()
+                ->limit(100)
+                ->get();
             return response()->json(['searched' => [], 'nearby' => [], 'all' => $initialCustomers]);
         }
 
@@ -209,9 +216,9 @@ class MappingKddkController extends Controller
         $searchedCustomers = (clone $baseQuery)
             ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex', 'mapping_kddk.namagd')
             ->when($search, function ($query, $search) {
-                return $query->where(function($q) use ($search) {
+                return $query->where(function ($q) use ($search) {
                     $q->where('mapping_kddk.idpel', 'like', "%{$search}%")
-                      ->orWhere('mapping_kddk.nokwhmeter', 'like', "%{$search}%");
+                        ->orWhere('mapping_kddk.nokwhmeter', 'like', "%{$search}%");
                 });
             })->get();
 
@@ -238,23 +245,23 @@ class MappingKddkController extends Controller
 
             $nearbyCustomers = (clone $baseQuery)
                 ->select(
-                    'mapping_kddk.idpel', 
-                    'mapping_kddk.latitudey', 
+                    'mapping_kddk.idpel',
+                    'mapping_kddk.latitudey',
                     'mapping_kddk.longitudex',
                     'mapping_kddk.namagd'
                 )
-                
+
                 // [OPTIMASI] Filter Kotak Dulu (Ringan bagi Database)
                 // Menggunakan nama kolom asli sesuai tabel
                 ->whereBetween('mapping_kddk.latitudey', [$minLat, $maxLat])
                 ->whereBetween('mapping_kddk.longitudex', [$minLon, $maxLon])
-                
+
                 // Hitung Jarak Persis (Haversine) hanya untuk data di dalam kotak
                 ->selectRaw("( 6371 * acos( cos( radians(?) ) * cos( radians( mapping_kddk.latitudey ) ) * cos( radians( mapping_kddk.longitudex ) - radians(?) ) + sin( radians(?) ) * sin( radians( mapping_kddk.latitudey ) ) ) ) AS distance", [$lat, $lon, $lat])
-                
+
                 // Exclude data yang sedang dicari agar tidak duplikat
                 ->whereNotIn('mapping_kddk.idpel', $searchedCustomers->pluck('idpel')->toArray())
-                
+
                 ->orderBy("distance", "asc")
                 ->limit(20) // Batasi 20 tetangga terdekat
                 ->get();
@@ -294,13 +301,30 @@ class MappingKddkController extends Controller
 
         // Daftar header kolom sesuai dengan yang diharapkan oleh Importer Anda
         $columns = [
-            'objectid','idpel', 'user_pendataan', 'enabled', 'nokwhmeter', 'merkkwhmeter',
-            'tahun_buat', 'mcb', 'type_pbts', 'type_kotakapp', 'latitudey', 'longitudex',
-            'namagd', 'jenis_kabel', 'ukuran_kabel', 'ket_survey', 'deret', 'sr',
-            'ket_validasi', 'foto_kwh', 'foto_bangunan'
-        
+            'objectid',
+            'idpel',
+            'user_pendataan',
+            'enabled',
+            'nokwhmeter',
+            'merkkwhmeter',
+            'tahun_buat',
+            'mcb',
+            'type_pbts',
+            'type_kotakapp',
+            'latitudey',
+            'longitudex',
+            'namagd',
+            'jenis_kabel',
+            'ukuran_kabel',
+            'ket_survey',
+            'deret',
+            'sr',
+            'ket_validasi',
+            'foto_kwh',
+            'foto_bangunan'
+
         ];
-        
+
         $exampleObjectId = 'objectid_dari_file_csv';
         $exampleIdpel = 'idpel_dari_file_csv';
 
@@ -310,16 +334,27 @@ class MappingKddkController extends Controller
             'user_pendataan' => 'nama_user',
             'enabled' => '1',
             // ... (isi kolom lain dengan contoh jika perlu, atau biarkan kosong)
-            'nokwhmeter' => '', 'merkkwhmeter' => '', 'tahun_buat' => '', 'mcb' => '', 
-            'type_pbts' => '', 'type_kotakapp' => '', 'latitudey' => '', 'longitudex' => '', 
-            'namagd' => '', 'jenis_kabel' => '', 'ukuran_kabel' => '', 'ket_survey' => '', 
-            'deret' => '', 'sr' => '', 'ket_validasi' => '',
+            'nokwhmeter' => '',
+            'merkkwhmeter' => '',
+            'tahun_buat' => '',
+            'mcb' => '',
+            'type_pbts' => '',
+            'type_kotakapp' => '',
+            'latitudey' => '',
+            'longitudex' => '',
+            'namagd' => '',
+            'jenis_kabel' => '',
+            'ukuran_kabel' => '',
+            'ket_survey' => '',
+            'deret' => '',
+            'sr' => '',
+            'ket_validasi' => '',
 
             'foto_kwh' => '**="mapping_photos/unverified/" & B2 & "/" & TEXTJOIN("_"; TRUE; A2; B2; "foto_app")**',
             'foto_bangunan' => '**="mapping_photos/unverified/" & B2 & "/" & TEXTJOIN("_"; TRUE; A2; B2; "foto_persil")**',
         ];
 
-        $callback = function() use ($columns , $exampleRow) {
+        $callback = function () use ($columns, $exampleRow) {
             $file = fopen('php://output', 'w');
             fputcsv($file, $columns, ';'); // Gunakan delimiter ';' sesuai importer
             fputcsv($file, array_values($exampleRow), ';');
@@ -342,7 +377,7 @@ class MappingKddkController extends Controller
         $maxMb = \App\Models\AppSetting::findValue('system_max_upload_mb', null, 5);
         // Konversi ke Kilobyte untuk Validator Laravel
         $maxKb = $maxMb * 1024;
-    
+
         // 2. Validasi Data (user_pendataan tidak perlu divalidasi dari input)
         $validator = Validator::make($request->all(), [
             'idpel'         => 'required|string|max:12',
@@ -351,12 +386,12 @@ class MappingKddkController extends Controller
             'ket_survey'    => 'required|string',
             'latitudey'     => ['required', 'numeric', 'between:-90,90'],
             'longitudex'    => ['required', 'numeric', 'between:-180,180'],
-            ], [
+        ], [
             // Pesan error kustom yang lebih ramah pengguna
             'latitudey.numeric' => 'Latitude harus berupa angka.',
             'latitudey.between' => 'Nilai Latitude harus di antara -90 dan 90.',
             'longitudex.numeric' => 'Longitude harus berupa angka.',
-            'longitudex.between' => 'Nilai Longitude harus di antara -180 dan 180.',                  
+            'longitudex.between' => 'Nilai Longitude harus di antara -180 dan 180.',
         ]);
 
         if ($validator->fails()) {
@@ -372,10 +407,10 @@ class MappingKddkController extends Controller
 
         // Cek Spamming (1 Menit)
         $isSpamming = MappingKddk::where('idpel', $idpel)
-                        ->where('user_pendataan', Auth::user()->name)
-                        ->where('ket_validasi', 'unverified')
-                        ->where('created_at', '>=', now()->subMinutes(1)) // Cek dalam 1 menit terakhir
-                        ->exists();
+            ->where('user_pendataan', Auth::user()->name)
+            ->where('ket_validasi', 'unverified')
+            ->where('created_at', '>=', now()->subMinutes(1)) // Cek dalam 1 menit terakhir
+            ->exists();
 
         if ($isSpamming) {
             return response()->json(['errors' => ['idpel' => ['Anda baru saja mengirim data untuk IDPEL ini. Mohon cek daftar data sebelum mengirim ulang.']]], 422);
@@ -384,51 +419,59 @@ class MappingKddkController extends Controller
         // ============================================================
         // [FITUR BARU] SMART GEO-FENCING (VALIDASI WILAYAH)
         // ============================================================
-        
+
+        $warningMsg = "";
+
         // A. Cari UnitUP dari Pelanggan ini
         $customerInfo = MasterDataPelanggan::where('idpel', $idpel)->select('unitup')->first();
+
         if ($customerInfo && $customerInfo->unitup) {
-            // B. Cari 1 Titik Referensi (Tetangga) di Unit yang sama
-            // Kita ambil data mapping yang SUDAH VERIFIED (MappingKddk)
-            $referencePoint = MappingKddk::join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+
+            // B. Cari 1 Titik Referensi (Tetangga) di Unit yang sama SUDAH VERIFIED (MappingKddk)
+            $neighbors = MappingKddk::join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
                 ->where('master_data_pelanggan.unitup', $customerInfo->unitup)
-                ->where('mapping_kddk.enabled', true) // Hanya yang aktif
+                ->where('mapping_kddk.enabled', true)
                 ->whereNotNull('mapping_kddk.latitudey')
                 ->where('mapping_kddk.idpel', '!=', $idpel) // Jangan bandingkan dengan diri sendiri
                 ->select('mapping_kddk.latitudey', 'mapping_kddk.longitudex')
-                ->inRandomOrder() // Ambil acak biar representatif
-                ->first();
+                ->inRandomOrder()
+                ->limit(10)
+                ->get();
 
-            // C. Jika ada teman se-unit, kita hitung jaraknya
-            if ($referencePoint) {
+            // C. Jika ada tentangga se-unit, kita hitung jaraknya
+            if ($neighbors->isNotEmpty()) {
+                $minDistance = null;
                 $lat1 = (float) $validatedData['latitudey'];
                 $lon1 = (float) $validatedData['longitudex'];
-                $lat2 = (float) $referencePoint->latitudey;
-                $lon2 = (float) $referencePoint->longitudex;
 
-                // Rumus Haversine Sederhana (Jarak dalam KM)
-                $theta = $lon1 - $lon2;
-                $dist = sin(deg2rad($lat1)) * sin(deg2rad($lat2)) +  cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta));
-                $dist = acos($dist);
-                $dist = rad2deg($dist);
-                $miles = $dist * 60 * 1.1515;
-                $km = $miles * 1.609344;
+                // C. Loop cari yang terdekat
+                foreach ($neighbors as $neighbor) {
+                    $lat2 = (float) $neighbor->latitudey;
+                    $lon2 = (float) $neighbor->longitudex;
 
-                // D. Tentukan Batas Toleransi (Misal: 50 KM)
-                $maxMeter = \App\Models\AppSetting::findValue('kddk_anomaly_distance', null, 5000);
-                $maxKm = $maxMeter / 1000;
-                if ($km > $maxKm) {
-                    // Hapus file temp karena validasi gagal
-                    if ($request->filled('foto_kwh')) Storage::disk('local')->delete('temp_photos/' . basename($request->input('foto_kwh')));
-                    if ($request->filled('foto_bangunan')) Storage::disk('local')->delete('temp_photos/' . basename($request->input('foto_bangunan')));
+                    if (($lat1 == $lat2) && ($lon1 == $lon2)) {
+                        $distMeter = 0;
+                    } else {
+                        $theta = $lon1 - $lon2;
+                        $dist = sin(deg2rad($lat1)) * sin(deg2rad($lat2)) +  cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta));
+                        $dist = acos($dist);
+                        $dist = rad2deg($dist);
+                        $miles = $dist * 60 * 1.1515;
+                        $distMeter = $miles * 1609.344;
+                    }
 
-                    return response()->json([
-                        'errors' => [
-                            'latitudey' => [
-                                "Jarak Terlalu Jauh! Titik ini berjarak " . round($km, 2) . " KM dari pusat data unit. Batas toleransi adalah {$maxKm} KM."
-                            ]
-                        ]
-                    ], 422);
+                    if (is_null($minDistance) || $distMeter < $minDistance) {
+                        $minDistance = $distMeter;
+                    }
+                }
+                // Cek Batas Toleransi (Default 5KM)
+                if (!is_null($minDistance)) {
+                    $limitMeter = \App\Models\AppSetting::findValue('kddk_anomaly_distance', null, 5000);
+
+                    if ($minDistance > $limitMeter) {
+                        $km = round($minDistance / 1000, 1);
+                        $warningMsg = " (Info: Lokasi terpaut cukup jauh dari tetangga terdekat: {$km} KM)";
+                    }
                 }
             }
         }
@@ -469,17 +512,25 @@ class MappingKddkController extends Controller
                         throw new \Exception("Ekstensi file '{$tempFilename}' tidak valid.");
                     }
 
-                    $newFilename = $newObjectId . '_' . $idpel . '_' . ($photoType === 'foto_kwh' ? 'foto_app' : 'foto_persil') . '.' . $extension;
+                    $suffix = ($photoType === 'foto_kwh' ? 'foto_app' : 'foto_persil');
+                    $newFilename = "{$newObjectId}_{$idpel}_{$suffix}.{$extension}";
+
                     $finalRelativePath = "mapping_photos/{$folderTujuan}/{$idpel}/{$newFilename}";
 
+                    // Pindah File
                     $fileContent = Storage::disk('local')->get($tempPathRelative);
-                    if ($fileContent === false) throw new \Exception("Gagal membaca file sementara: $tempPathRelative");
 
-                    if (!Storage::disk('public')->put($finalRelativePath, $fileContent)) throw new \Exception("Gagal menyimpan file: $finalRelativePath");
+                    if ($fileContent === false) {
+                        throw new \Exception("Gagal membaca file sementara: $tempPathRelative");
+                    }
+
+                    if (!Storage::disk('public')->put($finalRelativePath, $fileContent)) {
+                        throw new \Exception("Gagal menyimpan file ke public: $finalRelativePath");
+                    }
 
                     $finalPaths[$photoType] = $finalRelativePath;
                 } else {
-                    throw new \Exception("File sementara '{$tempFilename}' tidak ditemukan.");
+                    throw new \Exception("File foto tidak ditemukan (Session expired?). Silakan upload ulang.");
                 }
             }
 
@@ -496,18 +547,21 @@ class MappingKddkController extends Controller
             DB::commit();
 
             // Cleanup
-            foreach($tempFilesToDelete as $tempPath) {
+            foreach ($tempFilesToDelete as $tempPath) {
                 if (Storage::disk('local')->exists($tempPath)) {
                     Storage::disk('local')->delete($tempPath);
                 }
             }
 
-            $msg = ($isEnabled) 
-                ? 'Data PERTAMA berhasil disimpan dan AKTIF di Peta!' 
+            $msg = ($isEnabled)
+                ? 'Data PERTAMA berhasil disimpan dan AKTIF di Peta!'
                 : 'Data berhasil disimpan sebagai DRAFT (Menunggu Validasi/Promote).';
 
-            return response()->json(['success' => true, 'message' => $msg]);
+            if ($warningMsg) {
+                $msg .= $warningMsg;
+            }
 
+            return response()->json(['success' => true, 'message' => $msg]);
         } catch (\Exception $e) {
 
             // 7. Rollback jika gagal
@@ -515,9 +569,9 @@ class MappingKddkController extends Controller
             if (isset($finalPaths['foto_kwh'])) Storage::disk('public')->delete($finalPaths['foto_kwh']);
             if (isset($finalPaths['foto_bangunan'])) Storage::disk('public')->delete($finalPaths['foto_bangunan']);
 
-            Log::error("Gagal store mapping KDDK (Controller): " . $e->getMessage());
+            Log::error("Store Mapping Error:: " . $e->getMessage());
             return response()->json(['errors' => ['server' => [substr($e->getMessage(), 0, 200)]]], 422);
-        }            
+        }
     }
 
     /**
@@ -532,7 +586,7 @@ class MappingKddkController extends Controller
 
         if ($histories->count() > $keepLimit) {
             $deletedCount = 0;
-            
+
             foreach ($histories->reverse() as $record) {
                 if ($histories->count() - $deletedCount <= $keepLimit) break;
 
@@ -540,7 +594,7 @@ class MappingKddkController extends Controller
                 // 1. Jangan hapus data yang tampil di peta (enabled=true)
                 // 2. Jangan hapus data yang verified (valid)
                 if ($record->enabled || $record->ket_validasi === 'verified') {
-                    continue; 
+                    continue;
                 }
 
                 // Hapus Fisik & DB
@@ -565,7 +619,7 @@ class MappingKddkController extends Controller
         $maxKb = $maxMb * 1024;
         $validated = $request->validate([
             'photo' => "required|image|mimes:jpg,jpeg,png|max:{$maxKb}",
-        ],[
+        ], [
             'photo.mimes' => 'Format file harus JPG, JPEG, atau PNG.',
             'photo.max' => "Ukuran file maksimal {$maxMb} MB.",
             'photo.image' => 'File harus berupa gambar.',
@@ -629,7 +683,7 @@ class MappingKddkController extends Controller
     {
         // Cari data berdasarkan ID
         $mapping = MappingKddk::findOrFail($id);
-        
+
         // Return view edit dengan membawa data mapping
         // Pastikan path view sesuai dengan struktur folder Bapak
         return view('team.mapping-kddk.partials.edit', compact('mapping'));
@@ -657,7 +711,7 @@ class MappingKddkController extends Controller
             'ket_survey'    => 'required|string',
             'foto_kwh_input' => "nullable|image|max:{$maxKb}",
             'foto_bangunan_input' => "nullable|image|max:{$maxKb}",
-        ],[
+        ], [
             'foto_kwh_input.max' => "Foto KWH maksimal {$maxMb} MB.",
             'foto_bangunan_input.max' => "Foto Bangunan maksimal {$maxMb} MB.",
         ]);
@@ -679,28 +733,28 @@ class MappingKddkController extends Controller
                 'latitudey' => $request->latitudey,
                 'longitudex' => $request->longitudex,
                 'ket_survey' => $request->ket_survey,
-                'user_pendataan' => Auth::user()->name, 
+                'user_pendataan' => Auth::user()->name,
             ];
 
             // Pastikan ObjectID dan IDPEL ada untuk penamaan
-            $objectId = $mapping->objectid ?? 'UNKNOWN'; 
+            $objectId = $mapping->objectid ?? 'UNKNOWN';
             $idpel = $mapping->idpel;
 
             // --- LOGIKA UPDATE FOTO KWH ---
             if ($request->hasFile('foto_kwh_input')) {
                 $file = $request->file('foto_kwh_input');
                 $ext = $file->getClientOriginalExtension();
-                
+
                 // Format Nama: OBJECTID_IDPEL_foto_app.ext
                 $filename = "{$objectId}_{$idpel}_foto_app.{$ext}";
-                
+
                 // Folder: Tetap di verified karena ini tabel MappingKddk
                 $path = "mapping_photos/verified/{$idpel}/{$filename}";
-                
+
                 // 1. Simpan File Baru Dulu (Overwrite jika nama sama tidak masalah, karena konten terganti)
                 // Gunakan 'putFileAs' atau 'put' dengan konten
                 Storage::disk('public')->put($path, file_get_contents($file));
-                
+
                 // Catat file baru ini untuk dihapus jika nanti DB error
                 $filesToDeleteOnRollback[] = $path;
 
@@ -713,7 +767,7 @@ class MappingKddkController extends Controller
                         $filesToDeleteOnCommit[] = $mapping->foto_kwh;
                     }
                 }
-                
+
                 $dataToUpdate['foto_kwh'] = $path;
             }
 
@@ -721,10 +775,10 @@ class MappingKddkController extends Controller
             if ($request->hasFile('foto_bangunan_input')) {
                 $file = $request->file('foto_bangunan_input');
                 $ext = $file->getClientOriginalExtension();
-                
+
                 $filename = "{$objectId}_{$idpel}_foto_persil.{$ext}";
                 $path = "mapping_photos/verified/{$idpel}/{$filename}";
-                
+
                 Storage::disk('public')->put($path, file_get_contents($file));
                 $filesToDeleteOnRollback[] = $path;
 
@@ -733,7 +787,7 @@ class MappingKddkController extends Controller
                         $filesToDeleteOnCommit[] = $mapping->foto_bangunan;
                     }
                 }
-                
+
                 $dataToUpdate['foto_bangunan'] = $path;
             }
 
@@ -753,10 +807,9 @@ class MappingKddkController extends Controller
                 return response()->json(['success' => true, 'message' => 'Data berhasil diperbarui!']);
             }
             return redirect()->route('team.mapping.index')->with('success', 'Data berhasil diperbarui!');
-
         } catch (\Exception $e) {
             DB::rollBack();
-            
+
             // --- GAGAL: HAPUS FILE BARU YANG TERLANJUR DIUPLOAD ---
             foreach ($filesToDeleteOnRollback as $newFile) {
                 if (Storage::disk('public')->exists($newFile)) {
@@ -765,7 +818,7 @@ class MappingKddkController extends Controller
             }
 
             Log::error("Gagal update mapping ID {$id}: " . $e->getMessage());
-            
+
             if ($request->expectsJson()) {
                 return response()->json(['errors' => ['server' => [$e->getMessage()]]], 500);
             }
@@ -786,25 +839,25 @@ class MappingKddkController extends Controller
 
         DB::beginTransaction();
         try {
-            
+
             $updatedPaths = [];
 
             // 1. PINDAHKAN FILE FISIK (Unverified -> Verified)
             foreach (['foto_kwh', 'foto_bangunan'] as $field) {
                 $oldPath = $dataToPromote->$field;
-                
+
                 // Cek apakah file ada dan berada di folder unverified
                 if ($oldPath && strpos($oldPath, 'unverified') !== false && Storage::disk('public')->exists($oldPath)) {
                     $newPath = str_replace('unverified', 'verified', $oldPath);
-                    
+
                     // Pastikan folder tujuan ada
                     $directory = dirname($newPath);
                     if (!Storage::disk('public')->exists($directory)) {
                         Storage::disk('public')->makeDirectory($directory);
                     }
-                    
+
                     // Pindahkan file
-                    if(Storage::disk('public')->move($oldPath, $newPath)) {
+                    if (Storage::disk('public')->move($oldPath, $newPath)) {
                         $updatedPaths[$field] = $newPath;
                     }
                 }
@@ -812,19 +865,19 @@ class MappingKddkController extends Controller
 
             // 2. Nonaktifkan (Supersede) data LAMA yang sedang aktif
             MappingKddk::where('idpel', $idpel)
-                    ->where('id', '!=', $id)
-                    ->where(function ($query) {
-                        $query->where('enabled', true)
-                           ->orWhere('ket_validasi', 'verified');
-                        })
-                       ->update([
-                            'enabled' => false,
-                            'ket_validasi' => 'superseded'
-                        ]);
+                ->where('id', '!=', $id)
+                ->where(function ($query) {
+                    $query->where('enabled', true)
+                        ->orWhere('ket_validasi', 'verified');
+                })
+                ->update([
+                    'enabled' => false,
+                    'ket_validasi' => 'superseded'
+                ]);
 
             // 3. Aktifkan (Promosikan) data BARU
             $dataToPromote->enabled = true;
-            $dataToPromote->ket_validasi = 'verified'; 
+            $dataToPromote->ket_validasi = 'verified';
 
             // Update path foto baru (jika ada yang berpindah)
             if (!empty($updatedPaths)) {
@@ -840,16 +893,15 @@ class MappingKddkController extends Controller
             DB::commit();
 
             if ($request->expectsJson()) {
-                 return response()->json(['message' => 'Data Object Id ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.'], 200);
+                return response()->json(['message' => 'Data Object Id ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.'], 200);
             }
 
             return back()->with('success', 'Data Object Id ' . $dataToPromote->objectid . ' berhasil ditetapkan sebagai data aktif.');
-
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Gagal promote data ID {$id}: " . $e->getMessage());
             if ($request->expectsJson()) {
-                 return response()->json(['error' => 'Gagal memproses: ' . $e->getMessage()], 500);
+                return response()->json(['error' => 'Gagal memproses: ' . $e->getMessage()], 500);
             }
             return back()->with('error', 'Gagal memproses: ' . $e->getMessage());
         }
@@ -878,7 +930,8 @@ class MappingKddkController extends Controller
             $pathsToUpdate = [];
             $oldKwhPath = $validData->foto_kwh;
             $oldBangunanPath = $validData->foto_bangunan;
-            $newKwhPath = null; $newBangunanPath = null;
+            $newKwhPath = null;
+            $newBangunanPath = null;
 
             $tempDataArray = $validData->toArray();
 
@@ -890,7 +943,7 @@ class MappingKddkController extends Controller
                 if (!Storage::disk('public')->move($oldKwhPath, $newKwhPath)) throw new \Exception("Gagal pindah file KWH.");
                 $pathsToUpdate['foto_kwh'] = $newKwhPath;
             }
-            
+
             if ($oldBangunanPath && strpos($oldBangunanPath, 'verified') !== false && Storage::disk('public')->exists($oldBangunanPath)) {
                 $newBangunanPath = str_replace('verified', 'unverified', $oldBangunanPath);
                 $dir = dirname($newBangunanPath);
@@ -919,17 +972,16 @@ class MappingKddkController extends Controller
 
             DB::commit();
 
-            $msg = ($fallbackData) 
-                ? 'Data ditarik kembali. Data pengganti telah diaktifkan otomatis.' 
+            $msg = ($fallbackData)
+                ? 'Data ditarik kembali. Data pengganti telah diaktifkan otomatis.'
                 : 'Data ditarik kembali. Tidak ada data pengganti tersedia (Peta Kosong).';
 
             if ($request->expectsJson()) return response()->json(['message' => $msg], 200);
             return back()->with('success', $msg);
-
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Gagal invalidate data KDDK ID {$id}: " . $e->getMessage());
-            
+
             // Rollback pemindahan file jika gagal
             if ($newKwhPath && Storage::disk('public')->exists($newKwhPath)) {
                 Storage::disk('public')->move($newKwhPath, $oldKwhPath);
@@ -939,11 +991,10 @@ class MappingKddkController extends Controller
             }
 
             if ($request->expectsJson()) {
-                 return response()->json(['error' => 'Gagal menarik data: ' . $e->getMessage()], 500);
+                return response()->json(['error' => 'Gagal menarik data: ' . $e->getMessage()], 500);
             }
-            
+
             return back()->with('error', 'Gagal menarik data: ' . $e->getMessage());
         }
     }
-    
 }

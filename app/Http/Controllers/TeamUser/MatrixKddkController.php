@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use App\Models\HierarchyLevel;
@@ -20,107 +21,63 @@ class MatrixKddkController extends Controller
      * Halaman Utama Matrix KDDK (Rekapitulasi)
      */
     public function index(Request $request)
-{
-    try {
+    {
+        try {
+            $user = Auth::user();
 
-        $user = Auth::user();
-
-        // ⚠️ VERSION NAIK SETIAP UBAH STRUKTUR QUERY
-        $cacheVersion = 'v9';
-        $cacheKey = 'matrix_recap_user_' . $user->id . '_' . $cacheVersion;
-
-        $matrixData = Cache::remember($cacheKey, 60 * 60 * 6, function () use ($user) {
-
-            $hierarchyFilter = $this->getHierarchyFilterForJoin($user);
-
-            $query = DB::table('master_data_pelanggan')
-                ->join('hierarchy_levels as h_ulp', 'master_data_pelanggan.unitup', '=', 'h_ulp.code')
-                ->leftJoin('hierarchy_levels as h_up3', 'h_ulp.parent_code', '=', 'h_up3.code')
-                ->leftJoin('mapping_kddk', function ($join) {
-                    $join->on('master_data_pelanggan.idpel', '=', 'mapping_kddk.idpel')
-                         ->where('mapping_kddk.enabled', 1);
-                })
-                ->leftJoin('temporary_mappings', 'master_data_pelanggan.idpel', '=', 'temporary_mappings.idpel')
+            // 1. Query Database (Summary Table)
+            $query = DB::table('matrix_summaries')
+                ->leftJoin('hierarchy_levels as h_up3', 'matrix_summaries.parent_code', '=', 'h_up3.code')
                 ->select(
-                    'h_ulp.name as unit_layanan',
-                    'master_data_pelanggan.unitup as unit_code',
-                    'h_ulp.kddk_code as kode_ulp',
-                    'h_up3.name as unit_induk_name',
-                    'h_up3.kddk_code as kode_up3',
-                    'h_up3.order as order_up3',
-                    'h_ulp.order as order_ulp',
-
-                    // TARGET
-                    DB::raw('COUNT(master_data_pelanggan.id) as target_pelanggan'),
-                    DB::raw("SUM(CASE WHEN master_data_pelanggan.jenislayanan LIKE '%PRA%' THEN 1 ELSE 0 END) as target_prabayar"),
-                    DB::raw("SUM(CASE WHEN master_data_pelanggan.jenislayanan LIKE '%PASKA%' THEN 1 ELSE 0 END) as target_pascabayar"),
-
-                    // SUDAH KDDK (WAJIB)
-                    DB::raw("COUNT(DISTINCT CASE 
-                        WHEN mapping_kddk.kddk IS NOT NULL AND mapping_kddk.kddk != '' 
-                        THEN mapping_kddk.id END) as sudah_kddk"),
-
-                    DB::raw("COUNT(DISTINCT CASE 
-                        WHEN mapping_kddk.kddk IS NOT NULL AND mapping_kddk.kddk != '' 
-                        AND master_data_pelanggan.jenislayanan LIKE '%PRA%' 
-                        THEN mapping_kddk.id END) as sudah_kddk_prabayar"),
-
-                    DB::raw("COUNT(DISTINCT CASE 
-                        WHEN mapping_kddk.kddk IS NOT NULL AND mapping_kddk.kddk != '' 
-                        AND master_data_pelanggan.jenislayanan LIKE '%PASKA%' 
-                        THEN mapping_kddk.id END) as sudah_kddk_pascabayar"),
-
-                    // VALIDASI
-                    DB::raw('COUNT(DISTINCT temporary_mappings.id) as realisasi_survey'),
-                    DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.is_validated = 1 THEN temporary_mappings.id END) as valid'),
-                    DB::raw('COUNT(DISTINCT CASE WHEN temporary_mappings.ket_validasi LIKE "rejected_%" THEN temporary_mappings.id END) as ditolak')
+                    'matrix_summaries.*',
+                    DB::raw('COALESCE(h_up3.name, "WILAYAH LAINNYA") as parent_name')
                 );
 
-            if (!$user->hasRole('admin') && $hierarchyFilter) {
-                $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
+            // 2. Filter User (Jika bukan Admin)
+            if (!$user->hasRole('admin')) {
+                $userCode = $user->hierarchy_level_code;
+                $query->where(function($q) use ($userCode) {
+                    $q->where('matrix_summaries.unit_code', $userCode)
+                      ->orWhere('matrix_summaries.parent_code', $userCode)
+                      ->orWhere('matrix_summaries.region_code', $userCode);
+                });
             }
 
-            return $query
-                ->groupBy(
-                    'h_ulp.name',
-                    'master_data_pelanggan.unitup',
-                    'h_ulp.kddk_code',
-                    'h_up3.name',
-                    'h_up3.kddk_code',
-                    'h_up3.order',
-                    'h_ulp.order'
-                )
-                ->orderBy('h_up3.order')
-                ->orderBy('h_ulp.order')
-                ->get()
-                ->groupBy(fn ($item) => $item->unit_induk_name ?? 'LAINNYA');
-        });
+            // 3. Eksekusi & Grouping
+            // Grouping per UP3 diperlukan agar perhitungan SUM di blade berfungsi
+            $rawData = $query->orderBy('matrix_summaries.parent_code', 'asc')
+                             ->orderBy('matrix_summaries.unit_code', 'asc')
+                             ->get();
+            $matrixData = $rawData->groupBy('parent_name');
+            
+            $lastUpdate = DB::table('matrix_summaries')->max('updated_at');
 
-        $viewData = compact('matrixData');
+            // 4. Deteksi Request (AJAX vs Browser)
+            // Mendukung Tab Manager (AJAX) dan Reload Biasa
+            $isAjax = $request->ajax() || 
+                      $request->header('Sec-Fetch-Dest') === 'empty' || 
+                      $request->wantsJson();
 
-        if ($request->has('is_ajax')) {
-            return view('team.matrix_kddk.partials.index_content', $viewData);
+            if ($isAjax) {
+                // Return Partial View (Hanya Tabel)
+                if (!view()->exists('team.matrix_kddk.partials.index_content')) {
+                    return response('Error: View partial not found', 500);
+                }
+                return view('team.matrix_kddk.partials.index_content', compact('matrixData', 'lastUpdate'));
+            }
+
+            // Return Full Layout (Halaman Utuh)
+            return view('team.matrix_kddk.index', compact('matrixData', 'lastUpdate'));
+
+        } catch (\Exception $e) {
+            Log::error('MatrixKddk Error: ' . $e->getMessage());
+            
+            if ($request->ajax()) {
+                return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            }
+            return back()->with('error', 'Gagal memuat data: ' . $e->getMessage());
         }
-
-        return view('team.matrix_kddk.index', $viewData);
-
-    } catch (\Throwable $e) {
-
-        // 🔥 PENTING UNTUK PRODUCTION
-        Log::error('[MatrixKddk] Gagal load matrix', [
-            'user_id' => Auth::id(),
-            'error'   => $e->getMessage(),
-        ]);
-
-        if ($request->has('is_ajax')) {
-            return response()->json([
-                'message' => 'Gagal memuat data matrix. Silakan refresh halaman.'
-            ], 500);
-        }
-
-        abort(500, 'Terjadi kesalahan saat memuat Matrix KDDK.');
     }
-}
 
 
     /**
@@ -1519,7 +1476,7 @@ class MatrixKddkController extends Controller
 
             // Hapus Cache
             if (Auth::check()) {
-  
+
                 $this->touchGlobalDataVersion();
             }
 

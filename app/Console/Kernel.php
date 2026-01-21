@@ -34,6 +34,9 @@ class Kernel extends ConsoleKernel
 
         // 4. Jalankan pembersihan setiap tengah malam
         $schedule->command('model:prune')->daily();
+
+        // 4. Jalankan hitung matrix setiap jam
+        $schedule->command('matrix:update-summary')->hourly();
     }
 
     /**

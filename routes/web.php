@@ -6,15 +6,15 @@ use App\Http\Controllers\ProfileController;
 
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\AppUser\DashboardController as AppUserDashboardController;
-use App\Http\Controllers\TeamUser\DashboardController as TeamDashboardController; 
-use App\Http\Controllers\Executive\DashboardController as ExecutiveDashboardController; 
+use App\Http\Controllers\TeamUser\DashboardController as TeamDashboardController;
+use App\Http\Controllers\Executive\DashboardController as ExecutiveDashboardController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\MenuController;
 use App\Http\Controllers\Admin\PermissionController;
-use App\Http\Controllers\Admin\HierarchyController; 
-use App\Http\Controllers\Admin\SupervisorController; 
-use App\Http\Controllers\Admin\MasterDataController; 
-use App\Http\Controllers\TeamUser\SmartTargetController; 
+use App\Http\Controllers\Admin\HierarchyController;
+use App\Http\Controllers\Admin\SupervisorController;
+use App\Http\Controllers\Admin\MasterDataController;
+use App\Http\Controllers\TeamUser\SmartTargetController;
 use App\Http\Controllers\TeamUser\MappingKddkController;
 use App\Http\Controllers\TeamUser\MappingValidationController;
 use App\Http\Controllers\TeamUser\ValidationRecapController;
@@ -37,6 +37,8 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+Route::get('/download', [App\Http\Controllers\AppDownloadController::class, 'index'])->name('public.download');
+
 // Grup rute untuk pengguna yang sudah terautentikasi dan terverifikasi email
 Route::middleware(['auth', 'verified'])->group(function () {
 
@@ -58,7 +60,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             }
         }
         // Pengguna tidak memiliki peran khusus, arahkan ke dashboard default
-        return view('dashboard');  
+        return view('dashboard');
     })->name('dashboard');
 
     // ======================================================================
@@ -85,15 +87,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::resource('menu', MenuController::class);
         Route::resource('hierarchies', HierarchyController::class)->except(['show']);
         Route::prefix('permissions')->name('permissions.')->group(function () {
-            
+
             // 1. Halaman Utama (Index) & Form Tambah Izin Manual
             Route::get('/', [PermissionController::class, 'index'])->name('index');
             Route::get('/create', [PermissionController::class, 'create'])->name('create');
             Route::post('/', [PermissionController::class, 'store'])->name('store');
-            
+
             // 2. Action: Update Izin Fitur (Security)
             Route::post('/update-role', [PermissionController::class, 'updateRolePermissions'])->name('updateRolePermissions');
-            
+
             // 3. Action: Update Menu Sidebar (Visibility - Role Default)
             Route::post('/update-role-menus', [PermissionController::class, 'updateRoleMenus'])->name('updateRoleMenus');
 
@@ -103,27 +105,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
             // 5. Action: Reset Menu User ke Default Role
             Route::post('/reset-user-menus', [PermissionController::class, 'resetUserMenus'])->name('resetUserMenus');
         });
-    
+
         // Manajemen Data
         Route::prefix('manajemen-data')->name('manajemen_data.')->group(function () {
             Route::get('dashboard', [MasterDataController::class, 'dashboard'])->name('dashboard');
-                
+
             // Route::resource otomatis membuat route edit, update, dan destroy
             Route::resource('pelanggan', MasterDataController::class)->except(['show']);
 
             // Rute khusus yang tidak termasuk resource
-            Route::get('upload', [MasterDataController::class, 'uploadForm'])->name('upload');  
+            Route::get('upload', [MasterDataController::class, 'uploadForm'])->name('upload');
             Route::post('upload-chunk', [MasterDataController::class, 'uploadChunk'])->name('upload.chunk');
-            Route::post('merge-chunks', [MasterDataController::class, 'mergeChunks'])->name('merge.chunks');   
+            Route::post('merge-chunks', [MasterDataController::class, 'mergeChunks'])->name('merge.chunks');
             Route::get('download-format', [MasterDataController::class, 'downloadFormat'])->name('download-format');
         });
 
         // Manajemen Supervisor (Queue Workers)
         Route::prefix('supervisor')->name('supervisor.')->group(function () {
-                Route::get('workers', [SupervisorController::class, 'index'])->name('index');
-                Route::post('update-process', [SupervisorController::class, 'updateProcess']);
-            });
-    
+            Route::get('workers', [SupervisorController::class, 'index'])->name('index');
+            Route::post('update-process', [SupervisorController::class, 'updateProcess']);
+        });
     });
 
     // ======================================================================
@@ -145,7 +146,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('mapping-upload-photo', [MappingKddkController::class, 'uploadTemporaryPhoto'])->name('mapping.upload-photo');
         Route::delete('mapping-delete-photo', [MappingKddkController::class, 'deleteTemporaryPhoto'])->name('mapping.delete-photo');
         Route::get('mapping-download-format', [MappingKddkController::class, 'downloadFormat'])->name('mapping.download-format');
-   
+
         Route::prefix('mapping-validation')->name('mapping_validation.')->group(function () {
             Route::get('/', [MappingValidationController::class, 'index'])->name('index');
             Route::get('upload', [MappingValidationController::class, 'uploadForm'])->name('upload.form');
@@ -157,45 +158,45 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
             // Rute AJAX untuk mengunci & mendapatkan detail (Method POST)
             Route::post('/item/{id}/lock', [MappingValidationController::class, 'lockAndGetDetails'])
-                 ->where('id', '[0-9]+')
-                 ->name('lock');
+                ->where('id', '[0-9]+')
+                ->name('lock');
             // Rute Aksi (tetap sama)
             Route::post('/{id}/approve', [MappingValidationController::class, 'approve'])->name('approve');
             Route::delete('/{id}/reject', [MappingValidationController::class, 'reject'])->name('reject');
         });
 
         Route::prefix('validation-recap')->name('validation_recap.')->group(function () {
-            
+
             Route::get('/', [ValidationRecapController::class, 'index'])->name('index');
-            
+
             // Aksi Promote (Hanya bisa dilakukan oleh team/admin)
             Route::post('/{id}/promote', [ValidationRecapController::class, 'promote'])
-                 ->name('promote')
-                 ->middleware('role:admin,team');
+                ->name('promote')
+                ->middleware('role:admin,team');
 
             // Aksi Reject (Hanya bisa dilakukan oleh team/admin)
             Route::post('/{id}/reject', [ValidationRecapController::class, 'rejectReview'])
-                 ->name('reject_review')
-                 ->middleware('role:admin,team');
+                ->name('reject_review')
+                ->middleware('role:admin,team');
 
             Route::get('/download', [ValidationRecapController::class, 'downloadValidatorReport'])
-                 ->name('download');
+                ->name('download');
 
             Route::get('/repair', [ValidationRecapController::class, 'showRepairModal'])
-                 ->name('repair.show');
+                ->name('repair.show');
 
             Route::post('/repair/search', [ValidationRecapController::class, 'findRepairData'])
-                 ->name('repair.search');
+                ->name('repair.search');
 
             Route::post('/repair/update', [ValidationRecapController::class, 'updateRepairData'])
-                 ->name('repair.update');
+                ->name('repair.update');
         });
 
         // Modul Matrix KDDK & Manajemen RBM
         Route::prefix('matrix-kddk')->name('matrix_kddk.')->group(function () {
-            
+
             // 1. Halaman Utama (Rekapitulasi)
-            Route::get('/', [MatrixKddkController::class, 'index'])->name('index');   
+            Route::get('/', [MatrixKddkController::class, 'index'])->name('index');
             // 2. Drill Down: Detail Pelanggan per Unit
             Route::get('/details/{unit}', [MatrixKddkController::class, 'details'])->name('details');
             // 3. Generator KDDK: Simpan Group Baru
@@ -219,13 +220,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/search-customer/{unit}', [MatrixKddkController::class, 'searchCustomer'])->name('search_customer');
             Route::post('/save-sequence', [MatrixKddkController::class, 'saveRouteSequence'])->name('save_sequence');
             Route::post('/validate-upload', [MatrixKddkController::class, 'validateUploadIds'])->name('validate_upload');
-            
+
             // 8. Peta
             Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');
             Route::post('update-coordinate', [MatrixKddkController::class, 'updateCoordinate'])->name('team.matrix_kddk.update_coord');
             Route::post('/bulk-update-coords', [MatrixKddkController::class, 'bulkUpdateCoordinates'])->name('bulk_update_coords');
         });
-
     });
 
     // ======================================================================
@@ -249,8 +249,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // 3. Akses Data Peta (Untuk keperluan visualisasi peta di dashboard)
         Route::get('/map-data/{unit}', [MatrixKddkController::class, 'getMapData'])->name('map_data');
-
-        
     });
 
     // ======================================================================
@@ -258,7 +256,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Menggunakan middleware 'role' yang spesifik
     // ======================================================================
     Route::prefix('settings')->name('admin.settings.')->middleware(['role:admin,team,appuser,executive_user'])->group(function () {
-    
+
         // Halaman Utama Pengaturan
         Route::get('/', [SettingsController::class, 'index'])->name('index');
         Route::post('/save-generic-setting', [SettingsController::class, 'saveGenericSetting'])->name('save_generic');
@@ -268,8 +266,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/update-area', [SettingsController::class, 'updateArea'])->name('update_area');
         Route::post('/delete-item', [SettingsController::class, 'deleteKddkConfigItem'])->name('delete_item');
         Route::post('/clear-audit', [SettingsController::class, 'clearAuditLogs'])->name('clear_audit');
+        Route::post('/upload-apk', [SettingsController::class, 'uploadApk'])->name('upload_apk');
+        Route::get('/logs', [SettingsController::class, 'getAuditLogs'])->name('logs');
+        Route::get('/snapshots', [SettingsController::class, 'getSnapshots'])->name('snapshots');
+        Route::post('/restore', [SettingsController::class, 'restoreSnapshot'])->name('restore');
+        Route::get('/devices', [SettingsController::class, 'getDevices'])->name('devices');
+        Route::post('/device-block', [SettingsController::class, 'toggleBlockDevice'])->name('device_block');
     });
-
 });
 
 // Rute untuk manajemen profil (dari Laravel Breeze)
@@ -279,4 +282,4 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-require __DIR__.'/auth.php'; //
+require __DIR__ . '/auth.php'; //

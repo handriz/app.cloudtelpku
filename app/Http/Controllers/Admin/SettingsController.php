@@ -141,8 +141,8 @@ class SettingsController extends Controller
     {
         $user = Auth::user();
         $isAdmin = $user->hasRole('admin');
-        
-        $userCode = $user->hierarchy_level_code; 
+
+        $userCode = $user->hierarchy_level_code;
         $configScope = $isAdmin ? null : $userCode;
 
         // Load Config
@@ -153,38 +153,36 @@ class SettingsController extends Controller
 
         $areasCollection = collect($config['areas'] ?? []);
         $targetArea = $areasCollection->firstWhere('code', $areaCode);
-        $routesConfig = $targetArea['routes'] ?? []; 
-        
+        $routesConfig = $targetArea['routes'] ?? [];
+
         // 2. TENTUKAN PREFIX UNIT (KEAMANAN KETAT)
         if ($isAdmin) {
-             // Admin boleh lihat semua (3 digit apa saja)
+            // Admin boleh lihat semua (3 digit apa saja)
             $officialPrefix = '___';
         } else {
             // User Biasa: DEFAULT MATI ('###'). 
             // Jangan pakai '___', nanti user baru bisa lihat data unit lain!
-            $officialPrefix = '###'; 
+            $officialPrefix = '###';
 
             if ($userCode) {
                 $hierarchy = \App\Models\HierarchyLevel::where('code', $userCode)->first();
-                
+
                 if ($hierarchy) {
                     if ($hierarchy->unit_type === 'ULP') {
                         // Pola: UP3 + ULP + Wildcard Sub
-                        $ulpCode = $hierarchy->kddk_code; 
-                        $up3Code = $hierarchy->parent ? $hierarchy->parent->kddk_code : '_'; 
-                        
+                        $ulpCode = $hierarchy->kddk_code;
+                        $up3Code = $hierarchy->parent ? $hierarchy->parent->kddk_code : '_';
+
                         // Pastikan kode valid (A-Z)
                         if ($ulpCode && $up3Code) {
                             $officialPrefix = $up3Code . $ulpCode . '_';
                         }
-                    } 
-                    elseif ($hierarchy->unit_type === 'UP3') {
+                    } elseif ($hierarchy->unit_type === 'UP3') {
                         $up3Code = $hierarchy->kddk_code;
                         if ($up3Code) {
                             $officialPrefix = $up3Code . '__';
                         }
-                    }
-                    elseif ($hierarchy->unit_type === 'SUB_ULP') {
+                    } elseif ($hierarchy->unit_type === 'SUB_ULP') {
                         $subCode = $hierarchy->kddk_code;
                         $ulpCode = $hierarchy->parent ? $hierarchy->parent->kddk_code : '_';
                         $up3Code = ($hierarchy->parent && $hierarchy->parent->parent) ? $hierarchy->parent->parent->kddk_code : '_';
@@ -196,24 +194,23 @@ class SettingsController extends Controller
 
         // 3. HITUNG PELANGGAN (TANPA DETEKTIF / STRICT MODE)
         $routes = collect($routesConfig)->map(function ($route, $index) use ($areaCode, $officialPrefix) {
-            
+
             // Cari HANYA dengan Prefix Unit Resmi
             // Jika user 18120 belum disetting hirarkinya, prefixnya '###'
             // Maka query LIKE '###AAAB%' -> Hasil pasti 0 (Aman)
             $strictPrefix = $officialPrefix . $areaCode . $route['code'];
-            
+
             $count = \Illuminate\Support\Facades\DB::table('mapping_kddk')
                 ->where('kddk', 'like', $strictPrefix . '%')
                 ->count();
 
             $route['customer_count'] = $count;
             $route['original_index'] = $index;
-            
+
             // Hapus label warning detektif jika ada sisa
             // $route['label'] tetap murni
-            
-            return $route;
 
+            return $route;
         })->sortBy('code');
 
         $groupedRoutes = $routes->groupBy(function ($item) {
@@ -278,6 +275,23 @@ class SettingsController extends Controller
         $inputs = $request->input('settings', []);
 
         foreach ($inputs as $key => $value) {
+
+            $oldSetting = AppSetting::where('key', $key)
+                ->where('hierarchy_code', $targetHierarchy)
+                ->first();
+            $oldValue = $oldSetting ? $oldSetting->value : null;
+
+            if ($type === 'json' && $key === 'kddk_config_data' && (string)$oldValue !== (string)$saveValue && $oldValue) {
+                \App\Models\SettingSnapshot::create([
+                    'setting_key' => $key,
+                    'hierarchy_code' => $targetHierarchy,
+                    'value' => $oldValue, // Simpan versi SEBELUM diupdate
+                    'created_by' => $user->id
+                ]);
+
+                // Opsional: Hapus snapshot lama jika > 20 agar DB tidak bengkak
+                \App\Models\SettingSnapshot::where('setting_key', $key)->where('hierarchy_code', $targetHierarchy)->orderBy('id', 'desc')->skip(20)->delete();
+            }
 
             // Auto-create definition jika belum ada
             $settingDefinition = AppSetting::firstOrCreate(
@@ -346,10 +360,123 @@ class SettingsController extends Controller
                     'label' => $settingDefinition->label,
                 ]
             );
+
+            if ((string)$oldValue !== (string)$saveValue) {
+                // Untuk JSON yang panjang, kita simpan ringkasannya saja atau full (tergantung kebutuhan)
+                // Disini saya limit 500 karakter agar DB tidak meledak
+                DB::table('setting_audit_logs')->insert([
+                    'user_id'       => $user->id,
+                    'setting_key'   => $key,
+                    'setting_group' => $settingDefinition->group,
+                    'old_value'     => $type === 'json' ? '[DATA JSON LAMA]' : \Illuminate\Support\Str::limit((string)$oldValue, 500),
+                    'new_value'     => $type === 'json' ? '[DATA JSON BARU]' : \Illuminate\Support\Str::limit((string)$saveValue, 500),
+                    'ip_address'    => $request->ip(),
+                    'user_agent'    => $request->userAgent(),
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
+                ]);
+            }
         }
 
         Cache::flush();
         return response()->json(['success' => true, 'message' => 'Pengaturan berhasil disimpan.']);
+    }
+
+    /**
+     * Mengambil Data Log Perubahan Setting (Untuk Modal Viewer)
+     */
+    public function getAuditLogs()
+    {
+        // Ambil dari tabel setting_audit_logs
+        $logs = DB::table('setting_audit_logs')
+            ->join('users', 'setting_audit_logs.user_id', '=', 'users.id')
+            ->select(
+                'setting_audit_logs.*',
+                'users.name as user_name'
+            )
+            ->orderBy('setting_audit_logs.created_at', 'desc')
+            ->limit(50)
+            ->get()
+            ->map(function ($log) {
+                // Formatting untuk Frontend
+                $log->time_ago = \Carbon\Carbon::parse($log->created_at)->diffForHumans();
+                $log->date_formatted = \Carbon\Carbon::parse($log->created_at)->format('d M Y H:i');
+
+                // Mapping field agar sesuai dengan template JS
+                $log->action_type = 'UPDATE';
+                $log->target_key  = $log->setting_key;
+
+                return $log;
+            });
+
+        return response()->json(['success' => true, 'logs' => $logs]);
+    }
+
+    /**
+     * [BARU] Ambil Daftar Snapshot (History)
+     */
+    public function getSnapshots(Request $request)
+    {
+        $key = $request->input('key', 'kddk_config_data');
+        $user = Auth::user();
+        $scope = $user->hasRole('admin') ? null : $user->hierarchy_level_code;
+
+        $snapshots = \App\Models\SettingSnapshot::with('creator')
+            ->where('setting_key', $key)
+            ->where('hierarchy_code', $scope)
+            ->orderBy('created_at', 'desc')
+            ->limit(10) // Ambil 10 versi terakhir saja
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'date' => $item->created_at->format('d M Y, H:i'),
+                    'ago' => $item->created_at->diffForHumans(),
+                    'user' => $item->creator ? $item->creator->name : 'System',
+                    'size' => round(strlen($item->value) / 1024, 2) . ' KB'
+                ];
+            });
+
+        return response()->json(['success' => true, 'data' => $snapshots]);
+    }
+
+    /**
+     * [BARU] Restore Snapshot
+     */
+    public function restoreSnapshot(Request $request)
+    {
+        $snapshotId = $request->input('id');
+        $snapshot = \App\Models\SettingSnapshot::find($snapshotId);
+
+        if (!$snapshot) {
+            return response()->json(['success' => false, 'message' => 'Backup tidak ditemukan.'], 404);
+        }
+
+        // 1. Restore Data ke Table Utama
+        AppSetting::updateOrCreate(
+            ['key' => $snapshot->setting_key, 'hierarchy_code' => $snapshot->hierarchy_code],
+            [
+                'value' => $snapshot->value,
+                // Pastikan group tetap benar (ambil dari setting yg ada atau default)
+                'group' => 'kddk',
+                'updated_by' => Auth::id()
+            ]
+        );
+
+        // 2. Catat di Audit Log bahwa terjadi Restore
+        DB::table('setting_audit_logs')->insert([
+            'user_id'       => Auth::id(),
+            'setting_key'   => $snapshot->setting_key,
+            'setting_group' => 'kddk',
+            'old_value'     => 'RESTORED FROM BACKUP',
+            'new_value'     => 'Version: ' . $snapshot->created_at,
+            'action_type'   => 'RESTORE', // Pastikan kolom ini ada atau gunakan deskripsi
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+
+        Cache::flush();
+        return response()->json(['success' => true, 'message' => 'Konfigurasi berhasil dikembalikan ke versi tanggal ' . $snapshot->created_at->format('d M Y H:i')]);
     }
 
     /**
@@ -513,6 +640,11 @@ class SettingsController extends Controller
         $scopeCode = $user->hasRole('admin') ? null : $user->hierarchy_level_code;
 
         // 2. Deteksi Tipe Data Otomatis (REVISI PRESIISI KOORDINAT)
+        $oldSetting = AppSetting::where('key', $request->key)
+            ->where('hierarchy_code', $scopeCode)
+            ->first();
+        $oldValue = $oldSetting ? $oldSetting->value : null;
+
         $value = $request->value;
         $type = 'string';
 
@@ -547,6 +679,20 @@ class SettingsController extends Controller
                 ]
             );
 
+            if ((string)$oldValue !== (string)$value) {
+                DB::table('setting_audit_logs')->insert([
+                    'user_id'       => $user->id,
+                    'setting_key'   => $request->key,
+                    'setting_group' => $request->group,
+                    'old_value'     => \Illuminate\Support\Str::limit((string)$oldValue, 500),
+                    'new_value'     => \Illuminate\Support\Str::limit((string)$value, 500),
+                    'ip_address'    => $request->ip(),
+                    'user_agent'    => $request->userAgent(),
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
+                ]);
+            }
+
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -562,8 +708,8 @@ class SettingsController extends Controller
         // 1. Tentukan Prefix Area
         // Area di DB Mapping biasanya menempati digit ke-4 dan 5 (setelah 3 digit unit)
         // Pola: ___[KodeArea]%
-        
-        $prefix = '___' . $areaCode; 
+
+        $prefix = '___' . $areaCode;
 
         // 2. Hitung Pelanggan Aktif
         $count = \Illuminate\Support\Facades\DB::table('mapping_kddk')
@@ -584,5 +730,94 @@ class SettingsController extends Controller
             'safe' => true,
             'message' => 'Area aman dihapus.'
         ]);
+    }
+
+    public function uploadApk(Request $request)
+    {
+        $request->validate([
+            'apk_file' => 'required|file|mimes:apk,zip|max:102400', // Max 50MB
+        ]);
+
+        if ($request->hasFile('apk_file')) {
+            $file = $request->file('apk_file');
+
+            $filename = 'app-release-' . time() . '.apk';
+
+            // Simpan ke storage/app/public/apk
+            $path = $file->storeAs('apk', $filename, 'public');
+
+            // Update Database Setting
+            \App\Models\AppSetting::updateOrCreate(
+                ['key' => 'mobile_apk_filename'],
+                ['value' => $filename, 'group' => 'system']
+            );
+
+            \App\Models\AppSetting::updateOrCreate(
+                ['key' => 'mobile_apk_uploaded_at'],
+                ['value' => now(), 'group' => 'system']
+            );
+
+            // Hapus file lama (Opsional, agar hemat storage)
+            // ... logic hapus file lama ...
+
+            return response()->json([
+                'success' => true,
+                'filename' => $filename,
+                'url' => asset('storage/apk/' . $filename)
+            ]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'File tidak ditemukan']);
+    }
+
+    /**
+     * [BARU] Ambil Daftar Perangkat Terdaftar
+     */
+    public function getDevices(Request $request)
+    {
+        $devices = \App\Models\UserDevice::with('user')
+            ->orderBy('last_login_at', 'desc')
+            ->limit(50)
+            ->get()
+            ->map(function ($dev) {
+                return [
+                    'id' => $dev->id,
+                    'user_name' => $dev->user ? $dev->user->name : 'Unknown',
+                    'model' => $dev->model_name ?? 'Unknown Device',
+                    'app_ver' => $dev->app_version,
+                    'last_seen' => $dev->last_login_at ? $dev->last_login_at->diffForHumans() : '-',
+                    'ip' => $dev->last_ip,
+                    'is_blocked' => $dev->is_blocked
+                ];
+            });
+
+        return response()->json(['success' => true, 'data' => $devices]);
+    }
+
+    /**
+     * [BARU] Toggle Blokir Perangkat
+     */
+    public function toggleBlockDevice(Request $request)
+    {
+        $device = \App\Models\UserDevice::find($request->id);
+        if (!$device) return response()->json(['success' => false, 'message' => 'Perangkat tidak ditemukan'], 404);
+
+        $device->is_blocked = !$device->is_blocked;
+        $device->save();
+
+        $status = $device->is_blocked ? 'DIBLOKIR' : 'DIAMANKAN (Unblock)';
+
+        // Catat Log
+        DB::table('setting_audit_logs')->insert([
+            'user_id' => Auth::id(),
+            'setting_key' => 'device_security',
+            'setting_group' => 'system',
+            'old_value' => $device->model_name,
+            'new_value' => $status,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['success' => true, 'message' => "Perangkat berhasil {$status}."]);
     }
 }

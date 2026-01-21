@@ -136,6 +136,103 @@
                 {{-- Navigasi Atas --}}
                 @include('layouts.navigation')
 
+                {{-- ========================================================= --}}
+                {{-- MULAI: GLOBAL ANNOUNCEMENT BANNER (MODERN GRADIENT)       --}}
+                {{-- ========================================================= --}}
+                @php
+                    // Ambil Setting
+                    $announceActive = \App\Models\AppSetting::findValue('announcement_is_active');
+                    $announceText   = \App\Models\AppSetting::findValue('announcement_text');
+                    $announceType   = \App\Models\AppSetting::findValue('announcement_type', null, 'info');
+                    
+                    // Mapping Style Modern (Gradient & Shadow)
+                    $styles = [
+                        'info' => [
+                            'bg'   => 'bg-gradient-to-r from-blue-600 to-indigo-700',
+                            'icon' => 'fa-bullhorn',
+                            'shadow' => 'shadow-blue-500/30'
+                        ],
+                        'warning' => [
+                            'bg'   => 'bg-gradient-to-r from-amber-500 to-orange-600',
+                            'icon' => 'fa-bell',
+                            'shadow' => 'shadow-orange-500/30'
+                        ],
+                        'danger' => [
+                            'bg'   => 'bg-gradient-to-r from-red-600 to-rose-700',
+                            'icon' => 'fa-exclamation-triangle',
+                            'shadow' => 'shadow-red-500/30'
+                        ],
+                    ];
+                    
+                    $style = $styles[$announceType] ?? $styles['info'];
+                @endphp
+
+                @if($announceActive && !empty($announceText))
+                    <div id="global-announcement" 
+                         class="relative overflow-hidden {{ $style['bg'] }} text-white shadow-lg {{ $style['shadow'] }} transition-all duration-500 ease-out transform translate-y-0 opacity-100 z-40">
+                        
+                        {{-- Dekorasi Background (Icon Besar Transparan) --}}
+                        <div class="absolute -right-6 -top-6 text-white opacity-10 transform rotate-12 pointer-events-none">
+                            <i class="fas {{ $style['icon'] }} text-9xl"></i>
+                        </div>
+
+                        {{-- Dekorasi Cahaya (Glow) --}}
+                        <div class="absolute top-0 left-0 w-full h-1 bg-white opacity-20"></div>
+
+                        <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 relative z-10">
+                            <div class="flex items-start gap-4">
+                                
+                                {{-- Icon Utama (Animated) --}}
+                                <div class="flex-shrink-0">
+                                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/30 backdrop-blur-sm animate-pulse">
+                                        <i class="fas {{ $style['icon'] }} text-lg"></i>
+                                    </span>
+                                </div>
+
+                                {{-- Konten Teks --}}
+                                <div class="flex-1 pt-1">
+                                    <p class="font-medium text-sm md:text-base leading-relaxed tracking-wide text-shadow-sm">
+                                        {!! nl2br(e($announceText)) !!}
+                                    </p>
+                                </div>
+
+                                {{-- Tombol Close (Modern Circle) --}}
+                                <div class="flex-shrink-0 order-2 sm:order-3 sm:ml-3">
+                                    <button type="button" 
+                                            onclick="closeAnnouncement()"
+                                            class="-mr-1 flex p-2 rounded-full hover:bg-black/10 focus:outline-none focus:ring-2 focus:ring-white sm:-mr-2 transition-colors duration-200">
+                                        <span class="sr-only">Tutup</span>
+                                        <i class="fas fa-times text-white/80 hover:text-white"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Script Animasi Tutup Halus --}}
+                    <script>
+                        function closeAnnouncement() {
+                            const banner = document.getElementById('global-announcement');
+                            // Efek Slide Up & Fade Out
+                            banner.style.transform = 'translateY(-100%)';
+                            banner.style.opacity = '0';
+                            banner.style.marginBottom = '-'+banner.offsetHeight+'px';
+                            
+                            setTimeout(() => {
+                                banner.remove();
+                            }, 500); // Hapus elemen setelah animasi selesai
+                        }
+                    </script>
+
+                    {{-- CSS Tambahan untuk Text Shadow (Optional) --}}
+                    <style>
+                        .text-shadow-sm { text-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+                    </style>
+                @endif
+                {{-- ========================================================= --}}
+                {{-- SELESAI: GLOBAL ANNOUNCEMENT BANNER                       --}}
+                {{-- ========================================================= --}}
+
                 {{-- 2. Tambahkan overlay gelap yang muncul saat sidebar mobile terbuka --}}
                 <div x-show="mobileSidebarOpen" @click="mobileSidebarOpen = false" 
                      class="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
