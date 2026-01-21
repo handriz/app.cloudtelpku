@@ -235,31 +235,19 @@ class SettingsController extends Controller
         // Deteksi apakah ini update rute spesifik (Partial Update)
         $targetAreaCode = $request->input('area_code_target');
 
-        // 1. VALIDASI DINAMIS
+        // 1. VALIDASI DINAMIS (Tidak Ada Perubahan)
         if ($targetAreaCode) {
-            // --- Validasi Mode: MANAGE RUTE ---
             $request->validate([
                 "settings.kddk_config_data.routes_manage.{$targetAreaCode}.*.code" => 'required|string|size:2|regex:/^[A-Z]{2}$/|distinct',
                 "settings.kddk_config_data.routes_manage.{$targetAreaCode}.*.label" => 'required|string|max:100',
             ], [
-                // --- PESAN ERROR KUSTOM (Agar Mudah Dibaca) ---
-                // Gunakan wildcard (*) untuk menangkap semua index array
-
-                // Error Duplikat
                 'settings.kddk_config_data.routes_manage.*.*.code.distinct' => 'Terdapat Kode Rute yang ganda (Duplikat). Mohon cek inputan Anda.',
-
-                // Error Format (Bukan Huruf)
                 'settings.kddk_config_data.routes_manage.*.*.code.regex' => 'Kode Rute wajib 2 Huruf Kapital (A-Z).',
-
-                // Error Wajib Isi
                 'settings.kddk_config_data.routes_manage.*.*.code.required' => 'Kode Rute wajib diisi.',
                 'settings.kddk_config_data.routes_manage.*.*.label.required' => 'Keterangan Rute wajib diisi.',
-
-                // Error Panjang Karakter
                 'settings.kddk_config_data.routes_manage.*.*.code.size' => 'Kode Rute harus tepat 2 karakter.',
             ]);
         } else {
-            // --- Validasi Mode: UTAMA (Index) ---
             $request->validate([
                 'settings.kddk_config_data.areas.*.code' => 'required|string|size:2|regex:/^[A-Z]{2}$/|distinct',
                 'settings.kddk_config_data.areas.*.label' => 'required|string|max:100',
@@ -276,26 +264,15 @@ class SettingsController extends Controller
 
         foreach ($inputs as $key => $value) {
 
+            // A. Ambil Data Lama (Untuk Snapshot & Audit)
             $oldSetting = AppSetting::where('key', $key)
                 ->where('hierarchy_code', $targetHierarchy)
                 ->first();
             $oldValue = $oldSetting ? $oldSetting->value : null;
 
-            if ($type === 'json' && $key === 'kddk_config_data' && (string)$oldValue !== (string)$saveValue && $oldValue) {
-                \App\Models\SettingSnapshot::create([
-                    'setting_key' => $key,
-                    'hierarchy_code' => $targetHierarchy,
-                    'value' => $oldValue, // Simpan versi SEBELUM diupdate
-                    'created_by' => $user->id
-                ]);
-
-                // Opsional: Hapus snapshot lama jika > 20 agar DB tidak bengkak
-                \App\Models\SettingSnapshot::where('setting_key', $key)->where('hierarchy_code', $targetHierarchy)->orderBy('id', 'desc')->skip(20)->delete();
-            }
-
-            // Auto-create definition jika belum ada
+            // B. Siapkan Definisi Setting (Agar kita tahu tipe datanya)
             $settingDefinition = AppSetting::firstOrCreate(
-                ['key' => $key, 'hierarchy_code' => null],
+                ['key' => $key, 'hierarchy_code' => null], // Cari Global definition dulu
                 [
                     'type' => ($key === 'kddk_config_data') ? 'json' : 'string',
                     'group' => ($key === 'kddk_config_data') ? 'kddk' : 'general',
@@ -304,11 +281,14 @@ class SettingsController extends Controller
                 ]
             );
 
-            $saveValue = $value;
+            // C. Tentukan Tipe & Nilai Awal
             $type = $settingDefinition->type;
+            $saveValue = $value; 
 
+            // D. LOGIKA JSON MERGE (Penting untuk Rute)
+            // Kita proses dulu nilainya SEBELUM snapshot
             if ($type === 'json' && $key === 'kddk_config_data') {
-
+                
                 // KASUS A: Update Partial Rute (Dari Halaman Manage Routes)
                 if ($targetAreaCode && isset($value['routes_manage'])) {
                     // 1. Ambil data eksisting dari DB
@@ -351,6 +331,24 @@ class SettingsController extends Controller
                 }
             }
 
+            // E. SNAPSHOT LOGIC (Sekarang Aman, karena $saveValue & $type sudah ada)
+            if ($type === 'json' && $key === 'kddk_config_data' && (string)$oldValue !== (string)$saveValue && $oldValue) {
+                \App\Models\SettingSnapshot::create([
+                    'setting_key' => $key,
+                    'hierarchy_code' => $targetHierarchy,
+                    'value' => $oldValue, // Simpan versi SEBELUM diupdate
+                    'created_by' => $user->id
+                ]);
+
+                // Hapus snapshot lama jika > 20
+                \App\Models\SettingSnapshot::where('setting_key', $key)
+                    ->where('hierarchy_code', $targetHierarchy)
+                    ->orderBy('id', 'desc')
+                    ->skip(20)
+                    ->delete();
+            }
+
+            // F. SIMPAN KE DATABASE
             AppSetting::updateOrCreate(
                 ['key' => $key, 'hierarchy_code' => $targetHierarchy],
                 [
@@ -361,9 +359,8 @@ class SettingsController extends Controller
                 ]
             );
 
+            // G. AUDIT LOG
             if ((string)$oldValue !== (string)$saveValue) {
-                // Untuk JSON yang panjang, kita simpan ringkasannya saja atau full (tergantung kebutuhan)
-                // Disini saya limit 500 karakter agar DB tidak meledak
                 DB::table('setting_audit_logs')->insert([
                     'user_id'       => $user->id,
                     'setting_key'   => $key,

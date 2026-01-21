@@ -23,6 +23,8 @@
         </button>
     </div>
 
+    <div id="tab-notification-container" class="notification-area alert-container mb-4 hidden"></div>
+    
     {{-- VISUAL GUIDE (SKEMA RPP) --}}
     <div class="mb-5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-3">
         <div class="flex items-start gap-3">
