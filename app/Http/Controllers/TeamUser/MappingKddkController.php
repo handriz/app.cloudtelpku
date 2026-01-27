@@ -7,6 +7,7 @@ use App\Models\MappingKddk;
 use App\Models\TemporaryMapping;
 use App\Models\MasterDataPelanggan;
 use App\Models\HierarchyLevel;
+use App\Models\MatrixSummary;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -116,7 +117,11 @@ class MappingKddkController extends Controller
         }
 
         // 5. Terapkan paginasi
-        $mappings = $query->paginate(10)->withQueryString();
+        if ($search) {
+            $mappings = $query->simplePaginate(10)->withQueryString();
+        } else {
+            $mappings = $query->paginate(10)->withQueryString();
+        }
         $pageIdpels = $mappings->pluck('idpel')->unique();
         $activeIdpels = MappingKddk::whereIn('idpel', $pageIdpels)
             ->where('enabled', true)
@@ -145,7 +150,6 @@ class MappingKddkController extends Controller
             }
 
             $searchedMapping = $focusedQuery;
-            // END PERBAIKAN FOKUS DATA ENABLE
 
             if ($searchedMapping) {
                 $mappingStatus = ($searchedMapping->enabled) ? 'valid' : 'unverified';
@@ -154,16 +158,51 @@ class MappingKddkController extends Controller
                 $mappingStatus = 'unverified';
             }
         }
+
         // 7. Hitung data untuk kartu ringkasan
-        // (Logika ini tetap sama seperti yang Anda miliki sebelumnya)
-        $totalPelanggan = MasterDataPelanggan::count();
-        $totalMappingEnabled = MappingKddk::where('mapping_kddk.enabled', true)
-            ->when(!$user->hasRole('admin'), function ($query) use ($hierarchyFilter) {
-                return $query->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
-                    ->where($hierarchyFilter['column'], $hierarchyFilter['code']);
-            })
-            ->count();
-        $mappingPercentage = ($totalPelanggan > 0) ? ($totalMappingEnabled / $totalPelanggan) * 100 : 0;
+        // -------------------------------------------------------------
+        // [MODIFIKASI] OPTIMASI STATISTIK MENGGUNAKAN TABLE MATRIX_SUMMARIES
+        // -------------------------------------------------------------
+
+        $totalPelanggan = 0;
+        $totalMappingEnabled = 0;
+
+        try {
+            if ($user->hasRole('admin')) {
+                // CARA ADMIN: Langsung jumlahkan kolom dari seluruh tabel MatrixSummary
+                // Ini akan menghasilkan integer (angka), bukan object/string
+                $totalPelanggan = MatrixSummary::sum('target_pelanggan');
+                $totalMappingEnabled = MatrixSummary::sum('sudah_kddk');
+            } else {
+                // CARA USER UNIT: Cari baris spesifik
+                $unitCode = $user->hierarchy_level_code;
+
+                // Cari berdasarkan unit_code
+                $summary = MatrixSummary::where('unit_code', $unitCode)->first();
+
+                // Fallback: Cari di kolom lain jika unit_code kosong
+                if (!$summary) {
+                    $summary = MatrixSummary::where('unitup', $unitCode)
+                        ->orWhere('unitap', $unitCode)
+                        ->orWhere('unitupi', $unitCode)
+                        ->first();
+                }
+
+                if ($summary) {
+                    $totalPelanggan = $summary->target_pelanggan;
+                    $totalMappingEnabled = $summary->sudah_kddk;
+                }
+            }
+        } catch (\Exception $e) {
+            // Jika tabel MatrixSummary tidak ditemukan/error, biarkan 0 atau lanjut logic lain
+            \Log::error("Error menghitung MatrixSummary: " . $e->getMessage());
+        }
+
+        $rawPercent = ($totalPelanggan > 0) ? ($totalMappingEnabled / $totalPelanggan) * 100 : 0;
+        $mappingPercentage = number_format($rawPercent, 1);
+        // -------------------------------------------------------------
+        // END OPTIMASI
+        // -------------------------------------------------------------
 
         // 8. Siapkan semua data yang dibutuhkan oleh view
         $viewData = compact(
@@ -206,7 +245,7 @@ class MappingKddkController extends Controller
         if (!$search) {
             $initialCustomers = (clone $baseQuery)
                 ->select('mapping_kddk.idpel', 'mapping_kddk.latitudey', 'mapping_kddk.longitudex')
-                ->inRandomOrder()
+                ->latest('mapping_kddk.updated_at')
                 ->limit(100)
                 ->get();
             return response()->json(['searched' => [], 'nearby' => [], 'all' => $initialCustomers]);
@@ -972,9 +1011,7 @@ class MappingKddkController extends Controller
 
             DB::commit();
 
-            $msg = ($fallbackData)
-                ? 'Data ditarik kembali. Data pengganti telah diaktifkan otomatis.'
-                : 'Data ditarik kembali. Tidak ada data pengganti tersedia (Peta Kosong).';
+            $msg = 'Data berhasil ditarik kembali (Revisi). Status kembali ke Draft.';
 
             if ($request->expectsJson()) return response()->json(['message' => $msg], 200);
             return back()->with('success', $msg);
@@ -996,5 +1033,108 @@ class MappingKddkController extends Controller
 
             return back()->with('error', 'Gagal menarik data: ' . $e->getMessage());
         }
+    }
+
+    public function processCoordinateRequest(Request $request)
+    {
+        try {
+            // 1. Validasi Input
+            $request->validate([
+                'file_idpel' => 'required|file|mimes:csv,txt|max:2048',
+            ]);
+
+            // 2. Baca File
+            $path = $request->file('file_idpel')->getRealPath();
+            $rows = array_map('str_getcsv', file($path));
+
+            $requestedIdpels = [];
+            foreach ($rows as $row) {
+                if (isset($row[0])) {
+                    $cleanId = trim($row[0]);
+                    if (is_numeric($cleanId) && strlen($cleanId) >= 10) {
+                        $requestedIdpels[] = $cleanId;
+                    }
+                }
+            }
+
+            $limit = 1000;
+            if (count($requestedIdpels) > $limit) throw new \Exception("Maksimal $limit IDPEL.");
+            if (empty($requestedIdpels)) throw new \Exception("File kosong atau tidak valid.");
+
+            // 3. Query Database (SAFE MODE)
+            $results = MappingKddk::whereIn('mapping_kddk.idpel', $requestedIdpels)
+                ->where('mapping_kddk.enabled', true)
+                ->join('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
+                ->select(
+                    'mapping_kddk.idpel',
+                    'mapping_kddk.latitudey',
+                    'mapping_kddk.longitudex',
+                    'master_data_pelanggan.nama_gardu',
+                    'master_data_pelanggan.tarif',
+                    'master_data_pelanggan.daya'
+                )
+                ->get()
+                ->keyBy('idpel');
+
+            // 4. Susun Data CSV (FORMAT ANTI-ERROR EXCEL)
+            // Header
+            $csvContent = "IDPEL;NAMAGD;TARIF;DAYA;LATITUDE;LONGITUDE;STATUS\n";
+
+            $foundCount = 0;
+            $notFoundCount = 0;
+
+            foreach ($requestedIdpels as $id) {
+                if (isset($results[$id])) {
+                    $r = $results[$id];
+
+                    // TRICK: Gunakan ="VALUE" agar Excel tidak mengubah format angka
+                    // Contoh: ="101.444" akan tetap 101.444, tidak jadi 101444
+                    $lat = $r->latitudey;
+                    $lng = $r->longitudex;
+
+                    $csvContent .= "=\"{$id}\";\"{$r->nama_gardu}\";\"{$r->tarif}\";\"{$r->daya}\";=\"{$lat}\";=\"{$lng}\";\"Data Found\"\n";
+
+                    $foundCount++;
+                } else {
+                    $csvContent .= "=\"{$id}\";\"-\";\"-\";\"-\";\"0\";\"0\";\"Data Not Found\"\n";
+                    $notFoundCount++;
+                }
+            }
+
+            // 5. Simpan File
+            $filename = 'REQ_' . time() . '_' . Auth::id() . '.csv';
+            Storage::disk('local')->put('temp_exports/' . $filename, $csvContent);
+
+            return response()->json([
+                'success' => true,
+                'stats' => ['total' => count($requestedIdpels), 'found' => $foundCount, 'not_found' => $notFoundCount],
+                'download_url' => route('team.mapping.download_request_result', ['file' => $filename])
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function downloadRequestResult(Request $request)
+    {
+        $filename = $request->input('file');
+
+        // Validasi Nama File
+        if (!$filename || basename($filename) !== $filename) abort(404);
+
+        $filePath = 'temp_exports/' . $filename;
+
+        // Cek Keberadaan File via Storage Facade (Sama persis dengan saat menyimpan)
+        if (!Storage::disk('local')->exists($filePath)) {
+            abort(404, 'File tidak ditemukan atau sudah kadaluarsa.');
+        }
+
+        // Bersihkan Output Buffer (Penting agar file tidak corrupt)
+        if (ob_get_length()) ob_end_clean();
+
+        // Download menggunakan Storage Facade
+        // deleteFileAfterSend tidak support langsung di Storage::download pada beberapa versi Laravel,
+        // jadi kita download file path penuhnya.
+        return response()->download(Storage::disk('local')->path($filePath))->deleteFileAfterSend(true);
     }
 }

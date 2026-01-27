@@ -139,6 +139,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         });
 
         Route::get('master-pelanggan/check/{idpel}', [App\Http\Controllers\Admin\MasterDataController::class, 'checkIdpelExistsAjax'])->name('master-pelanggan.check');
+        Route::post('mapping/request-coordinates', [MappingKddkController::class, 'processCoordinateRequest'])->name('mapping.request_coords');
+        Route::get('mapping/download-request-result', [MappingKddkController::class, 'downloadRequestResult'])->name('mapping.download_request_result');
         Route::resource('mapping', MappingKddkController::class);
         Route::get('/mapping-coordinates', [MappingKddkController::class, 'getMapCoordinates'])->name('mapping-kddk.coordinates');
         Route::post('mapping-kddk/{id}/invalidate', [MappingKddkController::class, 'invalidate'])->name('mapping-kddk.invalidate');
@@ -146,7 +148,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('mapping-upload-photo', [MappingKddkController::class, 'uploadTemporaryPhoto'])->name('mapping.upload-photo');
         Route::delete('mapping-delete-photo', [MappingKddkController::class, 'deleteTemporaryPhoto'])->name('mapping.delete-photo');
         Route::get('mapping-download-format', [MappingKddkController::class, 'downloadFormat'])->name('mapping.download-format');
-
+            
         Route::prefix('mapping-validation')->name('mapping_validation.')->group(function () {
             Route::get('/', [MappingValidationController::class, 'index'])->name('index');
             Route::get('upload', [MappingValidationController::class, 'uploadForm'])->name('upload.form');
