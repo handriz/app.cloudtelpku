@@ -46,7 +46,7 @@ class MappingKddkController extends Controller
 
         // 3. Bangun Query Utama
         $query = MappingKddk::query()
-            ->select('mapping_kddk.*', 'master_data_pelanggan.unitup', 'master_data_pelanggan.unitap')
+            ->select('mapping_kddk.*', 'master_data_pelanggan.unitup', 'master_data_pelanggan.unitap', 'master_data_pelanggan.nama_gardu', 'master_data_pelanggan.daya', 'master_data_pelanggan.tarif',)
             // Kita gunakan LEFT JOIN agar data mapping tetap tampil meskipun data master pelanggan tidak ada
             ->leftJoin('master_data_pelanggan', 'mapping_kddk.idpel', '=', 'master_data_pelanggan.idpel')
             // Terapkan filter hirarki HANYA untuk non-admin
@@ -1038,6 +1038,9 @@ class MappingKddkController extends Controller
     public function processCoordinateRequest(Request $request)
     {
         try {
+
+            $this->cleanupOldTempFiles();
+            
             // 1. Validasi Input
             $request->validate([
                 'file_idpel' => 'required|file|mimes:csv,txt|max:2048',
@@ -1136,5 +1139,30 @@ class MappingKddkController extends Controller
         // deleteFileAfterSend tidak support langsung di Storage::download pada beberapa versi Laravel,
         // jadi kita download file path penuhnya.
         return response()->download(Storage::disk('local')->path($filePath))->deleteFileAfterSend(true);
+    }
+
+    private function cleanupOldTempFiles()
+    {
+        try {
+            // Ambil semua file di folder temp
+            $files = Storage::disk('local')->files('temp_exports');
+
+            // Waktu sekarang
+            $now = now();
+
+            foreach ($files as $file) {
+                // Ambil waktu terakhir file dimodifikasi
+                $lastModified = Storage::disk('local')->lastModified($file);
+                $fileTime = \Carbon\Carbon::createFromTimestamp($lastModified);
+
+                // Jika umur file > 60 menit, HAPUS!
+                if ($now->diffInMinutes($fileTime) > 60) {
+                    Storage::disk('local')->delete($file);
+                }
+            }
+        } catch (\Exception $e) {
+            // Silent fail: Jangan sampai error bersih-bersih mengganggu proses utama
+            Log::warning("Gagal membersihkan temp files: " . $e->getMessage());
+        }
     }
 }

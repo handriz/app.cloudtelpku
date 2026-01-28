@@ -236,33 +236,50 @@ document.addEventListener('DOMContentLoaded', function () {
     window.validationMap = null;     // Variabel Global Peta
     window.validationMarker = null;  // Variabel Global Marker
 
-    window.addEventListener('map:focus', function(e) {
+    window.addEventListener('map:focus', function (e) {
         const { lat, lng, idpel } = e.detail;
-        
+
         const mapContainer = document.getElementById('rbm-map');
         if (!mapContainer) return;
 
-        console.log(`📍 Map Focus: ${lat}, ${lng} (ID: ${idpel})`);
+        if (window.validationMap) {
+            const currentContainer = window.validationMap.getContainer();
+            if (!document.body.contains(currentContainer)) {
+                window.validationMap.remove(); // Hapus instance Leaflet lama
+                window.validationMap = null;   // Reset variabel
+            }
+        }
 
         // 1. Inisialisasi Peta jika belum ada
         if (!window.validationMap) {
-            window.validationMap = L.map('rbm-map', { 
+            window.validationMap = L.map('rbm-map', {
                 zoomControl: false,
-                attributionControl: false
+                attributionControl: false,
+                fadeAnimation: true,
+                zoomAnimation: true
             }).setView([lat, lng], 18);
-            
+
             // Layer Satelit
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 maxZoom: 19,
+                keepBuffer: 10,
+                updateWhenIdle: false,
                 attribution: 'Tiles © Esri'
             }).addTo(window.validationMap);
-            
+
             // Layer Label Jalan (Opsional, agar lebih jelas)
             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
                 maxZoom: 19
             }).addTo(window.validationMap);
 
             L.control.zoom({ position: 'bottomright' }).addTo(window.validationMap);
+            window.validationMap.on('zoomend', function () {
+                window.validationMap.invalidateSize();
+            });
+
+            window.validationMap.on('moveend', function () {
+                window.validationMap.invalidateSize();
+            });
         } else {
             // Jika peta sudah ada, langsung terbang ke lokasi
             window.validationMap.flyTo([lat, lng], 18, {
@@ -313,21 +330,49 @@ document.addEventListener('DOMContentLoaded', function () {
         // 4. Pasang Marker Baru
         window.validationMarker = L.marker([lat, lng], { icon: customPin, zIndexOffset: 1000 })
             .addTo(window.validationMap)
-            .bindPopup(`<div class="font-bold text-center p-1">Idpel: ${idpel}</div>`,{
-                closeButton: false,
+            .bindPopup(`
+                <div class="font-sans min-w-[180px]">
+                    <div class="bg-indigo-50 border-b border-indigo-100 p-2 -mx-4 -mt-3 mb-2 rounded-t-lg">
+                        <span class="text-[10px] text-indigo-500 font-bold uppercase tracking-wider">ID Pelanggan</span>
+                        <div class="text-sm font-extrabold text-indigo-700">${idpel}</div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div>
+                            <span class="text-[9px] text-gray-400 uppercase">Nama GD</span>
+                            <div class="text-xs font-bold text-gray-700 truncate">
+                                ${e.detail.nama || '-'}
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <span class="text-[9px] text-gray-400 uppercase">Tarif</span>
+                                <div class="text-xs font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded w-fit">
+                                    ${e.detail.tarif || '-'}
+                                </div>
+                            </div>
+                            <div>
+                                <span class="text-[9px] text-gray-400 uppercase">Daya</span>
+                                <div class="text-xs font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded w-fit">
+                                    ${e.detail.daya || '-'} VA
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3 pt-2 border-t border-gray-100 text-[9px] text-gray-400 font-mono text-center">
+                        ${lat}, ${lng}
+                    </div>
+                </div>
+            `, {
+                closeButton: false, // Tombol X dimatikan (klik peta untuk tutup)
                 autoClose: true,
-                closeOnClick: true
+                closeOnClick: true,
+                className: 'custom-popup-clean' // Class opsional jika ingin custom CSS tambahan
             })
             .openPopup();
     });
-
-    // Inisialisasi Peta Kosong saat Load (Opsional, agar tidak blank putih)
-    setTimeout(() => {
-        if(!window.validationMap && document.getElementById('rbm-map')) {
-            window.validationMap = L.map('rbm-map', { zoomControl: false }).setView([0.5071, 101.4478], 10); // Default Pekanbaru
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(window.validationMap);
-        }
-    }, 1000);
 
     // ==========================================
     // 5. DYNAMIC MODAL (AJAX FORM) - AUTO GENERATE
@@ -558,7 +603,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
-    
+
 
     // Reset Modal ke Step 1
     window.resetRequestModal = function () {
@@ -633,6 +678,73 @@ document.addEventListener('DOMContentLoaded', function () {
             const lng = parseFloat(document.getElementById('longitudex' + suffix)?.value);
             if (window.previewMap && window.updatePreviewMarker) window.updatePreviewMarker(lat, lng);
             if (window.updateExternalStreetView) window.updateExternalStreetView();
+        }
+    });
+
+    // ==========================================
+    // 11. ROBUST MAP INITIALIZER (SELF-HEALING)
+    // ==========================================
+
+    function initDefaultMap() {
+        const mapContainer = document.getElementById('rbm-map');
+
+        // 1. Cek Ketersediaan Container
+        if (!mapContainer) return;
+
+        if (window.validationMap && !document.body.contains(window.validationMap.getContainer())) {
+            window.validationMap.remove();
+            window.validationMap = null;
+        }
+
+        // 2. Jika Peta belum ada, buat baru
+        if (!window.validationMap) {
+
+            window.validationMap = L.map('rbm-map', {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([0.5071, 101.4478], 10);
+
+            // Layer Satelit
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                keepBuffer: 10,
+                updateWhenIdle: false,
+                attribution: 'Tiles © Esri'
+            }).addTo(window.validationMap);
+
+            // Layer Label
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}').addTo(window.validationMap);
+
+            L.control.zoom({ position: 'bottomright' }).addTo(window.validationMap);
+            window.validationMap.on('zoomend', () => window.validationMap.invalidateSize());
+            window.validationMap.on('moveend', () => window.validationMap.invalidateSize());
+        }
+
+        // 3. TEKNIK "SELF-HEALING" DENGAN RESIZE OBSERVER
+        // Ini adalah kunci agar peta tidak blank saat ada notifikasi muncul/hilang
+        const resizeObserver = new ResizeObserver(() => {
+            if (window.validationMap) {
+                window.validationMap.invalidateSize();
+            }
+        });
+        resizeObserver.observe(mapContainer);
+
+        // Jalankan
+        initDefaultMap();
+
+        // 4. Force Update Berkala (Jaring Pengaman)
+        // Cek ulang ukuran peta pada detik ke-0.5, 1, dan 2 setelah load
+        [500, 1000, 2000].forEach(delay => {
+            setTimeout(() => {
+                if (window.validationMap) window.validationMap.invalidateSize();
+            }, delay);
+        });
+    }
+
+    // Jalankan ulang jika tab browser menjadi aktif kembali
+    document.addEventListener("visibilitychange", function () {
+        if (!document.hidden && window.validationMap) {
+            window.validationMap.invalidateSize();
         }
     });
 

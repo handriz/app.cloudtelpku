@@ -55,7 +55,7 @@
                             class="fas fa-search"></i></span>
                     <input type="text" name="search" value="{{ $search ?? '' }}"
                         class="w-full pl-10 pr-10 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
-                        placeholder="Cari IDPEL, Nama, atau No Meter...">
+                        placeholder="Cari id pelanggan, atau nomor meter...">
                     @if (request('search'))
                         <a href="{{ route('team.mapping.index') }}"
                             class="absolute inset-y-0 right-0 flex items-center pr-3 text-red-400 hover:text-red-600 cursor-pointer">
@@ -116,7 +116,7 @@
             <div
                 class="absolute bottom-4 left-4 bg-white/90 dark:bg-gray-900/90 backdrop-blur px-3 py-2 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 text-xs z-[400] flex items-center space-x-3">
                 <div class="flex flex-col">
-                    <span class="text-gray-500 uppercase text-[10px] font-bold">Koordinat Terpilih</span>
+                    <span class="text-gray-500 capitalize text-[10px] font-bold">Koordinat Terpilih</span>
                     <span id="detail-lat-lon" class="font-mono font-bold text-indigo-600 dark:text-indigo-400">
                         -
                     </span>
@@ -253,6 +253,23 @@
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     @forelse ($mappings as $index => $map)
                         <tr class="group hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer transition-colors"
+                            onclick="
+                                // 1. Jalankan fungsi asli agar panel kanan (Inspector) tetap jalan
+                                selectMappingRow(this, {{ json_encode($map) }}); 
+                                
+                                // 2. Kirim Event manual agar Popup Marker punya data lengkap (Nama, Tarif, Daya)
+                                window.dispatchEvent(new CustomEvent('map:focus', { 
+                                    detail: { 
+                                        lat: {{ $map->latitudey ?? 0 }}, 
+                                        lng: {{ $map->longitudex ?? 0 }}, 
+                                        idpel: '{{ $map->idpel }}',
+                                        // Data Tambahan untuk Popup:
+                                        nama: '{{ $map->nama_gardu ?? '-' }}', 
+                                        tarif: '{{ $map->tarif ?? '-' }}', 
+                                        daya: '{{ $map->daya ?? '-' }}'
+                                    } 
+                                }));
+                            "
                             onclick="selectMappingRow(this, {{ json_encode($map) }})"
                             data-lat="{{ $map->latitudey ?? 0 }}" data-lon="{{ $map->longitudex ?? 0 }}"
                             data-edit-url="{{ route('team.mapping.edit', $map->id) }}"
