@@ -258,7 +258,7 @@
                 {{-- Toleransi Anomali --}}
                 <div class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Toleransi Anomali
-                        (Meter)</label>
+                        Dari Pusat Peta (Meter)</label>
                     <input type="number" name="kddk_anomaly_distance" data-group="parameters"
                         @php $scope = $isAdmin ? null : Auth::user()->hierarchy_level_code; @endphp
                         value="{{ App\Models\AppSetting::findValue('kddk_anomaly_distance', $scope, 5000) }}"
@@ -276,8 +276,8 @@
                 {{-- Koordinat Default --}}
                 <div class="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/30">
                     <div class="flex items-center mb-3">
-                        <label class="block text-xs font-bold text-gray-500 uppercase flex-1">Pusat Peta
-                            Default</label>
+                        <label class="block text-xs font-bold text-gray-500 uppercase flex-1">Pusat Peta (Default)
+                             </label>
                         <button type="button"
                             onclick="navigator.geolocation.getCurrentPosition(pos => { 
                                 document.getElementsByName('kddk_default_lat')[0].value = pos.coords.latitude; 
@@ -308,6 +308,9 @@
                                 onchange="window.settingsHandler.autoSaveSetting(this)">
                         </div>
                     </div>
+                    <p class="mt-3 text-[10px] text-gray-500 dark:text-gray-400 italic">
+                        Masukkan koordinat acuan (gunakan koordinat unit)
+                    </p>
                 </div>
             </div>
         </div>

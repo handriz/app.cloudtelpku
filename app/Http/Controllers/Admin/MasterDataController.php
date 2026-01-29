@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\MasterDataPelanggan;
+use App\Models\MappingKddk;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Jobs\ProcessPelangganImport;
@@ -249,25 +250,24 @@ class MasterDataController extends Controller
     
     public function checkIdpelExistsAjax(Request $request, $idpel)
     {
-        // Validasi dasar: Pastikan IDPEL 12 digit numerik
+        // 1. Validasi Format
         if (!preg_match('/^\d{12}$/', $idpel)) {
             return response()->json(['exists' => false, 'message' => 'Format ID Pelanggan tidak valid.'], 400); // Bad Request
         }
 
         $user = Auth::user();
         $query = MasterDataPelanggan::where('idpel', $idpel);
+        $hierarchyName = '';
 
-        // Terapkan filter hirarki HANYA untuk non-admin
+        // 2. Filter Hirarki
         if (!$user->hasRole('admin')) {
-            $hierarchyFilter = $this->getHierarchyFilterForMaster($user); // Helper function (lihat di bawah)
+            $hierarchyFilter = $this->getHierarchyFilterForMaster($user);
             
             if ($hierarchyFilter) {
-                // Pastikan filter diterapkan dengan benar
                 $query->where($hierarchyFilter['column'], $hierarchyFilter['code']);
                 $level = HierarchyLevel::where('code', $hierarchyFilter['code'])->first();
-                $hierarchyName = $level ? $level->name : $hierarchyFilter['code']; // Fallback ke kode jika nama tidak ada
+                $hierarchyName = $level ? $level->name : $hierarchyFilter['code'];
             } else {
-                 // Jika user tidak punya hirarki, cegah dia melihat data apa pun
                 return response()->json(['exists' => false, 'message' => 'User tidak memiliki hak akses hirarki.'], 403); // Forbidden
             }
         }
@@ -277,6 +277,16 @@ class MasterDataController extends Controller
         $exists = !is_null($pelanggan);
         $statusDil = $exists ? $pelanggan->status_dil : null;
         $isActive = $exists && strtoupper($statusDil) === 'AKTIF';
+
+        //3. Cek Status Mapping (Sudah dipetakan belum?)
+        $existingMap = null;
+        if ($exists) {
+            // Import model MappingKddk di bagian atas file: use App\Models\MappingKddk;
+            $existingMap = \App\Models\MappingKddk::where('idpel', $idpel)
+                            ->where('enabled', true) // Hanya cari yang AKTIF/VERIFIED
+                            ->select('user_pendataan', 'created_at')
+                            ->first();
+        }
 
         $message = '';
         if ($exists) {
@@ -289,7 +299,10 @@ class MasterDataController extends Controller
             'exists' => $exists,
             'status_dil' => $statusDil, 
             'is_active' => $isActive, 
-            'message' => $message
+            'message' => $message,
+            'is_mapped' => $existingMap ? true : false,
+            'mapped_by' => $existingMap ? $existingMap->user_pendataan : null,
+            'mapped_at' => $existingMap ? $existingMap->created_at->format('d M Y') : null
         ]);
     }
 

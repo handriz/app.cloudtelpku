@@ -408,8 +408,6 @@ class MappingKddkController extends Controller
         return view('team.mapping-kddk.partials.create');
     }
 
-    const MANUAL_ID_OFFSET = 2000000; // Mulai ID manual dari 10 Juta + 1
-
     public function store(Request $request)
     {
         // 1. AMBIL SETTING DARI DB (Dalam MB)
@@ -417,7 +415,7 @@ class MappingKddkController extends Controller
         // Konversi ke Kilobyte untuk Validator Laravel
         $maxKb = $maxMb * 1024;
 
-        // 2. Validasi Data (user_pendataan tidak perlu divalidasi dari input)
+        // 2. Validasi Data
         $validator = Validator::make($request->all(), [
             'idpel'         => 'required|string|max:12',
             'foto_kwh'      => 'required|string',
@@ -426,7 +424,6 @@ class MappingKddkController extends Controller
             'latitudey'     => ['required', 'numeric', 'between:-90,90'],
             'longitudex'    => ['required', 'numeric', 'between:-180,180'],
         ], [
-            // Pesan error kustom yang lebih ramah pengguna
             'latitudey.numeric' => 'Latitude harus berupa angka.',
             'latitudey.between' => 'Nilai Latitude harus di antara -90 dan 90.',
             'longitudex.numeric' => 'Longitude harus berupa angka.',
@@ -452,13 +449,28 @@ class MappingKddkController extends Controller
             ->exists();
 
         if ($isSpamming) {
-            return response()->json(['errors' => ['idpel' => ['Anda baru saja mengirim data untuk IDPEL ini. Mohon cek daftar data sebelum mengirim ulang.']]], 422);
+            return response()->json(['errors' => ['idpel' => ['Anda baru saja mengirim data untuk IDPEL ini. Mohon tunggu 1 menit..']]], 422);
         }
 
-        // ============================================================
-        // [FITUR BARU] SMART GEO-FENCING (VALIDASI WILAYAH)
-        // ============================================================
+        // Mencegah penambahan jika sudah ada data Migrasi/Legacy menumpuk
+        $existingRecords = MappingKddk::where('idpel', $idpel)->get();
+        $protectedCount = $existingRecords->filter(function ($item) {
+            $isLegacy   = !\Illuminate\Support\Str::startsWith($item->objectid, 'entry-');
+            $isPermanent = ($item->ket_validasi === 'verified' || $item->enabled);
+            
+            return $isLegacy || $isPermanent;
+        })->count();
+        if ($protectedCount >= 2) {
+            return response()->json([
+                'errors' => [
+                    'idpel' => [
+                        "Gagal Simpan: Idpel ini sudah memiliki {$protectedCount} data pemetaan (maksimum data). Tidak bisa menambah data survey baru sebelum data lama dirapikan."
+                    ]
+                ]
+            ], 422);
+        }
 
+        // [FITUR BARU] SMART GEO-FENCING (VALIDASI WILAYAH)
         $warningMsg = "";
 
         // A. Cari UnitUP dari Pelanggan ini
@@ -505,20 +517,24 @@ class MappingKddkController extends Controller
                 }
                 // Cek Batas Toleransi (Default 5KM)
                 if (!is_null($minDistance)) {
-                    $limitMeter = \App\Models\AppSetting::findValue('kddk_anomaly_distance', null, 5000);
+                    $limitMeter = \App\Models\AppSetting::findValue('kddk_anomaly_distance', null, 15000);
 
                     if ($minDistance > $limitMeter) {
                         $km = round($minDistance / 1000, 1);
-                        $warningMsg = " (Info: Lokasi terpaut cukup jauh dari tetangga terdekat: {$km} KM)";
+                        $warningMsg = " (Info: Lokasi terpaut cukup jauh dari data pelanggan yg terimpan : {$km} km)";
                     }
                 }
             }
         }
 
         // --- LOGIKA STATUS: FIRST-COME FIRST-SERVED ---
-        $existingCount = MappingKddk::where('idpel', $idpel)->count();
-        $statusValidasi = ($existingCount == 0) ? 'verified' : 'unverified';
-        $isEnabled = ($existingCount == 0) ? true : false;
+
+        $hasActiveData = MappingKddk::where('idpel', $idpel)
+            ->where('enabled', true)
+            ->exists();
+
+        $statusValidasi = (!$hasActiveData) ? 'verified' : 'unverified';
+        $isEnabled = (!$hasActiveData) ? true : false;
 
         $finalPaths = [];
         $tempFilesToDelete = [];
@@ -528,9 +544,8 @@ class MappingKddkController extends Controller
         DB::beginTransaction();
         try {
             // 1. Generate Object ID Baru
-            DB::table('objectid_sequence')->insert(['created_at' => now()]);
-            $sequenceId = DB::getPdo()->lastInsertId();
-            $newObjectId = $sequenceId + self::MANUAL_ID_OFFSET;
+            $randomString = strtoupper(\Illuminate\Support\Str::random(12));
+            $newObjectId = 'entry-' . $randomString;
             $validatedData['objectid'] = $newObjectId;
 
             // 2. [LOGIC BARU] ENFORCE HISTORY LIMIT (Hapus data lama sebelum simpan baru)
@@ -615,7 +630,7 @@ class MappingKddkController extends Controller
 
     /**
      * Helper: Batasi histori.
-     * UPDATE: Jangan pernah menghapus data yang 'enabled' (Data Master di Peta).
+     * UPDATE: Jangan pernah menghapus data yang 'enabled' (Data Master di Peta) dan object selain entry-.
      */
     private function enforceHistoryLimit($idpel, $keepLimit = 2)
     {
@@ -636,6 +651,11 @@ class MappingKddkController extends Controller
                     continue;
                 }
 
+                // Hanya hapus jika Object ID berawalan 'entry-'
+                if (!\Illuminate\Support\Str::startsWith($record->objectid, 'entry-')) {
+                    continue; // Skip (Jangan dihapus)
+                }
+
                 // Hapus Fisik & DB
                 if ($record->foto_kwh && Storage::disk('public')->exists($record->foto_kwh)) {
                     Storage::disk('public')->delete($record->foto_kwh);
@@ -646,7 +666,7 @@ class MappingKddkController extends Controller
 
                 $record->delete();
                 $deletedCount++;
-                Log::info("Auto-cleanup: Menghapus draft lama IDPEL {$idpel}.");
+                Log::info("Auto-cleanup: Menghapus draft sampah IDPEL {$idpel} (OID: {$record->objectid})");
             }
         }
     }
@@ -1040,7 +1060,7 @@ class MappingKddkController extends Controller
         try {
 
             $this->cleanupOldTempFiles();
-            
+
             // 1. Validasi Input
             $request->validate([
                 'file_idpel' => 'required|file|mimes:csv,txt|max:2048',

@@ -1,8 +1,26 @@
-<form id="create-mapping-form" action="{{ route('team.mapping.store') }}" method="POST" enctype="multipart/form-data" autocomplete="off"  data-upload-photo-url="{{ route('team.mapping.upload-photo') }}"
-        data-success-redirect-tab="Validasi Pendataan" 
-        data-success-redirect-url="{{ route('team.mapping_validation.index') }}">
+<style>
+    /* Scrollbar Kustom & Cantik */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1; /* Warna abu-abu soft */
+        border-radius: 20px;       /* Bikin scrollbar BULAT */
+        border: 3px solid transparent;
+        background-clip: content-box;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: #94a3b8;
+    }
+</style>
+
+<form id="create-mapping-form" action="{{ route('team.mapping.store') }}" method="POST" enctype="multipart/form-data" autocomplete="off" 
+    data-upload-photo-url="{{ route('team.mapping.upload-photo') }}">
     @csrf
-    <div class="p-6 space-y-4">
+    <div class="p-6 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
         {{-- Header Modal --}}
         <div class="flex justify-between items-center">
             <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200">
@@ -78,8 +96,13 @@
                 {{-- Tab Panels --}}
                 <div class="pt-2">
                     {{-- Panel Peta Satelit (Wadah Kosong untuk Leaflet) --}}
-                    <div id="tab-panel-map" class="tab-preview-panel w-full h-64 rounded-lg z-0 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+                    <div id="tab-panel-map" class="tab-preview-panel w-full h-64 rounded-lg z-0 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 relative">
                          <div id="preview-map" class="w-full h-full rounded-lg z-0"></div>
+                         
+                         <div id="map-drag-hint" class="hidden absolute bottom-4 left-0 right-0 mx-auto w-max max-w-[90%] bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-indigo-200 dark:border-gray-600 px-3 py-2 rounded-full shadow-lg text-xs text-indigo-700 dark:text-indigo-300 animate-bounce-slow z-[400] flex items-center gap-2">
+                            <i class="fas fa-hand-pointer text-indigo-500"></i>
+                            <span><b>Tips:</b> Geser (Drag) Pin Marker untuk posisi lebih akurat.</span>
+                         </div>
                     </div>
                     
                     {{-- Panel Street View (Link Eksternal) --}}

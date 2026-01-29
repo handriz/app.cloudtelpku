@@ -61,31 +61,27 @@ App.Icons = {
 
 App.Utils = (() => {
 
-    function displayNotification(type, message, tabName = null) { // <-- 1. Menerima tabName
+    function displayNotification(type, message, tabName = null) {
         let container = null;
         let targetTabContent = null;
         targetTabContent = document.querySelector('.tab-content:not(.hidden)');
 
-        console.log('LANGKAH 3.1: Mencari targetTabContent.', targetTabContent);
-
         if (targetTabContent) {
-            // 4. Cari wadah di dalam tab yang ditargetkan
+            // 1. Cari wadah di dalam tab yang ditargetkan
             container = targetTabContent.querySelector('#interactive-validation-container');
             if (!container) {
-                container = targetTabContent.querySelector('#kddk-notification-container'); // <-- Ini akan ditemukan
+                container = targetTabContent.querySelector('#kddk-notification-container');
             }
-
-            console.log('LANGKAH 3.2: Mencari container notifikasi.', container);
         }
 
-        // 5. Jika masih tidak ketemu (fallback), gunakan alert
+        // 2. Jika masih tidak ketemu (fallback), gunakan alert
         if (!container) {
             console.warn("displayNotification: Tidak ada container di tab aktif/target. Fallback ke alert.");
             alert(message);
             return;
         }
 
-        // 6. Hapus notifikasi sebelumnya (Success atau Error)
+        // 3. Hapus notifikasi sebelumnya (Success atau Error)
         container.querySelectorAll('.bg-green-100, .bg-red-100').forEach(el => el.remove());
 
         // 7. Tentukan style
@@ -95,6 +91,10 @@ App.Utils = (() => {
         if (type === 'success' || type === 'validate') {
             alertClass = 'bg-green-100 border-green-400 text-green-700';
             strongText = 'Berhasil!';
+        } else if (type === 'warning') {
+            // [BARU] Style untuk Sukses tapi ada Catatan
+            alertClass = 'bg-yellow-100 border-yellow-400 text-yellow-700';
+            strongText = 'Perhatian:';
         } else if (type === 'reject') {
             alertClass = 'bg-red-100 border-red-400 text-red-700';
             strongText = 'Penolakan Berhasil!';
@@ -542,7 +542,15 @@ App.Modal = (() => {
 
     function open(url) {
         if (!mainModal || !modalContent) return;
-        modalContent.innerHTML = '<div class="text-center p-8"><i class="fas fa-spinner fa-spin fa-2x text-gray-400"></i></div>';
+        modalContent.innerHTML = `
+            <div class="p-12 text-center">
+                <svg class="animate-spin h-10 w-10 text-indigo-500 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="text-gray-500 font-semibold">Memuat Form...</p>
+            </div>
+        `;
         mainModal.classList.remove('hidden');
 
         let fetchUrl = new URL(url, window.location.origin);
@@ -590,7 +598,13 @@ App.Modal = (() => {
                 }, 150);
             })
             .catch(error => {
-                modalContent.innerHTML = '<div class="text-center p-8 text-red-500">Gagal memuat konten.</div>';
+                modalContent.innerHTML = `
+                    <div class="p-8 text-center text-red-500">
+                        <h3 class="font-bold text-lg mb-2">Gagal Memuat</h3>
+                        <p>${error.message || 'Terjadi kesalahan jaringan.'}</p>
+                        <button onclick="App.Modal.close()" class="mt-4 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 font-bold">Tutup</button>
+                    </div>
+                `;
                 console.error("Fetch Error:", error);
             });
     }
@@ -2299,27 +2313,58 @@ App.FormCreate = (() => {
             return;
         }
 
-        const updateIdpelStatusUI = (isLoading, exists, isActive, message) => {
+        // Perhatikan parameter ke-5: extraData = {}
+        const updateIdpelStatusUI = (isLoading, exists, isActive, message, extraData = {}) => {
             statusMessageEl.textContent = message || '';
+
+            // Reset semua warna text/icon
             statusIconDiv.classList.toggle('hidden', !isLoading && !exists && message === '');
-            statusMessageEl.classList.remove('text-green-600', 'text-red-600', 'text-yellow-600', 'text-gray-500');
+            statusMessageEl.classList.remove('text-green-600', 'text-red-600', 'text-yellow-600', 'text-orange-600', 'text-gray-500');
 
             if (isLoading) {
-                statusIconDiv.innerHTML = '<i class="fas fa-spinner fa-spin text-gray-400"></i>';
+                statusIconDiv.innerHTML = `
+                    <svg class="animate-spin h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                `;
                 statusIconDiv.classList.remove('hidden');
                 statusMessageEl.classList.add('text-gray-500');
                 submitButton.disabled = true;
                 ketSurveyTextarea.readOnly = true;
                 ketSurveyTextarea.value = '';
+
             } else if (exists && isActive) {
-                statusIconDiv.innerHTML = '<i class="fas fa-check-circle text-green-500"></i>';
-                statusIconDiv.classList.remove('hidden');
-                statusMessageEl.classList.add('text-green-600');
-                submitButton.disabled = false;
-                ketSurveyTextarea.readOnly = false;
-                ketSurveyTextarea.value = '';
-                ketSurveyTextarea.placeholder = '';
+
+                // === [LOGIKA BARU DI SINI] ===
+                // Cek apakah data tambahan membawa info 'is_mapped'?
+                if (extraData && extraData.is_mapped) {
+                    // KONDISI ORANYE: SUDAH ADA
+                    statusIconDiv.innerHTML = '<i class="fas fa-exclamation-circle text-orange-500"></i>';
+                    statusIconDiv.classList.remove('hidden');
+
+                    statusMessageEl.classList.add('text-orange-600');
+                    statusMessageEl.innerHTML = `Pelanggan Aktif, tapi <b>SUDAH DIPETAKAN</b> oleh ${extraData.mapped_by || 'User Lain'}. <br>Data ini akan masuk sebagai <b>Draft</b>.`;
+
+                    // Tombol tetap aktif agar bisa lanjut revisi
+                    submitButton.disabled = false;
+                    ketSurveyTextarea.readOnly = false;
+                    ketSurveyTextarea.value = '';
+                    ketSurveyTextarea.placeholder = 'Berikan alasan revisi...';
+                }
+                else {
+                    // KONDISI HIJAU: BERSIH (DATA BARU)
+                    statusIconDiv.innerHTML = '<i class="fas fa-check-circle text-green-500"></i>';
+                    statusIconDiv.classList.remove('hidden');
+                    statusMessageEl.classList.add('text-green-600');
+                    submitButton.disabled = false;
+                    ketSurveyTextarea.readOnly = false;
+                    ketSurveyTextarea.value = '';
+                    ketSurveyTextarea.placeholder = '';
+                }
+
             } else if (exists && !isActive) {
+                // KONDISI KUNING: NON AKTIF
                 statusIconDiv.innerHTML = '<i class="fas fa-exclamation-triangle text-yellow-500"></i>';
                 statusIconDiv.classList.remove('hidden');
                 statusMessageEl.classList.add('text-yellow-600');
@@ -2328,7 +2373,9 @@ App.FormCreate = (() => {
                 ketSurveyTextarea.readOnly = true;
                 ketSurveyTextarea.value = 'Pelanggan Non Aktif';
                 ketSurveyTextarea.placeholder = '';
+
             } else if (!exists && message) {
+                // KONDISI MERAH: TIDAK DITEMUKAN
                 statusIconDiv.innerHTML = '<i class="fas fa-times-circle text-red-500"></i>';
                 statusIconDiv.classList.remove('hidden');
                 statusMessageEl.classList.add('text-red-600');
@@ -2336,7 +2383,9 @@ App.FormCreate = (() => {
                 ketSurveyTextarea.readOnly = true;
                 ketSurveyTextarea.value = '';
                 ketSurveyTextarea.placeholder = 'ID Pelanggan tidak valid';
+
             } else {
+                // DEFAULT
                 statusIconDiv.classList.add('hidden');
                 statusMessageEl.classList.add('text-gray-500');
                 submitButton.disabled = true;
@@ -2345,6 +2394,7 @@ App.FormCreate = (() => {
                 ketSurveyTextarea.placeholder = 'Masukkan ID Pelanggan untuk mengecek status';
             }
 
+            // Styling Textarea
             if (ketSurveyTextarea.readOnly) {
                 ketSurveyTextarea.classList.add('bg-gray-100', 'dark:bg-gray-800', 'cursor-not-allowed');
             } else {
@@ -2375,7 +2425,7 @@ App.FormCreate = (() => {
                     .then(response => response.json().then(data => ({ ok: response.ok, status: response.status, data })))
                     .then(({ ok, status, data }) => {
                         if (!ok) throw new Error(data.message || `Error ${status}`);
-                        updateIdpelStatusUI(false, data.exists, data.is_active, data.message);
+                        updateIdpelStatusUI(false, data.exists, data.is_active, data.message, data);
                     })
                     .catch(error => {
                         console.error("Error cek IDPEL:", error);
@@ -2479,12 +2529,23 @@ App.Form = (() => {
 // ===================================================================
 
 function handleModalFormSubmit(form) {
+
+    if (window.validateMappingForm && !window.validateMappingForm(form)) {
+        return;
+    }
+
     const submitButton = form.querySelector('button[type="submit"]');
     const originalButtonText = submitButton ? submitButton.innerHTML : 'Simpan';
 
     if (submitButton) {
         submitButton.disabled = true;
-        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+        submitButton.innerHTML = `
+                <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Menyimpan...
+            `;
     }
 
     const ajaxErrorsContainer = form.querySelector('#ajax-errors');
@@ -2515,11 +2576,15 @@ function handleModalFormSubmit(form) {
 
             // ================== LOGIKA PERBAIKAN GENERIK START ==================
             if (data.success) {
-                console.log('handleModalFormSubmit: Menerima respons sukses dari controller:', data);
 
                 const successMessage = data.message || data.success || 'Data berhasil disimpan!';
 
-                // 1. Cek instruksi PENGALIHAN TAB dari atribut form (data-success-redirect-tab)
+                let notifType = 'success';
+                if (successMessage.includes('(Info:') || successMessage.includes('Warning')) {
+                    notifType = 'warning';
+                }
+
+                // 1. Cek instruksi PENGALIHAN TAB ..
                 const redirectTabName = form.dataset.successRedirectTab;
                 const redirectUrl = form.dataset.successRedirectUrl;
 
@@ -2555,13 +2620,12 @@ function handleModalFormSubmit(form) {
                         bustUrl.searchParams.set('_cb', new Date().getTime());
 
                         App.Tabs.loadTabContent(tabName, bustUrl.toString(), () => {
-                            console.log('handleModalFormSubmit: Konten tab aktif dimuat ulang, menampilkan notifikasi.');
                             // Tampilkan notifikasi di tab yang sama
-                            App.Utils.displayNotification('success', successMessage, tabName);
+                            App.Utils.displayNotification(notifType, successMessage, tabName);
                         });
                     } else {
                         console.error("handleModalFormSubmit: Tidak dapat menentukan tab untuk dimuat ulang.");
-                        App.Utils.displayNotification('success', successMessage);
+                        App.Utils.displayNotification(notifType, successMessage);
                     }
                 }
             } else {
@@ -2823,10 +2887,10 @@ App.Listeners = (() => {
         }
 
         // 9. Klik Overlay Modal Utama
-        if (e.target === elements.mainModal) {
-            App.Modal.close();
-            return;
-        }
+        // if (e.target === elements.mainModal) {
+        //     App.Modal.close();
+        //     return;
+        // }
 
         // 10. Link Navigasi (Paginasi, Link Tab, Link Sidebar)
         const targetLink = e.target.closest('a');

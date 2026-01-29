@@ -6,8 +6,6 @@
 
 document.addEventListener('DOMContentLoaded', function () {
 
-    console.log("✅ Mapping Handler Loaded & DOM Ready");
-
     // ==========================================
     // 1. INSPECTOR TAB (KWH vs BANGUNAN)
     // ==========================================
@@ -85,7 +83,14 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             window.dispatchEvent(new CustomEvent('map:focus', {
-                detail: { lat: lat, lng: lng, idpel: data.idpel }
+                detail: {
+                    lat: lat,
+                    lng: lng,
+                    idpel: data.idpel,
+                    nama: data.namagd,
+                    tarif: data.tarif,
+                    daya: data.daya
+                }
             }));
 
         }
@@ -273,21 +278,30 @@ document.addEventListener('DOMContentLoaded', function () {
             }).addTo(window.validationMap);
 
             L.control.zoom({ position: 'bottomright' }).addTo(window.validationMap);
-            window.validationMap.on('zoomend', function () {
-                window.validationMap.invalidateSize();
-            });
+            // window.validationMap.on('zoomend', function () {
+            //     window.validationMap.invalidateSize();
+            // });
 
-            window.validationMap.on('moveend', function () {
-                window.validationMap.invalidateSize();
-            });
+            // window.validationMap.on('moveend', function () {
+            //     window.validationMap.invalidateSize();
+            // });
         } else {
             // Jika peta sudah ada, langsung terbang ke lokasi
-            window.validationMap.flyTo([lat, lng], 18, {
-                animate: true,
-                duration: 1.5
-            });
-            // Fix: Invalidate size agar peta tidak abu-abu jika container berubah ukuran
-            setTimeout(() => { window.validationMap.invalidateSize(); }, 300);
+            const current = window.validationMap.getCenter();
+            const isSamePoint =
+                Math.abs(current.lat - lat) < 0.00001 &&
+                Math.abs(current.lng - lng) < 0.00001;
+
+            if (!isSamePoint) {
+                window.validationMap.setView([lat, lng], 18, {
+                    animate: true,
+                    duration: 1.2
+                });
+
+                setTimeout(() => {
+                    window.validationMap.invalidateSize({ animate: false });
+                }, 1300);
+            }
         }
 
         // 2. Hapus Marker Lama (jika ada)
@@ -532,6 +546,16 @@ document.addEventListener('DOMContentLoaded', function () {
         window.previewMarker = L.marker([lat, lng], { draggable: true }).addTo(window.previewMap);
         window.previewMap.flyTo([lat, lng], 18);
 
+        const hintEl = document.getElementById('map-drag-hint');
+        if (hintEl) {
+            hintEl.classList.remove('hidden'); // Munculkan pesan
+            
+            // Opsional: Hilangkan pesan setelah user mulai menggeser (agar tidak menghalangi)
+            window.previewMarker.on('dragstart', function() {
+                hintEl.classList.add('hidden');
+            });
+        }
+        
         window.previewMarker.on('dragend', function (e) {
             const pos = e.target.getLatLng();
             const latInput = document.getElementById('latitudey_create') || document.getElementById('latitudey_edit');
@@ -676,8 +700,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const suffix = e.target.id.includes('edit') ? '_edit' : '_create';
             const lat = parseFloat(document.getElementById('latitudey' + suffix)?.value);
             const lng = parseFloat(document.getElementById('longitudex' + suffix)?.value);
-            if (window.previewMap && window.updatePreviewMarker) window.updatePreviewMarker(lat, lng);
-            if (window.updateExternalStreetView) window.updateExternalStreetView();
+            if (!isNaN(lat) && !isNaN(lng)) {
+                if (window.previewMap && window.updatePreviewMarker) {
+                    window.updatePreviewMarker(lat, lng);
+                }
+                if (window.updateExternalStreetView) {
+                    window.updateExternalStreetView();
+                }
+            }
         }
     });
 
@@ -721,12 +751,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         // 3. TEKNIK "SELF-HEALING" DENGAN RESIZE OBSERVER
-        // Ini adalah kunci agar peta tidak blank saat ada notifikasi muncul/hilang
         const resizeObserver = new ResizeObserver(() => {
-            if (window.validationMap) {
-                window.validationMap.invalidateSize();
-            }
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (window.validationMap) {
+                    window.validationMap.invalidateSize({ animate: false });
+                }
+            }, 200);
         });
+
         resizeObserver.observe(mapContainer);
 
         // Jalankan
@@ -749,3 +782,100 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
 });
+
+// =========================================================================
+// FITUR TAMBAHAN GLOBAL (ALERT & VALIDASI)
+// Diletakkan di sini agar tab-manager.js tetap bersih
+// =========================================================================
+
+/**
+ * 1. FUNGSI ALERT KEREN (MODAL TENGAH)
+ */
+window.showCustomAlert = function(title, message, type = 'error') {
+    // Hapus alert lama jika ada
+    const existing = document.getElementById('custom-alert-modal');
+    if (existing) existing.remove();
+
+    // Tentukan Warna & Ikon
+    let iconCode = '<svg class="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+    let btnColor = 'bg-red-600 hover:bg-red-700';
+    let ringColor = 'ring-red-300';
+
+    if (type === 'warning') {
+        iconCode = '<svg class="w-16 h-16 text-yellow-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>';
+        btnColor = 'bg-yellow-600 hover:bg-yellow-700';
+        ringColor = 'ring-yellow-300';
+    }
+
+    // Template HTML Modal
+    const modalHtml = `
+    <div id="custom-alert-modal" class="fixed inset-0 z-[99999] flex items-center justify-center bg-gray-900/60 backdrop-blur-sm transition-opacity opacity-0">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200 text-center border border-gray-100 dark:border-gray-700">
+            <div class="mb-2">${iconCode}</div>
+            <h3 class="text-xl font-extrabold text-gray-800 dark:text-white mb-2 tracking-tight">${title}</h3>
+            <div class="text-sm text-gray-600 dark:text-gray-300 mb-8 leading-relaxed">${message}</div>
+            <button onclick="closeCustomAlert()" class="w-full py-3 px-4 rounded-xl text-white font-bold text-sm shadow-lg shadow-gray-300/50 dark:shadow-none transition-all transform active:scale-95 focus:ring-4 ${ringColor} ${btnColor}">
+                OK, Saya Perbaiki
+            </button>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Animasi Masuk
+    setTimeout(() => {
+        const modal = document.getElementById('custom-alert-modal');
+        if(modal) {
+            modal.classList.remove('opacity-0');
+            modal.querySelector('div').classList.remove('scale-95');
+            modal.querySelector('div').classList.add('scale-100');
+        }
+    }, 10);
+};
+
+window.closeCustomAlert = function() {
+    const modal = document.getElementById('custom-alert-modal');
+    if (modal) {
+        modal.classList.add('opacity-0');
+        modal.querySelector('div').classList.add('scale-95');
+        setTimeout(() => modal.remove(), 200);
+    }
+};
+
+/**
+ * 2. FUNGSI VALIDASI KOORDINAT (DIPANGGIL DARI TAB MANAGER)
+ * Mengembalikan TRUE jika aman, FALSE jika ada masalah.
+ */
+window.validateMappingForm = function(form) {
+    const latInput = form.querySelector('input[name="latitudey"]');
+    const lonInput = form.querySelector('input[name="longitudex"]');
+
+    // Jika form tidak punya input koordinat, anggap aman (lanjut)
+    if (!latInput || !lonInput) return true;
+
+    const lat = parseFloat(latInput.value || 0);
+    const lon = parseFloat(lonInput.value || 0);
+
+    // Cek 1: Anti-Afrika (0,0)
+    if (lat === 0 || lon === 0) {
+        window.showCustomAlert(
+            "LOKASI BELUM DIPILIH!", 
+            "Posisi koordinat masih <b>0,0 (Tengah Laut)</b>.<br>Mohon geser Pin Marker di peta ke lokasi rumah pelanggan.", 
+            "error"
+        );
+        return false; // GAGAL
+    }
+
+    // Cek 2: Batas Wilayah (Geo-Fencing)
+    // Sesuaikan dengan area kerja Anda (Misal: Riau)
+    if (lat < -2.0 || lat > 3.0 || lon < 100.0 || lon > 105.0) {
+        window.showCustomAlert(
+            "LOKASI KEJAUHAN!", 
+            `Koordinat terdeteksi di luar wilayah kerja.<br><span class="font-mono bg-gray-100 px-1 rounded text-xs">Lat: ${lat}, Lon: ${lon}</span><br><br>Apakah Anda tidak sengaja mengklik peta di lokasi yang salah?`, 
+            "warning"
+        );
+        return false; // GAGAL
+    }
+
+    return true; // AMAN
+};
