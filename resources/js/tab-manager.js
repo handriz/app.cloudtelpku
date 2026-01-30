@@ -66,6 +66,7 @@ App.Utils = (() => {
         let targetTabContent = null;
         targetTabContent = document.querySelector('.tab-content:not(.hidden)');
 
+        // 1. Logika Cari Container
         if (targetTabContent) {
             // 1. Cari wadah di dalam tab yang ditargetkan
             container = targetTabContent.querySelector('#interactive-validation-container');
@@ -82,9 +83,10 @@ App.Utils = (() => {
         }
 
         // 3. Hapus notifikasi sebelumnya (Success atau Error)
-        container.querySelectorAll('.bg-green-100, .bg-red-100').forEach(el => el.remove());
+        const oldAlert = container.querySelector('#action-notification-alert');
+        if (oldAlert) oldAlert.remove();
 
-        // 7. Tentukan style
+        // 4. Tentukan style Warna
         let alertClass = type;
         let strongText = type;
 
@@ -92,7 +94,6 @@ App.Utils = (() => {
             alertClass = 'bg-green-100 border-green-400 text-green-700';
             strongText = 'Berhasil!';
         } else if (type === 'warning') {
-            // [BARU] Style untuk Sukses tapi ada Catatan
             alertClass = 'bg-yellow-100 border-yellow-400 text-yellow-700';
             strongText = 'Perhatian:';
         } else if (type === 'reject') {
@@ -103,39 +104,46 @@ App.Utils = (() => {
             strongText = 'Error!';
         }
 
-        // 8. Buat HTML Notifikasi
+        // 5. Buat HTML Notifikasi
         const notificationHtml = `
-                <div id="action-notification-alert" class="mt-4 ${alertClass} border px-4 py-3 rounded relative" role="alert" style="margin-top: 0.5rem !important;">
-                    <strong class="font-bold">${strongText}</strong>
-                    <span class="block sm:inline"> ${message}</span>
-
-                    <button type="button" class="absolute top-0 right-0 p-4 text-xl" data-dismiss="alert" aria-label="Close">
-                        <span aria-hidden="true">×</span>
-                    </button>
+                <div id="action-notification-alert" class="fixed top-5 right-5 z-[9999] min-w-[320px] max-w-md px-6 py-4 rounded-lg shadow-2xl border-l-8 ${alertClass} transition-all duration-500 transform translate-y-0" role="alert">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <strong class="font-bold block text-lg mb-1">${strongText}</strong>
+                            <span class="block sm:inline text-sm">${message}</span>
+                        </div>
+                        <button type="button" class="ml-4 text-2xl font-bold leading-none focus:outline-none opacity-50 hover:opacity-100" data-dismiss="alert" aria-label="Close">
+                            <span aria-hidden="true">×</span>
+                        </button>
+                    </div>
                 </div>
             `;
 
-        // 9. Sisipkan notifikasi
-        container.insertAdjacentHTML('afterbegin', notificationHtml);
+        // 6. Sisipkan notifikasi
+        container.insertAdjacentHTML('beforeend', notificationHtml);
 
         const newAlert = container.querySelector('#action-notification-alert');
 
-        // 10. Logika Auto-hide
+        // 7. Logika Auto-hide
         if (newAlert) {
-            newAlert.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // newAlert.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
+            // Timer hilang otomatis 10 detik
             const autoHideTimer = setTimeout(() => {
-                if (newAlert) {
-                    newAlert.style.opacity = 0;
+                if (newAlert && document.body.contains(newAlert)) {
+                    newAlert.style.opacity = '0';
+                    newAlert.style.transform = 'translateY(-20px)'; // Efek naik ke atas saat hilang
                     setTimeout(() => newAlert.remove(), 500);
                 }
-            }, 15000); // Waktu 15 detik
+            }, 10000);
 
+            // Event Listener Tombol Close (X)
             const closeButton = newAlert.querySelector('[data-dismiss="alert"]');
             if (closeButton) {
                 closeButton.addEventListener('click', () => {
-                    newAlert.remove();
                     clearTimeout(autoHideTimer);
+                    newAlert.style.opacity = '0';
+                    setTimeout(() => newAlert.remove(), 300);
                 });
             }
         }
